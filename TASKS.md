@@ -23,6 +23,9 @@ Neuralgentics is a specialized coding agent built on OpenCode. It follows a hybr
 - Skill files
 - Build/install/release/update scripts
 - File structure verification passes (7/7)
+- Wire plugin to OpenCode hooks (COMPLETED)
+- Rebrand patch tracking (COMPLETED)
+- Port verification (COMPLETED)
 
 ## Completed Today (2026-05-22)
 - **Started memini-core server** on port 8900
@@ -33,8 +36,6 @@ Neuralgentics is a specialized coding agent built on OpenCode. It follows a hybr
 - **Added MEMINI_DB_URL to serve.sh**: defaults to neuralgentics database
 
 ## Next Steps
-- Start memini-core and verify HTTP endpoints
-- Wire plugin to OpenCode hooks
 - Test orchestrator routing logic
 - Add more skill files
 - Test auto-updater against GitHub

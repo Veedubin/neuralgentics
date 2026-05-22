@@ -30,7 +30,7 @@ export interface Relationship {
 }
 
 export interface MemoryAdapterConfig {
-  /** Base URL of the Python HTTP memory server (default: http://localhost:8123) */
+  /** Base URL of the Python HTTP memory server (default: http://localhost:8900) */
   baseUrl?: string;
   /** Request timeout in milliseconds (default: 10000) */
   timeoutMs?: number;
@@ -113,7 +113,7 @@ export class MemoryAdapter {
   private timeoutMs: number;
 
   constructor(config?: MemoryAdapterConfig) {
-    this.baseUrl = config?.baseUrl ?? 'http://localhost:8123';
+    this.baseUrl = config?.baseUrl ?? 'http://localhost:8900';
     this.timeoutMs = config?.timeoutMs ?? 10000;
   }
 

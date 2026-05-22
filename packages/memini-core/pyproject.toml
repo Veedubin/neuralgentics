@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Core memory server with PostgreSQL/pgvector storage — no MCP, pure HTTP REST"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.110",
+    "fastapi>=0.115",
     "uvicorn[standard]>=0.29",
     "psycopg2-binary>=2.9",
     "sentence-transformers>=2.6",

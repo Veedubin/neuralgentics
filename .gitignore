@@ -8,6 +8,7 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+*.tsbuildinfo
 
 # Lock files (already have bun.lock)
 uv.lock
