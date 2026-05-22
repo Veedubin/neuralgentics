@@ -1,0 +1,14 @@
+[project]
+name = "neuralgentics"
+version = "0.0.1-alpha"
+description = "Neuralgentics — coding agent built on OpenCode"
+requires-python = ">=3.11"
+readme = "README.md"
+license = {file = "LICENSE"}
+
+[project.scripts]
+memini-core = "memini_core.server:main"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"

@@ -1,0 +1,33 @@
+{
+  "name": "neuralgentics",
+  "version": "0.0.1-alpha",
+  "description": "Neuralgentics — coding agent built on OpenCode",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "./scripts/build.sh",
+    "build:ts": "tsc -p packages/plugin/tsconfig.json && tsc -p packages/orchestrator/tsconfig.json",
+    "build:py": "cd packages/memini-core && uv build",
+    "install:all": "bun install && cd packages/memini-core && uv sync",
+    "dev:memini": "cd packages/memini-core && uv run python -m memini_core.server",
+    "dev:plugin": "bun run --watch packages/plugin/src/index.ts",
+    "test": "bun test packages/plugin && cd packages/memini-core && uv run pytest",
+    "lint": "eslint packages/ && cd packages/memini-core && ruff check",
+    "typecheck": "tsc --noEmit -p packages/plugin/tsconfig.json",
+    "release": "./scripts/release.sh"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.4.0",
+    "eslint": "^9.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0"
+  },
+  "engines": {
+    "bun": ">=1.1.0",
+    "node": ">=20.0.0"
+  }
+}

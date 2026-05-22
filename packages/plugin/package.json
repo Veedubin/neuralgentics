@@ -1,0 +1,40 @@
+{
+  "name": "@neuralgentics/plugin",
+  "version": "0.0.1-alpha",
+  "description": "Neuralgentics OpenCode plugin — hooks, memory adapter, routing enforcement",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./adapters": {
+      "import": "./dist/adapters/index.js",
+      "types": "./dist/adapters/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neuralgentics/orchestrator": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "@opencode-ai/sdk": ">=0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/sdk": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

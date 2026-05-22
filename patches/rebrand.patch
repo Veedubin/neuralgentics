@@ -1,0 +1,5 @@
+--- a/packages/app/src/components/footer.tsx
++++ b/packages/app/src/components/footer.tsx
+@@ -1 +1 @@
+-OpenCode
++Neuralgentics powered by OpenCode
