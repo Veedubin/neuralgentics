@@ -1,30 +1,45 @@
-# Dependencies
+# ─── Dependencies (created by `uv` / `npm install` — never commit) ───────────
 node_modules/
 .venv/
+venv/
+env/
 __pycache__/
 *.pyc
+*.pyo
 
-# Build artifacts
+# ─── Build artifacts ──────────────────────────────────────────────────────────
 dist/
 build/
-site/          # mkdocs build output (deployed to gh-pages branch)
+site/                # mkdocs build output (deployed to gh-pages branch)
 *.egg-info/
 *.tsbuildinfo
 
-# Lock files (already have bun.lock)
+# ─── Caches (auto-regenerated, multi-GB if committed) ────────────────────────
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.go-build/
+*.log
+
+# ─── Generated proto files (commit only the .proto sources) ──────────────────
+*.pb.go.bak
+
+# ─── Lock files we explicitly don't want (we keep bun.lock) ──────────────────
 uv.lock
 
-# IDE
+# ─── Vendored upstream (deleted; fetched on demand if needed) ────────────────
+opencode-base/
+
+# ─── Local TLS certs (NEVER publish; rotate if leaked) ───────────────────────
+certs/
+
+# ─── Working tree noise ──────────────────────────────────────────────────────
+.DS_Store
 .vscode/
 .idea/
 
-# OS
-.DS_Store
-
-# Logs
-*.log
-
-# Environment variables (contains secrets — never commit)
+# ─── Environment variables (contains secrets — never commit) ─────────────────
 .env
 .env.local
 .env.*.local
+!.env.example
