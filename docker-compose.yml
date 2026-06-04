@@ -1,0 +1,105 @@
+# docker-compose.yml — Neuralgentics container stack
+# Compatible with both `docker compose` and `podman-compose`
+# Usage: ./scripts/compose.sh up
+#        docker compose up
+#        podman-compose up
+
+version: "3.9"
+
+services:
+  # ── PostgreSQL 17 + pgvector ──────────────────────────────────────────────
+  neuralgentics-postgres:
+    image: ghcr.io/Veedubin/neuralgentics-postgres:${NEURALGENTICS_VERSION:-v0.1.0}
+    build:
+      context: .
+      dockerfile: docker/postgres.Dockerfile
+    container_name: neuralgentics-postgres
+    ports:
+      - "${NEURALGENTICS_DB_PORT:-6000}:5432"
+    environment:
+      POSTGRES_USER: ${NEURALGENTICS_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${NEURALGENTICS_DB_PASSWORD:-neuralgentics}
+      POSTGRES_DB: ${NEURALGENTICS_DB_NAME:-neuralgentics}
+    volumes:
+      - neuralgentics-db:/var/lib/postgresql/data
+    networks:
+      - neuralgentics-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${NEURALGENTICS_DB_USER:-postgres} -d ${NEURALGENTICS_DB_NAME:-neuralgentics}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── Python gRPC embedding sidecar ────────────────────────────────────────
+  neuralgentics-sidecar:
+    image: ghcr.io/Veedubin/neuralgentics-sidecar:${NEURALGENTICS_VERSION:-v0.1.0}
+    build:
+      context: .
+      dockerfile: docker/sidecar.Dockerfile
+    container_name: neuralgentics-sidecar
+    environment:
+      NEURAL_EMBED_ADDR: "0.0.0.0:50051"
+      NEURALGENTICS_EMBED_DEVICE: ${NEURALGENTICS_EMBED_DEVICE:-cpu}
+    volumes:
+      - sidecar-cache:/root/.cache/huggingface
+    networks:
+      - neuralgentics-net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import grpc; ch=grpc.insecure_channel('localhost:50051'); grpc.channel_ready_future(ch).result(timeout=5)\""]
+      interval: 10s
+      timeout: 7s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ── Go backend (JSON-RPC over stdio) ─────────────────────────────────────
+  neuralgentics-backend:
+    image: ghcr.io/Veedubin/neuralgentics-backend:${NEURALGENTICS_VERSION:-v0.1.0}
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: neuralgentics-backend
+    environment:
+      NEURALGENTICS_DB_URL: "postgresql://${NEURALGENTICS_DB_USER:-postgres}:${NEURALGENTICS_DB_PASSWORD:-neuralgentics}@neuralgentics-postgres:5432/${NEURALGENTICS_DB_NAME:-neuralgentics}?sslmode=disable"
+      EMBEDDING_MODE: ${EMBEDDING_MODE:-auto}
+      MEMINI_EMBEDDING_ADDR: "neuralgentics-sidecar:50051"
+      THOUGHT_CHAINS: "${THOUGHT_CHAINS:-true}"
+    depends_on:
+      neuralgentics-postgres:
+        condition: service_healthy
+      neuralgentics-sidecar:
+        condition: service_healthy
+    networks:
+      - neuralgentics-net
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+  # ── TUI (terminal-based, interactive) ────────────────────────────────────
+  neuralgentics-tui:
+    image: ghcr.io/Veedubin/neuralgentics-tui:${NEURALGENTICS_VERSION:-v0.1.0}
+    build:
+      context: .
+      dockerfile: docker/tui.Dockerfile
+    container_name: neuralgentics-tui
+    environment:
+      NEURALGENTICS_BACKEND_PATH: "/usr/local/bin/neuralgentics-backend"
+      NEURALGENTICS_DB_URL: "postgresql://${NEURALGENTICS_DB_USER:-postgres}:${NEURALGENTICS_DB_PASSWORD:-neuralgentics}@neuralgentics-postgres:5432/${NEURALGENTICS_DB_NAME:-neuralgentics}?sslmode=disable"
+      MEMINI_EMBEDDING_ADDR: "neuralgentics-sidecar:50051"
+    depends_on:
+      - neuralgentics-backend
+    networks:
+      - neuralgentics-net
+    stdin_open: true
+    tty: true
+    restart: "no"
+
+networks:
+  neuralgentics-net:
+    driver: bridge
+
+volumes:
+  neuralgentics-db:
+  sidecar-cache:

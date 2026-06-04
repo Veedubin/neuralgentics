@@ -152,8 +152,8 @@ documentation the user can use to verify behavior.
 site_name: Neuralgentics
 site_description: Agentic coding orchestration with a trust-weighted memory engine
 site_url: https://neuralgentics.github.io/neuralgentics/
-repo_url: https://github.com/neuralgentics/neuralgentics
-repo_name: neuralgentics/neuralgentics
+repo_url: https://github.com/Veedubin/neuralgentics
+repo_name: Veedubin/neuralgentics
 edit_uri: edit/main/docs/
 
 theme:
@@ -264,7 +264,7 @@ extra:
   generator: false
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/neuralgentics/neuralgentics
+      link: https://github.com/Veedubin/neuralgentics
       name: Neuralgentics on GitHub
 ```
 
