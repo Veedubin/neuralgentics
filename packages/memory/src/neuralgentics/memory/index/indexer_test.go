@@ -103,7 +103,7 @@ func (m *mockIndexerStore) GetMemory(_ context.Context, _ string, _ bool) (*core
 }
 func (m *mockIndexerStore) UpdateMemory(_ context.Context, _ *core.MemoryEntry) error { return nil }
 func (m *mockIndexerStore) DeleteMemory(_ context.Context, _ string) error            { return nil }
-func (m *mockIndexerStore) CountMemories(_ context.Context) (int64, error)            { return 0, nil }
+func (m *mockIndexerStore) CountMemories(_ context.Context) (int64, error) { return 0, nil }
 func (m *mockIndexerStore) ListMemories(_ context.Context, _ *core.SearchFilter, _ int) ([]*core.MemoryEntry, error) {
 	return nil, nil
 }
@@ -220,6 +220,20 @@ func (m *mockIndexerStore) GetFileChunksByPath(_ context.Context, _ string) (*co
 	return nil, fmt.Errorf("not implemented")
 }
 
+// v0.7.0 1024-dim methods
+func (m *mockIndexerStore) Has1024Support(_ context.Context) bool { return false }
+func (m *mockIndexerStore) AddMemory1024(_ context.Context, _ string, _ []float64) (string, error) {
+	return "", fmt.Errorf("not implemented")
+}
+func (m *mockIndexerStore) QueryMemories1024(_ context.Context, _ []float64, _ *core.SearchOptions) ([]*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (m *mockIndexerStore) GetMemory1024(_ context.Context, _ string) (*core.MemoryEntry, error) {
+	return nil, fmt.Errorf("not found")
+}
+func (m *mockIndexerStore) CountMemories1024(_ context.Context) (int64, error) { return 0, nil }
+func (m *mockIndexerStore) DeleteMemory1024(_ context.Context, _ string) error { return nil }
+
 // mockEmbedder implements core.Embedder for testing.
 type mockEmbedder struct {
 	mu             sync.Mutex
@@ -254,6 +268,12 @@ func (m *mockEmbedder) Embed(_ context.Context, _ string) ([]float64, error) {
 	vec[0] = float64(m.calls)
 	return vec, nil
 }
+
+func (m *mockEmbedder) Embed1024(_ context.Context, _ string) ([]float64, error) {
+	return make([]float64, 1024), nil
+}
+
+func (m *mockEmbedder) Dim() int { return m.dim }
 
 func (m *mockEmbedder) EmbedBatch(_ context.Context, texts []string) ([][]float64, error) {
 	m.mu.Lock()
@@ -596,4 +616,31 @@ func TestProjectIndexer_GetTracker(t *testing.T) {
 	if tracker == nil {
 		t.Error("GetTracker returned nil")
 	}
+}
+
+// Phase 2 part 1 stubs for new core.Store interface methods
+
+func (m *mockIndexerStore) GetUserProfile(ctx context.Context, peerID string) (*core.UserProfile, error) {
+	return nil, nil
+}
+
+func (m *mockIndexerStore) UpsertUserProfile(ctx context.Context, profile *core.UserProfile) error {
+	return nil
+}
+
+func (m *mockIndexerStore) GetSecuritySummary(ctx context.Context, hours int) (*core.SecuritySummary, error) {
+	return &core.SecuritySummary{}, nil
+}
+
+// Phase 3 stubs for agent_tools interface methods
+func (m *mockIndexerStore) RecordToolRequest(ctx context.Context, peerID, toolServer, toolName string) error {
+	return nil
+}
+
+func (m *mockIndexerStore) IncrementToolUse(ctx context.Context, peerID, toolServer, toolName string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockIndexerStore) GetAgentTools(ctx context.Context, peerID string) ([]*core.ToolRecord, error) {
+	return nil, nil
 }

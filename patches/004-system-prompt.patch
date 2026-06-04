@@ -1,0 +1,12 @@
+diff --git a/packages/opencode/src/session/system.ts b/packages/opencode/src/session/system.ts
+index 06c71fa7d..c508e015d 100644
+--- a/packages/opencode/src/session/system.ts
++++ b/packages/opencode/src/session/system.ts
+@@ -59,6 +59,7 @@ export const layer = Layer.effect(
+             `  Today's date: ${new Date().toDateString()}`,
+             `</env>`,
+           ].join("\n"),
++          "You are Neuralgentics, powered by OpenCode.",
+         ]
+       }),
+ 

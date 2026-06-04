@@ -268,7 +268,7 @@ func (s *PostgresStore) GetRelationships(ctx context.Context, memoryID string) (
 	var results []core.Relationship
 	for rows.Next() {
 		var r core.Relationship
-		err := rows.Scan(&r.SourceID, &r.SourceID, &r.TargetID, &r.RelationshipType, &r.Confidence, &r.Confidence, nil)
+		err := rows.Scan(&r.ID, &r.SourceID, &r.TargetID, &r.RelationshipType, &r.Confidence, &r.CreatedAt, nil)
 		if err != nil {
 			continue
 		}
@@ -333,7 +333,7 @@ func (s *PostgresStore) GetSuperseded(ctx context.Context, memoryID string) (str
 	return supersededID, nil
 }
 
-// ─── Entity Operations (stub implementations for Phase 1) ──────────────────
+// ─── Entity Operations ─────────────────────────────────────────────────────
 
 // UpsertEntity inserts or updates an entity in the knowledge graph.
 func (s *PostgresStore) UpsertEntity(ctx context.Context, entity *core.Entity) (string, error) {
@@ -559,7 +559,7 @@ func (s *PostgresStore) InferenceChain(ctx context.Context, startEntity, endEnti
 	return nil, nil
 }
 
-// ─── Peer Operations (stub implementations for Phase 1) ────────────────────
+// ─── Peer Operations ───────────────────────────────────────────────────────
 
 // AddPeer adds a peer profile.
 func (s *PostgresStore) AddPeer(ctx context.Context, peer *core.PeerProfile) (string, error) {
@@ -624,7 +624,7 @@ func (s *PostgresStore) UpdatePeerLastActive(ctx context.Context, id string) err
 	return err
 }
 
-// ─── Memory Sharing Operations (stub implementations for Phase 1) ────────
+// ─── Memory Sharing Operations ───────────────────────────────────────────────
 
 // ShareMemory shares a memory with a peer.
 func (s *PostgresStore) ShareMemory(ctx context.Context, memoryID, peerID, permission, grantedBy string) (string, error) {
@@ -1167,7 +1167,7 @@ func derefString(s *string) string {
 	return *s
 }
 
-// ─── Audit Operations (stub implementations for Phase 1) ──────────────────
+// ─── Audit Operations ───────────────────────────────────────────────────────
 
 // LogAuditEvent logs an audit event.
 func (s *PostgresStore) LogAuditEvent(ctx context.Context, event *core.AuditEvent) (string, error) {
@@ -1278,7 +1278,7 @@ FROM audit_log`
 	return results, nil
 }
 
-// ─── Trust Adjustment Operations (stub implementations for Phase 1) ──────
+// ─── Trust Adjustment Operations ─────────────────────────────────────────────
 
 // LogTrustAdjustment logs a trust score adjustment.
 func (s *PostgresStore) LogTrustAdjustment(ctx context.Context, adj *core.TrustAdjustment) (string, error) {
@@ -1300,11 +1300,11 @@ func (s *PostgresStore) LogTrustAdjustment(ctx context.Context, adj *core.TrustA
 
 // GetTrustAdjustments retrieves trust adjustments for a memory.
 func (s *PostgresStore) GetTrustAdjustments(ctx context.Context, memoryID string, limit int) ([]*core.TrustAdjustment, error) {
-	// Phase 1 stub
+	// TODO: implement trust adjustment history query
 	return nil, nil
 }
 
-// ─── Decay Operations (stub implementations for Phase 1) ──────────────────
+// ─── Decay Operations ───────────────────────────────────────────────────────
 
 // UpdateDecayRate updates the decay rate for a memory.
 func (s *PostgresStore) UpdateDecayRate(ctx context.Context, memoryID string, rate float64) error {
@@ -1318,7 +1318,7 @@ func (s *PostgresStore) UpdateDecayRate(ctx context.Context, memoryID string, ra
 
 // ListFadingMemories returns memories approaching archive threshold.
 func (s *PostgresStore) ListFadingMemories(ctx context.Context, threshold float64, limit int) ([]*core.MemoryEntry, error) {
-	// Phase 1 stub
+	// TODO: implement fading memories query (trust score near archive threshold)
 	return nil, nil
 }
 
@@ -1519,4 +1519,250 @@ func formatVector(v []float64) string {
 	}
 	result = append(result, ']')
 	return string(result)
+}
+
+// ─── Dual-Model RRF: 1024-dim Operations (v0.7.0+ port) ─────────────────────
+
+// AddMemory1024 inserts a 1024-dim vector entry for an existing memory.
+func (s *PostgresStore) AddMemory1024(ctx context.Context, memoryID string, vector []float64) (string, error) {
+	if s.pool == nil {
+		return "", fmt.Errorf("database pool not initialized")
+	}
+	embedding := formatVector(vector)
+	var returnedID string
+	err := s.pool.QueryRow(ctx, InsertMemory1024, memoryID, embedding).Scan(&returnedID)
+	if err != nil {
+		return "", fmt.Errorf("insert memory 1024: %w", err)
+	}
+	return returnedID, nil
+}
+
+// QueryMemories1024 searches the 1024-dim index for the given vector.
+func (s *PostgresStore) QueryMemories1024(ctx context.Context, vector []float64, opts *core.SearchOptions) ([]*core.MemoryEntry, error) {
+	if s.pool == nil {
+		return nil, fmt.Errorf("database pool not initialized")
+	}
+	if opts == nil {
+		opts = &core.SearchOptions{TopK: 10, Threshold: 0.7}
+	}
+
+	vectorStr := formatVector(vector)
+
+	rows, err := s.pool.Query(ctx, SearchMemories1024Vector, vectorStr, opts.Threshold, opts.TopK)
+	if err != nil {
+		return nil, fmt.Errorf("query memories 1024: %w", err)
+	}
+	defer rows.Close()
+
+	var results []*core.MemoryEntry
+	for rows.Next() {
+		entry, scanErr := scanMemoryEntryWithDistance(rows)
+		if scanErr != nil {
+			continue
+		}
+		results = append(results, entry)
+	}
+	return results, nil
+}
+
+// GetMemory1024 retrieves a 1024-dim entry by the parent memory ID.
+func (s *PostgresStore) GetMemory1024(ctx context.Context, memoryID string) (*core.MemoryEntry, error) {
+	if s.pool == nil {
+		return nil, fmt.Errorf("database pool not initialized")
+	}
+
+	// We return the parent memory entry (from the JOIN) since callers
+	// typically want the full entry, not just the 1024 row.
+	row := s.pool.QueryRow(ctx, `
+		SELECT m.id, m.text, m.embedding, m.source_type, m.content_hash, m.metadata,
+		       m.trust_score, m.retrieval_count, m.is_archived, m.last_accessed_at,
+		       m.source_path, m.supersedes_id, m.structured_fields, m.change_ratio,
+		       m.created_at_ms, m.created_at, m.updated_at
+		FROM memories m
+		JOIN memories_1024 m1024 ON m.id = m1024.memory_id
+		WHERE m1024.memory_id = $1 AND m.is_archived = FALSE
+	`, memoryID)
+	return scanMemoryEntry(row)
+}
+
+// CountMemories1024 returns the count of entries in the memories_1024 table.
+func (s *PostgresStore) CountMemories1024(ctx context.Context) (int64, error) {
+	if s.pool == nil {
+		return 0, fmt.Errorf("database pool not initialized")
+	}
+	var count int64
+	err := s.pool.QueryRow(ctx, CountMemories1024).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count memories 1024: %w", err)
+	}
+	return count, nil
+}
+
+// DeleteMemory1024 deletes the 1024 entry for a given memory ID.
+func (s *PostgresStore) DeleteMemory1024(ctx context.Context, memoryID string) error {
+	if s.pool == nil {
+		return fmt.Errorf("database pool not initialized")
+	}
+	var deletedMemoryID string
+	err := s.pool.QueryRow(ctx, DeleteMemory1024, memoryID).Scan(&deletedMemoryID)
+	if err != nil {
+		return nil // idempotent — no error if entry didn't exist
+	}
+	return nil
+}
+
+// ─── User Profile Operations ──────────────────────────────────────────────────
+
+// GetUserProfile retrieves a user profile by peer ID.
+// Returns nil,nil if no profile is found for the given peer.
+func (s *PostgresStore) GetUserProfile(ctx context.Context, peerID string) (*core.UserProfile, error) {
+	if s.pool == nil {
+		return nil, fmt.Errorf("database pool not initialized")
+	}
+
+	var p core.UserProfile
+	var preferencesJSON []byte
+	var dialecticNotesJSON []byte
+	var peerIDScan string
+
+	err := s.pool.QueryRow(ctx, GetUserProfileQuery, peerID).Scan(
+		&p.ID, &peerIDScan, &preferencesJSON, &p.CommunicationStyle, &p.ExpertiseLevel,
+		&dialecticNotesJSON, &p.WarmedUp, &p.SessionCount, &p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil // no profile found — caller creates default
+		}
+		return nil, fmt.Errorf("get user profile: %w", err)
+	}
+
+	p.PeerID = peerIDScan
+
+	// Parse JSONB fields
+	if preferencesJSON != nil {
+		p.Preferences = make(map[string]any)
+		_ = json.Unmarshal(preferencesJSON, &p.Preferences)
+	}
+	if p.Preferences == nil {
+		p.Preferences = map[string]any{}
+	}
+
+	if dialecticNotesJSON != nil {
+		p.DialecticNotes = make([]any, 0)
+		_ = json.Unmarshal(dialecticNotesJSON, &p.DialecticNotes)
+	}
+	if p.DialecticNotes == nil {
+		p.DialecticNotes = []any{}
+	}
+
+	return &p, nil
+}
+
+// UpsertUserProfile creates or updates a user profile.
+// If a profile with the same peer_id already exists, it is fully replaced.
+func (s *PostgresStore) UpsertUserProfile(ctx context.Context, profile *core.UserProfile) error {
+	if s.pool == nil {
+		return fmt.Errorf("database pool not initialized")
+	}
+
+	preferencesJSON, err := json.Marshal(profile.Preferences)
+	if err != nil {
+		return fmt.Errorf("marshal preferences: %w", err)
+	}
+	dialecticNotesJSON, err := json.Marshal(profile.DialecticNotes)
+	if err != nil {
+		return fmt.Errorf("marshal dialectic_notes: %w", err)
+	}
+
+	_, err = s.pool.Exec(ctx, UpsertUserProfileQuery,
+		profile.PeerID,
+		preferencesJSON,
+		profile.CommunicationStyle,
+		profile.ExpertiseLevel,
+		dialecticNotesJSON,
+		profile.WarmedUp,
+		profile.SessionCount,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert user profile: %w", err)
+	}
+
+	return nil
+}
+
+// ─── Security Summary ──────────────────────────────────────────────────────────
+
+// GetSecuritySummary aggregates audit_log data for the last N hours.
+// Returns counts by event_type, severity, and agent_name.
+func (s *PostgresStore) GetSecuritySummary(ctx context.Context, hours int) (*core.SecuritySummary, error) {
+	if s.pool == nil {
+		return nil, fmt.Errorf("database pool not initialized")
+	}
+	if hours <= 0 {
+		hours = 24
+	}
+
+	hoursStr := fmt.Sprintf("%d", hours)
+	summary := &core.SecuritySummary{
+		EventsPerType:  map[string]int{},
+		EventsPerAgent: map[string]int{},
+		SeverityCounts: map[string]int{},
+	}
+
+	// Total events
+	if err := s.pool.QueryRow(ctx, SecuritySummaryTotalEvents, hoursStr).Scan(&summary.TotalEvents); err != nil {
+		return nil, fmt.Errorf("security summary total: %w", err)
+	}
+
+	// Critical count
+	if err := s.pool.QueryRow(ctx, SecuritySummaryCriticalCount, hoursStr).Scan(&summary.CriticalCount); err != nil {
+		return nil, fmt.Errorf("security summary critical: %w", err)
+	}
+
+	// Events per type
+	typeRows, err := s.pool.Query(ctx, SecuritySummaryEventsPerType, hoursStr)
+	if err != nil {
+		return nil, fmt.Errorf("security summary per type: %w", err)
+	}
+	defer typeRows.Close()
+	for typeRows.Next() {
+		var eventType string
+		var count int
+		if err := typeRows.Scan(&eventType, &count); err != nil {
+			continue
+		}
+		summary.EventsPerType[eventType] = count
+	}
+
+	// Events per agent
+	agentRows, err := s.pool.Query(ctx, SecuritySummaryEventsPerAgent, hoursStr)
+	if err != nil {
+		return nil, fmt.Errorf("security summary per agent: %w", err)
+	}
+	defer agentRows.Close()
+	for agentRows.Next() {
+		var agentName string
+		var count int
+		if err := agentRows.Scan(&agentName, &count); err != nil {
+			continue
+		}
+		summary.EventsPerAgent[agentName] = count
+	}
+
+	// Severity counts
+	sevRows, err := s.pool.Query(ctx, SecuritySummarySeverityCounts, hoursStr)
+	if err != nil {
+		return nil, fmt.Errorf("security summary severity: %w", err)
+	}
+	defer sevRows.Close()
+	for sevRows.Next() {
+		var severity string
+		var count int
+		if err := sevRows.Scan(&severity, &count); err != nil {
+			continue
+		}
+		summary.SeverityCounts[severity] = count
+	}
+
+	return summary, nil
 }

@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS memories (
     text TEXT NOT NULL,
     embedding vector(384),
     source_type VARCHAR(50) NOT NULL CHECK (
-        source_type IN ('session', 'file', 'web', 'boomerang', 'project', 'thought')
+        source_type IN ('session', 'file', 'web', 'boomerang', 'project', 'thought', 'context_package', 'agent_wrap_up')
     ),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

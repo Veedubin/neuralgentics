@@ -383,6 +383,20 @@ func (m *mockThoughtStore) GetFileChunksByPath(ctx context.Context, filePath str
 	return nil, nil
 }
 
+// v0.7.0 1024-dim methods
+func (m *mockThoughtStore) Has1024Support(_ context.Context) bool { return false }
+func (m *mockThoughtStore) AddMemory1024(_ context.Context, _ string, _ []float64) (string, error) {
+	return "", nil
+}
+func (m *mockThoughtStore) QueryMemories1024(_ context.Context, _ []float64, _ *core.SearchOptions) ([]*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (m *mockThoughtStore) GetMemory1024(_ context.Context, _ string) (*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (m *mockThoughtStore) CountMemories1024(_ context.Context) (int64, error) { return 0, nil }
+func (m *mockThoughtStore) DeleteMemory1024(_ context.Context, _ string) error { return nil }
+
 // --- Tests ---
 
 func TestStartChain(t *testing.T) {
@@ -770,4 +784,31 @@ func TestFullWorkflow(t *testing.T) {
 	if tc.Status != "abandoned" {
 		t.Errorf("status after abandon = %q, want 'abandoned'", tc.Status)
 	}
+}
+
+// Phase 2 part 1 stubs for new core.Store interface methods
+
+func (m *mockThoughtStore) GetUserProfile(ctx context.Context, peerID string) (*core.UserProfile, error) {
+	return nil, nil
+}
+
+func (m *mockThoughtStore) UpsertUserProfile(ctx context.Context, profile *core.UserProfile) error {
+	return nil
+}
+
+func (m *mockThoughtStore) GetSecuritySummary(ctx context.Context, hours int) (*core.SecuritySummary, error) {
+	return &core.SecuritySummary{}, nil
+}
+
+// Phase 3 stubs for agent_tools interface methods
+func (m *mockThoughtStore) RecordToolRequest(ctx context.Context, peerID, toolServer, toolName string) error {
+	return nil
+}
+
+func (m *mockThoughtStore) IncrementToolUse(ctx context.Context, peerID, toolServer, toolName string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockThoughtStore) GetAgentTools(ctx context.Context, peerID string) ([]*core.ToolRecord, error) {
+	return nil, nil
 }

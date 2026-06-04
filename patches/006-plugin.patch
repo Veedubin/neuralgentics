@@ -1,0 +1,20 @@
+diff --git a/packages/opencode/src/plugin/index.ts b/packages/opencode/src/plugin/index.ts
+index 717dff8db..28333f903 100644
+--- a/packages/opencode/src/plugin/index.ts
++++ b/packages/opencode/src/plugin/index.ts
+@@ -29,6 +29,7 @@ import { parsePluginSpecifier, readPluginId, readV1Plugin, resolvePluginId } fro
+ import { registerAdapter } from "@/control-plane/adapters"
+ import type { WorkspaceAdapter } from "@/control-plane/types"
+ import { RuntimeFlags } from "@/effect/runtime-flags"
++import { NeuralgenticsPlugin } from "@/neuralgentics/plugin"
+ import { InstallationChannel } from "@opencode-ai/core/installation/version"
+ 
+ const log = Log.create({ service: "plugin" })
+@@ -78,6 +79,7 @@ function internalPlugins(flags: RuntimeFlags.Info): PluginInstance[] {
+     AzureAuthPlugin,
+     DigitalOceanAuthPlugin,
+     XaiAuthPlugin,
++    NeuralgenticsPlugin,
+   ]
+ }
+ 

@@ -322,3 +322,48 @@ func (m *mockStore) SearchChunks(_ context.Context, _ []float64, _ *core.SearchP
 func (m *mockStore) GetFileChunksByPath(_ context.Context, _ string) (*core.FileContentsResult, error) {
 	panic("stub")
 }
+
+// v0.7.0 1024-dim methods
+func (m *mockStore) Has1024Support(_ context.Context) bool { return false }
+func (m *mockStore) AddMemory1024(_ context.Context, _ string, _ []float64) (string, error) {
+	return "", nil
+}
+func (m *mockStore) QueryMemories1024(_ context.Context, _ []float64, _ *core.SearchOptions) ([]*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (m *mockStore) GetMemory1024(_ context.Context, _ string) (*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (m *mockStore) CountMemories1024(_ context.Context) (int64, error) { return 0, nil }
+func (m *mockStore) DeleteMemory1024(_ context.Context, _ string) error { return nil }
+
+// ─── User Profile + Security Summary stubs ───────────────────────────────────
+
+func (m *mockStore) GetUserProfile(_ context.Context, _ string) (*core.UserProfile, error) {
+	return nil, nil
+}
+func (m *mockStore) UpsertUserProfile(_ context.Context, _ *core.UserProfile) error {
+	return nil
+}
+func (m *mockStore) GetSecuritySummary(_ context.Context, hours int) (*core.SecuritySummary, error) {
+	return &core.SecuritySummary{
+		TotalEvents:    0,
+		CriticalCount:  0,
+		EventsPerType:  map[string]int{},
+		EventsPerAgent: map[string]int{},
+		SeverityCounts: map[string]int{},
+	}, nil
+}
+
+// Phase 3 stubs for agent_tools interface methods
+func (m *mockStore) RecordToolRequest(ctx context.Context, peerID, toolServer, toolName string) error {
+	return nil
+}
+
+func (m *mockStore) IncrementToolUse(ctx context.Context, peerID, toolServer, toolName string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockStore) GetAgentTools(ctx context.Context, peerID string) ([]*core.ToolRecord, error) {
+	return nil, nil
+}

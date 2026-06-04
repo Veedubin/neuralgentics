@@ -13,7 +13,7 @@ type MemoryEntry struct {
 	Content          string         `json:"content"`
 	Vector           []float64      `json:"vector,omitempty"`
 	SourceType       string         `json:"sourceType"` // session, file, web, boomerang, project, thought
-	SourcePath       string         `json:"sourcePath,omitempty"`
+	SourcePath       *string        `json:"sourcePath,omitempty"`
 	ContentHash      string         `json:"contentHash"`
 	TrustScore       float64        `json:"trustScore"` // 0.0 - 1.0, default 0.5
 	RetrievalCount   int            `json:"retrievalCount"`
@@ -33,11 +33,13 @@ type MemoryEntry struct {
 
 // Relationship defines a semantic link between memories.
 type Relationship struct {
-	SourceID         string  `json:"sourceId"`
-	TargetID         string  `json:"targetId"`
-	RelationshipType string  `json:"relationshipType"` // SUPERSEDES, RELATED_TO, CONTRADICTS, DERIVED_FROM, PARTIAL_UPDATE
-	Confidence       float64 `json:"confidence"`       // 0.0-1.0, default 1.0
-	Source           string  `json:"source"`           // "manual", "auto", etc.
+	ID               string    `json:"id,omitempty"`
+	SourceID         string    `json:"sourceId"`
+	TargetID         string    `json:"targetId"`
+	RelationshipType string    `json:"relationshipType"` // SUPERSEDES, RELATED_TO, CONTRADICTS, DERIVED_FROM, PARTIAL_UPDATE
+	Confidence       float64   `json:"confidence"`       // 0.0-1.0, default 1.0
+	CreatedAt        time.Time `json:"createdAt"`
+	Source           string    `json:"source"` // "manual", "auto", etc.
 }
 
 // TrustSignal represents different types of feedback on a memory entry.
@@ -306,4 +308,101 @@ type DialecticEvent struct {
 	EventType       string    `json:"eventType"` // "contradiction_found", "argument_added", "resolution_created", "challenge_made"
 	Description     string    `json:"description"`
 	CreatedAt       time.Time `json:"createdAt"`
+}
+
+// ─── User Profile Types (Phase 2 Part 1) ────────────────────────────────────────
+
+// UserProfile represents a user's persistent profile stored in user_profiles.
+// It tracks communication style, expertise, and preferences across sessions.
+type UserProfile struct {
+	ID                 string         `json:"id,omitempty"`
+	PeerID             string         `json:"peerId,omitempty"`
+	Preferences        map[string]any `json:"preferences"`
+	CommunicationStyle string         `json:"communicationStyle"`
+	ExpertiseLevel     string         `json:"expertiseLevel"`
+	DialecticNotes     []any          `json:"dialecticNotes"`
+	WarmedUp           bool           `json:"warmedUp"`
+	SessionCount       int            `json:"sessionCount"`
+	CreatedAt          time.Time      `json:"createdAt"`
+	UpdatedAt          time.Time      `json:"updatedAt"`
+}
+
+// UserProfileUpdate contains the fields that can be partially updated.
+// Only non-nil/non-empty fields will be applied.
+type UserProfileUpdate struct {
+	Preferences        map[string]any `json:"preferences,omitempty"`
+	CommunicationStyle string         `json:"communicationStyle,omitempty"`
+	ExpertiseLevel     string         `json:"expertiseLevel,omitempty"`
+	DialecticNotes     []any          `json:"dialecticNotes,omitempty"`
+	WarmedUp           *bool          `json:"warmedUp,omitempty"`
+	SessionCount       *int           `json:"sessionCount,omitempty"`
+}
+
+// SecuritySummary aggregates audit_log data for a time window.
+type SecuritySummary struct {
+	TotalEvents    int            `json:"totalEvents"`
+	CriticalCount  int            `json:"criticalCount"`
+	EventsPerType  map[string]int `json:"eventsPerType"`
+	EventsPerAgent map[string]int `json:"eventsPerAgent"`
+	SeverityCounts map[string]int `json:"severityCounts"`
+}
+
+// ─── Agent Tools (Lazy Tool Exposure) ──────────────────────────────────────────
+
+// ToolRecord tracks which tools an agent/peer has been exposed to via
+// demand-driven expansion. The broker uses this to build personalized
+// tool catalogs for each agent.
+type ToolRecord struct {
+	ID               int64      `json:"id"`
+	PeerID           string     `json:"peerId"`
+	ToolServer       string     `json:"toolServer"`
+	ToolName         string     `json:"toolName"`
+	FirstRequestedAt time.Time  `json:"firstRequestedAt"`
+	LastUsedAt       *time.Time `json:"lastUsedAt,omitempty"`
+	UseCount         int        `json:"useCount"`
+	BypassBroker     bool       `json:"bypassBroker"`
+}
+
+// DefaultInitialTools returns the core tool set that every agent starts with.
+// These 5 tools are always available via the memoryManager server without
+// requiring an explicit tool request.
+func DefaultInitialTools() []string {
+	return []string{
+		"memory.add",
+		"memory.query",
+		"memory.get",
+		"memory.adjustTrust",
+		"memory.getStatus",
+	}
+}
+
+// RoleExtraTools returns role-specific default tools on top of the core set.
+// These are included in buildCatalog output for the role but are NOT tracked
+// in agent_tools until the agent explicitly requests them.
+func RoleExtraTools(role string) []string {
+	switch role {
+	case "architect":
+		return []string{
+			"memory.extractEntities",
+			"memory.queryKG",
+			"memory.getTier1Summary",
+			"memory.searchEntities",
+			"memory.getEntityGraph",
+		}
+	case "orchestrator":
+		return []string{
+			"memory.logAuditEvent",
+			"memory.getAuditLog",
+			"memory.getDecayStatus",
+			"memory.addPeer",
+			"memory.listPeers",
+		}
+	case "tester":
+		return []string{
+			"memory.findContradictions",
+			"memory.getRelatedThoughtChains",
+		}
+	default:
+		return nil
+	}
 }

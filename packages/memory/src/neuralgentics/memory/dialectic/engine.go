@@ -167,6 +167,9 @@ func (e *Engine) ChallengeMemory(ctx context.Context, memoryID, challengerID, ch
 	if challengeText == "" {
 		return nil, fmt.Errorf("challenge text must not be empty")
 	}
+	if e.llm == nil {
+		return nil, fmt.Errorf("LLM client not configured")
+	}
 
 	memory, err := e.store.GetMemory(ctx, memoryID, true)
 	if err != nil {

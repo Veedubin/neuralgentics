@@ -205,6 +205,10 @@ func (m *mockEmbedder) EmbedBatch(_ context.Context, texts []string) ([][]float6
 	return result, nil
 }
 
+func (m *mockEmbedder) Embed1024(_ context.Context, _ string) ([]float64, error) {
+	return make([]float64, 1024), nil
+}
+func (m *mockEmbedder) Dim() int                       { return 384 }
 func (m *mockEmbedder) Health(_ context.Context) error { return nil }
 
 func (m *mockEmbedder) Close(_ context.Context) error { return nil }

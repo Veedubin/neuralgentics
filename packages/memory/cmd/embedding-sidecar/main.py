@@ -4,6 +4,14 @@ Starts the gRPC embedding service, typically via:
     uv run python -m embedding_sidecar.main
 Or directly:
     python -m embedding_sidecar.main
+
+Environment variables:
+    NEURAL_EMBED_ADDR          Listen address (default: unix:///tmp/neuralgentics-embed.sock)
+                               Use "localhost:50051" for TCP instead of Unix socket.
+    NEURALGENTICS_EMBED_DEVICE  Device for embedding models: "cpu", "cuda", or unset for auto.
+                               Default behaviour (unset) lets SentenceTransformer auto-detect.
+                               Set to "cpu" when GPU VRAM is contention-prone (other ML processes).
+                               Set to "cuda" for GPU-accelerated batch inference when VRAM is free.
 """
 
 from __future__ import annotations

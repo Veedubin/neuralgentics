@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"neuralgentics-orchestrator/src/neuralgentics/orchestrator/skills"
 )
 
 // BuildContextPackage assembles a ContextPackage for a task and target agent
@@ -66,6 +68,9 @@ func BuildContextPackage(
 	// Build task background from task metadata and relevant memories
 	taskBackground := buildTaskBackground(task, relevantMemories)
 
+	// Resolve skill content for the target agent
+	skillContent := resolveSkillContent(agent)
+
 	pkg := ContextPackage{
 		UserRequest:       task.UserRequest,
 		TaskBackground:    taskBackground,
@@ -77,6 +82,7 @@ func BuildContextPackage(
 		ScopeOut:          scopeBoundaries.OutScope,
 		ErrorHandling:     errorHandling,
 		TrustScores:       trustScores,
+		SkillContent:      skillContent,
 	}
 
 	return pkg, nil
@@ -263,9 +269,9 @@ func extractRelevantFiles(memories []*MemoryEntry) []string {
 	seen := make(map[string]bool)
 	var files []string
 	for _, m := range memories {
-		if m.SourceType == "file" && m.SourcePath != "" && !seen[m.SourcePath] {
-			seen[m.SourcePath] = true
-			files = append(files, m.SourcePath)
+		if m.SourceType == "file" && m.SourcePath != nil && *m.SourcePath != "" && !seen[*m.SourcePath] {
+			seen[*m.SourcePath] = true
+			files = append(files, *m.SourcePath)
 		}
 	}
 	if files == nil {
@@ -278,8 +284,8 @@ func extractCodeSnippets(memories []*MemoryEntry) map[string]string {
 	snippets := make(map[string]string)
 	count := 0
 	for _, m := range memories {
-		if m.SourceType == "file" && count < 5 {
-			snippets[m.SourcePath] = m.Content
+		if m.SourceType == "file" && count < 5 && m.SourcePath != nil {
+			snippets[*m.SourcePath] = m.Content
 			count++
 		}
 	}
@@ -415,4 +421,75 @@ func buildTaskBackground(task Task, memories []*MemoryEntry) string {
 	}
 
 	return strings.Join(parts, "\n")
+}
+
+// ============================================================================
+// Skills Registry Integration
+// ============================================================================
+
+// globalSkillRegistry is the default skills registry used by the orchestrator.
+// It can be initialized at startup by calling InitSkillRegistry.
+var globalSkillRegistry *skills.Registry
+
+// InitSkillRegistry loads all skills from baseDir into the global registry.
+// This should be called once at orchestrator startup.
+func InitSkillRegistry(baseDir string) error {
+	loader := skills.NewLoader(baseDir)
+	loaded, err := loader.LoadAll()
+	if err != nil {
+		return fmt.Errorf("load skills from %s: %w", baseDir, err)
+	}
+
+	reg := skills.NewRegistry()
+	for _, s := range loaded {
+		reg.Register(s)
+	}
+
+	globalSkillRegistry = reg
+	return nil
+}
+
+// SetSkillRegistry sets the global skills registry directly (useful for testing).
+func SetSkillRegistry(reg *skills.Registry) {
+	globalSkillRegistry = reg
+}
+
+// resolveSkillContent looks up the agent's skill in the global registry
+// and returns its full content. Returns empty string if no registry or skill found.
+func resolveSkillContent(agent AgentRole) string {
+	if globalSkillRegistry == nil {
+		return ""
+	}
+
+	// Map AgentRole to skill name (e.g., AgentCoder -> "boomerang-coder")
+	skillName := agentRoleToSkillName(agent)
+	skill, ok := globalSkillRegistry.Get(skillName)
+	if !ok {
+		return ""
+	}
+
+	return skill.Content
+}
+
+// agentRoleToSkillName maps an AgentRole to the corresponding skill name.
+func agentRoleToSkillName(agent AgentRole) string {
+	mapping := map[AgentRole]string{
+		AgentOrchestrator:  "boomerang-orchestrator",
+		AgentArchitect:     "boomerang-architect",
+		AgentCoder:         "boomerang-coder",
+		AgentReviewer:      "boomerang-architect", // reviewer uses architect skill
+		AgentExplorer:      "boomerang-explorer",
+		AgentTester:        "boomerang-tester",
+		AgentLinter:        "boomerang-linter",
+		AgentGit:           "boomerang-git",
+		AgentWriter:        "boomerang-writer",
+		AgentScraper:       "boomerang-scraper",
+		AgentMCPSpecialist: "mcp-specialist",
+		AgentRelease:       "boomerang-release",
+	}
+
+	if name, ok := mapping[agent]; ok {
+		return name
+	}
+	return string(agent)
 }

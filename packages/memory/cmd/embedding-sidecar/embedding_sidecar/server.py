@@ -28,8 +28,9 @@ class EmbeddingServiceServicer(embedding_pb2_grpc.EmbeddingServiceServicer):
         if not request.text:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "text is required")
 
+        model_hint = request.model if request.model else None
         vector, dimensions, model, latency_us = await asyncio.to_thread(
-            self.engine.embed, request.text
+            self.engine.embed, request.text, model_hint
         )
         return embedding_pb2.EmbedResponse(
             vector=vector,
@@ -45,17 +46,20 @@ class EmbeddingServiceServicer(embedding_pb2_grpc.EmbeddingServiceServicer):
     ) -> embedding_pb2.EmbedResponse:
         """Generate embeddings for a stream of texts, yielding responses."""
         texts: list[str] = []
+        model_hint: str | None = None
         async for request in request_iterator:
             if not request.text:
                 await context.abort(
                     grpc.StatusCode.INVALID_ARGUMENT, "text is required"
                 )
             texts.append(request.text)
+            if request.model and not model_hint:
+                model_hint = request.model
 
         if not texts:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "no texts provided")
 
-        results = await asyncio.to_thread(self.engine.embed_batch, texts)
+        results = await asyncio.to_thread(self.engine.embed_batch, texts, model_hint)
         for vector, dimensions, model, latency_us in results:
             yield embedding_pb2.EmbedResponse(
                 vector=vector,

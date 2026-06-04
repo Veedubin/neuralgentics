@@ -1,0 +1,303 @@
+#!/usr/bin/env bash
+# Neuralgentics Launcher
+# Starts the complete stack: memini-core + embedding sidecar + OpenCode TUI with plugin
+#
+# Usage: ./neuralgentics [OPTIONS] [-- ARGS]
+#
+# Options:
+#   serve     Start services only (memini-core, broker) — no OpenCode TUI
+#   start     Start services + launch OpenCode TUI (default)
+#   build     Build the plugin package before starting
+#   status    Check health of running services
+#   stop      Stop all running Neuralgentics services
+#   sidecar   Manage the embedding sidecar (start|stop|restart|status)
+#   -h, --help  Show this help message
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR" && pwd)"
+VERBOSE=false
+ACTION="start"
+SIDECAR_CMD=""
+
+# --- Colors ---
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log()  { printf "${GREEN}[neuralgentics]${NC} %s\n" "$*"; }
+warn() { printf "${YELLOW}[neuralgentics]${NC} %s\n" "$*"; }
+err()  { printf "${RED}[neuralgentics]${NC} %s\n" "$*" >&2; }
+info() { printf "${CYAN}[neuralgentics]${NC} %s\n" "$*"; }
+
+# --- Args ---
+usage() {
+  cat <<EOF
+Neuralgentics — AI-powered coding agent with neural memory
+
+Usage: $(basename "$0") [COMMAND] [OPTIONS]
+
+Commands:
+  start     Start services + launch OpenCode TUI (default)
+  serve     Start services only (no TUI)
+  build     Build the plugin package
+  status    Check health of running services
+  stop      Stop all Neuralgentics services
+  sidecar   Manage embedding sidecar (start|stop|restart|status)
+  help      Show this help message
+
+Options:
+  --verbose   Enable verbose output
+
+Environment:
+  NEURALGENTICS_MEMORY_URL    Memory server URL (default: http://localhost:8900)
+  NEURALGENTICS_DB_URL        PostgreSQL URL (default: postgresql://postgres:password@localhost:5434/neuralgentics)
+  NEURALGENTICS_EMBED_DEVICE  Embedding device: "cpu", "cuda", or auto (default: cpu)
+  NEURAL_EMBED_ADDR            Sidecar listen address (default: unix:///tmp/neuralgentics-embed.sock)
+EOF
+  exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    start)    ACTION="start"; shift ;;
+    serve)    ACTION="serve"; shift ;;
+    build)    ACTION="build"; shift ;;
+    status)   ACTION="status"; shift ;;
+    stop)     ACTION="stop"; shift ;;
+    sidecar)
+      ACTION="sidecar"
+      shift
+      # Capture the subcommand (start|stop|restart|status)
+      if [[ $# -gt 0 ]]; then
+        SIDECAR_CMD="$1"
+        shift
+      fi
+      ;;
+    --verbose) VERBOSE=true; shift ;;
+    -h|--help|help) usage ;;
+    *) err "Unknown option: $1"; usage ;;
+  esac
+done
+
+# --- Health Check ---
+check_memini_core() {
+  local url="${NEURALGENTICS_MEMORY_URL:-http://localhost:8900}"
+  if curl -sf "${url}/health" >/dev/null 2>&1; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+check_plugin_built() {
+  [[ -f "$PROJECT_ROOT/packages/plugin/dist/index.js" ]]
+}
+
+check_sidecar() {
+  local socket="/tmp/neuralgentics-embed.sock"
+  local pidfile="/tmp/neuralgentics-embed.pid"
+  [ -S "$socket" ] && [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null
+}
+
+# --- Actions ---
+do_build() {
+  log "Building @neuralgentics/plugin..."
+  cd "$PROJECT_ROOT/packages/plugin"
+  if npm run build 2>&1; then
+    log "Plugin build successful"
+  else
+    err "Plugin build failed"
+    exit 1
+  fi
+}
+
+do_start_memini_core() {
+  if check_memini_core; then
+    log "memini-core already running on port 8900"
+    return 0
+  fi
+
+  log "Starting memini-core on port 8900..."
+  cd "$PROJECT_ROOT/packages/memini-core"
+
+  export MEMINI_DB_URL="${NEURALGENTICS_DB_URL:-postgresql://postgres:password@localhost:5434/neuralgentics}"
+
+  if command -v uv &>/dev/null; then
+    uv run python -m memini_core.server &
+  else
+    python3 -m memini_core.server &
+  fi
+
+  local pid=$!
+  cd "$PROJECT_ROOT"
+  info "memini-core PID: $pid"
+
+  # Wait for it to be ready
+  local retries=0
+  while ! check_memini_core; do
+    if [[ $retries -ge 30 ]]; then
+      err "memini-core failed to start within 30 seconds"
+      exit 1
+    fi
+    retries=$((retries + 1))
+    sleep 1
+  done
+  log "memini-core ready on port 8900"
+}
+
+do_serve() {
+  log "Starting Neuralgentics services..."
+  do_start_memini_core
+
+  # Start embedding sidecar (non-fatal if it fails)
+  "$PROJECT_ROOT/scripts/sidecar.sh" start 2>/dev/null || warn "sidecar failed to start — embedding will use NoOp fallback"
+
+  log ""
+  log "Neuralgentics services running:"
+  log "  memini-core:  http://localhost:8900"
+  log "  sidecar:      unix:///tmp/neuralgentics-embed.sock"
+  log ""
+  log "Press Ctrl+C to stop."
+  wait
+}
+
+do_start() {
+  log "Starting Neuralgentics..."
+
+  # 1. Ensure plugin is built
+  if ! check_plugin_built; then
+    warn "Plugin not built — building now..."
+    do_build
+  fi
+
+  # 2. Start memini-core
+  do_start_memini_core
+
+  # 2b. Start embedding sidecar (non-fatal if it fails)
+  "$PROJECT_ROOT/scripts/sidecar.sh" start 2>/dev/null || warn "sidecar failed to start — embedding will use NoOp fallback"
+
+  # 3. Verify opencode-base exists
+  if [[ ! -d "$PROJECT_ROOT/opencode-base" ]]; then
+    err "opencode-base directory not found at $PROJECT_ROOT/opencode-base"
+    err "Clone OpenCode first: git clone https://github.com/anomalyco/opencode opencode-base"
+    exit 1
+  fi
+
+  # --- Launch OpenCode TUI ---
+# CRITICAL: Do NOT use OpenCode's built-in updater. It will overwrite our patched
+# binary with vanilla upstream, destroying all Neuralgentics modifications.
+# Always use ./scripts/update-opencode.sh to update.
+export OPENCODE_DISABLE_UPDATER="true"
+
+log "Starting Neuralgentics..."
+
+  local PLATFORM="linux-x64"
+  case "$(uname -s)" in
+    Darwin) PLATFORM="darwin-arm64" ;;
+    Linux|GNU)
+      if command -v lscpu &>/dev/null && lscpu | grep -q "aarch64"; then
+        PLATFORM="linux-arm64"
+      fi
+      ;;
+  esac
+
+  # Distribution mode: local bin/ next to launcher
+  local LOCAL_BINARY="$PROJECT_ROOT/bin/neuralgentics"
+  # Dev mode: built binary inside opencode-base
+  local BUILT_BINARY="$PROJECT_ROOT/opencode-base/packages/opencode/dist/opencode-${PLATFORM}/bin/opencode"
+
+  if [[ -f "$LOCAL_BINARY" ]]; then
+    log "Using distribution binary: $LOCAL_BINARY"
+    exec "$LOCAL_BINARY" "$@"
+  elif [[ -f "$BUILT_BINARY" ]]; then
+    log "Using built binary: $BUILT_BINARY"
+    exec "$BUILT_BINARY" "$@"
+  else
+    err "No binary found."
+    err "  Distribution: $LOCAL_BINARY"
+    err "  Dev build:    $BUILT_BINARY"
+    err "Run: ./scripts/update-opencode.sh"
+    exit 1
+  fi
+}
+
+do_status() {
+  log "Neuralgentics Service Status"
+  log "============================"
+
+  if check_memini_core; then
+    log "  memini-core:  RUNNING (http://localhost:8900)"
+  else
+    warn "  memini-core:  STOPPED"
+  fi
+
+  if check_sidecar; then
+    local pid
+    pid=$(cat /tmp/neuralgentics-embed.pid 2>/dev/null || echo "?")
+    log "  sidecar:      RUNNING (pid=$pid, unix:///tmp/neuralgentics-embed.sock)"
+  else
+    warn "  sidecar:      STOPPED"
+  fi
+
+  if check_plugin_built; then
+    log "  plugin:       BUILT ($PROJECT_ROOT/packages/plugin/dist/index.js)"
+  else
+    warn "  plugin:       NOT BUILT"
+  fi
+
+  if [[ -d "$PROJECT_ROOT/opencode-base" ]]; then
+    log "  opencode:     AVAILABLE ($PROJECT_ROOT/opencode-base)"
+  else
+    warn "  opencode:     NOT FOUND (clone needed)"
+  fi
+}
+
+do_stop() {
+  log "Stopping Neuralgentics services..."
+
+  # Stop sidecar first
+  "$PROJECT_ROOT/scripts/sidecar.sh" stop 2>/dev/null || warn "sidecar stop failed (may not be running)"
+
+  # Try to stop memini-core by finding its process
+  local pids
+  pids=$(pgrep -f "memini_core.server" 2>/dev/null || true)
+
+  if [[ -n "$pids" ]]; then
+    for pid in $pids; do
+      log "Killing memini-core PID $pid"
+      kill -TERM "$pid" 2>/dev/null || true
+    done
+    log "memini-core stopped"
+  else
+    warn "No memini-core process found"
+  fi
+}
+
+do_sidecar() {
+  local cmd="${SIDECAR_CMD:-status}"
+  case "$cmd" in
+    start|stop|restart|status)
+      exec "$PROJECT_ROOT/scripts/sidecar.sh" "$cmd"
+      ;;
+    *)
+      err "Unknown sidecar command: $cmd"
+      err "Usage: $0 sidecar {start|stop|restart|status}"
+      exit 1
+      ;;
+  esac
+}
+
+# --- Main ---
+case "$ACTION" in
+  start)    do_start ;;
+  serve)    do_serve ;;
+  build)    do_build ;;
+  status)   do_status ;;
+  stop)     do_stop ;;
+  sidecar)  do_sidecar ;;
+  *)        err "Unknown action: $ACTION"; usage ;;
+esac

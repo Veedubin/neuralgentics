@@ -10,6 +10,27 @@ import (
 	"neuralgentics/src/neuralgentics/memory/core"
 )
 
+// PreparedSearch provides typed access to frequently used search methods on PostgresStore.
+//
+// pgx v5 Prepared Statement Caching:
+//
+// pgx v5 caches prepared statements automatically per connection within the pool.
+// When the same SQL query string is executed via pool.Query(), pool.QueryRow(), or
+// pool.Exec(), pgx prepares the statement on first use and reuses the prepared
+// statement descriptor on subsequent invocations. This provides the same performance
+// benefit as manual prepared statement caching without requiring explicit management.
+//
+// Key queries that benefit from automatic caching:
+//   - SearchMemoriesVector (cosine distance search)
+//   - SearchMemoriesText (full-text search with ts_rank)
+//   - GetSimilarMemories (similarity lookup by ID)
+//   - InsertMemory / InsertMemoryDelta (frequent writes)
+//   - GetMemoryByID (frequent reads)
+//
+// No manual PreparedSearch struct is needed — pgx handles this transparently.
+// If future pgx changes remove automatic caching, add a PreparedSearch struct
+// with pgx.PreparedStatementCache or explicit conn.Prepare() calls.
+
 // QueryMemoriesByVector performs cosine distance similarity search against stored embeddings.
 // The <=> operator returns cosine distance (lower = closer). We convert to similarity (1 - distance).
 func (s *PostgresStore) QueryMemoriesByVector(ctx context.Context, vector []float64, opts *core.SearchOptions) ([]*core.MemoryEntry, error) {

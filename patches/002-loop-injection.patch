@@ -1,0 +1,20 @@
+diff --git a/packages/opencode/src/session/prompt.ts b/packages/opencode/src/session/prompt.ts
+index fc9fa0b96..0d82158fb 100644
+--- a/packages/opencode/src/session/prompt.ts
++++ b/packages/opencode/src/session/prompt.ts
+@@ -33,6 +33,7 @@ import { SessionProcessor } from "./processor"
+ import { Tool } from "@/tool/tool"
+ import { Permission } from "@/permission"
+ import { SessionStatus } from "./status"
++import { NeuralgenticsOrchestrator } from "@/neuralgentics/orchestrator";
+ import { LLM } from "./llm"
+ import { Shell } from "@/shell/shell"
+ import { ShellID } from "@/tool/shell/id"
+@@ -1425,6 +1426,7 @@ export const layer = Layer.effect(
+             const system = [...env, ...instructions, ...(skills ? [skills] : [])]
+             const format = lastUser.format ?? { type: "text" as const }
+             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
++            NeuralgenticsOrchestrator.injectSystemPrompt(system, agent, session)
+             const result = yield* handle.process({
+               user: lastUser,
+               agent,

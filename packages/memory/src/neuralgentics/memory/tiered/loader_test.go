@@ -356,6 +356,20 @@ func (m *tieredMockStore) GetFileChunksByPath(ctx context.Context, filePath stri
 	return nil, nil
 }
 
+// v0.7.0 1024-dim methods
+func (m *tieredMockStore) Has1024Support(_ context.Context) bool { return false }
+func (m *tieredMockStore) AddMemory1024(_ context.Context, _ string, _ []float64) (string, error) {
+	return "", nil
+}
+func (m *tieredMockStore) QueryMemories1024(_ context.Context, _ []float64, _ *core.SearchOptions) ([]*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (m *tieredMockStore) GetMemory1024(_ context.Context, _ string) (*core.MemoryEntry, error) {
+	return nil, fmt.Errorf("stub")
+}
+func (m *tieredMockStore) CountMemories1024(_ context.Context) (int64, error) { return 0, nil }
+func (m *tieredMockStore) DeleteMemory1024(_ context.Context, _ string) error { return nil }
+
 // addMemory is a test helper that adds a memory with the specified trust score.
 func addMemory(s *tieredMockStore, content string, sourceType string, trustScore float64, archived bool) string {
 	s.mu.Lock()
@@ -765,4 +779,31 @@ func TestNewTieredLoader_NilCache(t *testing.T) {
 	if loader.cache == nil {
 		t.Error("Expected non-nil cache when nil is passed")
 	}
+}
+
+// Phase 2 part 1 stubs for new core.Store interface methods
+
+func (m *tieredMockStore) GetUserProfile(ctx context.Context, peerID string) (*core.UserProfile, error) {
+	return nil, nil
+}
+
+func (m *tieredMockStore) UpsertUserProfile(ctx context.Context, profile *core.UserProfile) error {
+	return nil
+}
+
+func (m *tieredMockStore) GetSecuritySummary(ctx context.Context, hours int) (*core.SecuritySummary, error) {
+	return &core.SecuritySummary{}, nil
+}
+
+// Phase 3 stubs for agent_tools interface methods
+func (m *tieredMockStore) RecordToolRequest(ctx context.Context, peerID, toolServer, toolName string) error {
+	return nil
+}
+
+func (m *tieredMockStore) IncrementToolUse(ctx context.Context, peerID, toolServer, toolName string) (bool, error) {
+	return false, nil
+}
+
+func (m *tieredMockStore) GetAgentTools(ctx context.Context, peerID string) ([]*core.ToolRecord, error) {
+	return nil, nil
 }

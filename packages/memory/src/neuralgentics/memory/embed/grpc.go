@@ -56,8 +56,18 @@ func (g *GRPCEmbedder) Connect(ctx context.Context) error {
 	return nil
 }
 
-// Embed generates a single embedding vector from text.
+// Embed generates a single 384-dim embedding vector from text.
 func (g *GRPCEmbedder) Embed(ctx context.Context, text string) ([]float64, error) {
+	return g.embedWithModel(ctx, text, "") // empty model = default (MiniLM 384-dim)
+}
+
+// Embed1024 generates a single 1024-dim embedding vector from text.
+func (g *GRPCEmbedder) Embed1024(ctx context.Context, text string) ([]float64, error) {
+	return g.embedWithModel(ctx, text, "bge-large") // request 1024-dim BGE-Large model
+}
+
+// embedWithModel sends a single embedding request with an optional model hint.
+func (g *GRPCEmbedder) embedWithModel(ctx context.Context, text, model string) ([]float64, error) {
 	if g.client == nil {
 		if err := g.Connect(ctx); err != nil {
 			return nil, fmt.Errorf("reconnect: %w", err)
@@ -66,21 +76,25 @@ func (g *GRPCEmbedder) Embed(ctx context.Context, text string) ([]float64, error
 
 	resp, err := g.client.Embed(ctx, &pb.EmbedRequest{
 		Text:  text,
-		Model: "",
+		Model: model,
 	})
 	if err != nil {
-		// Attempt a single reconnect on failure
 		g.logger.Warn("embed RPC failed, attempting reconnect", "error", err)
 		if reconnectErr := g.reconnect(ctx); reconnectErr != nil {
 			return nil, fmt.Errorf("embed failed and reconnect failed: original=%w, reconnect=%w", err, reconnectErr)
 		}
-		resp, err = g.client.Embed(ctx, &pb.EmbedRequest{Text: text, Model: ""})
+		resp, err = g.client.Embed(ctx, &pb.EmbedRequest{Text: text, Model: model})
 		if err != nil {
 			return nil, fmt.Errorf("embed after reconnect: %w", err)
 		}
 	}
 
 	return float32SliceToFloat64(resp.Vector), nil
+}
+
+// Dim returns the default embedding dimension (384 for MiniLM).
+func (g *GRPCEmbedder) Dim() int {
+	return 384
 }
 
 // EmbedBatch generates embedding vectors for multiple texts.

@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
 import subprocess
-from typing import Any
 
 from broker.models import ServerConfig
 
@@ -34,9 +31,7 @@ class Launcher:
         """
         cmd = self._build_command(config)
 
-        logger.info(
-            "Starting MCP server '%s' (type=%s): %s", config.name, config.type, cmd
-        )
+        logger.info("Starting MCP server '%s' (type=%s): %s", config.name, config.type, cmd)
 
         try:
             proc = subprocess.Popen(
@@ -47,9 +42,7 @@ class Launcher:
                 text=True,
             )
         except FileNotFoundError as exc:
-            raise LauncherError(
-                f"Command not found for server '{config.name}': {cmd[0]}"
-            ) from exc
+            raise LauncherError(f"Command not found for server '{config.name}': {cmd[0]}") from exc
 
         self._procs[config.name] = proc
         return proc

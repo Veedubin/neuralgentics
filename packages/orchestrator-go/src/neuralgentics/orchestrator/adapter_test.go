@@ -333,7 +333,44 @@ func (s *testStore) SearchChunks(_ context.Context, _ []float64, _ *core.SearchP
 	return nil, nil
 }
 func (s *testStore) GetFileChunksByPath(_ context.Context, _ string) (*core.FileContentsResult, error) {
-	return nil, fmt.Errorf("not found")
+	panic("stub")
+}
+
+// User Profile methods (Phase 2 Part 1)
+func (s *testStore) GetUserProfile(_ context.Context, _ string) (*core.UserProfile, error) {
+	return nil, nil
+}
+func (s *testStore) UpsertUserProfile(_ context.Context, _ *core.UserProfile) error { return nil }
+
+// Security Summary method (Phase 2 Part 1)
+func (s *testStore) GetSecuritySummary(_ context.Context, _ int) (*core.SecuritySummary, error) {
+	return &core.SecuritySummary{}, nil
+}
+
+// v0.7.0 1024-dim methods
+func (s *testStore) AddMemory1024(_ context.Context, _ string, _ []float64) (string, error) {
+	return "", nil
+}
+func (s *testStore) QueryMemories1024(_ context.Context, _ []float64, _ *core.SearchOptions) ([]*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (s *testStore) GetMemory1024(_ context.Context, _ string) (*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (s *testStore) CountMemories1024(_ context.Context) (int64, error) { return 0, nil }
+func (s *testStore) DeleteMemory1024(_ context.Context, _ string) error { return nil }
+
+// Lazy tool exposure methods (Session 16 Phase 3). The mock doesn't track
+// tool exposure — all three return zero values so the orchestrator's lazy
+// exposure path is exercised end-to-end without DB state.
+func (s *testStore) RecordToolRequest(_ context.Context, _, _, _ string) error {
+	return nil
+}
+func (s *testStore) IncrementToolUse(_ context.Context, _, _, _ string) (bool, error) {
+	return false, nil
+}
+func (s *testStore) GetAgentTools(_ context.Context, _ string) ([]*core.ToolRecord, error) {
+	return nil, nil
 }
 
 // Verify testStore satisfies core.Store at compile time.
@@ -390,11 +427,15 @@ type testEmbedder struct {
 }
 
 func (e *testEmbedder) Embed(_ context.Context, _ string) ([]float64, error) {
-	if e.dim == 0 {
-		e.dim = 384
-	}
-	return make([]float64, e.dim), nil
+	return make([]float64, 384), nil
 }
+
+func (e *testEmbedder) Embed1024(_ context.Context, _ string) ([]float64, error) {
+	return make([]float64, 1024), nil
+}
+
+func (e *testEmbedder) Dim() int { return 384 }
+
 func (e *testEmbedder) EmbedBatch(_ context.Context, texts []string) ([][]float64, error) {
 	if e.dim == 0 {
 		e.dim = 384
@@ -703,7 +744,7 @@ func TestTypeConversion_ToCoreEntry(t *testing.T) {
 		Content:        "test content",
 		Vector:         []float64{0.1, 0.2, 0.3},
 		SourceType:     "session",
-		SourcePath:     "/path/to/file.go",
+		SourcePath:     &[]string{"/path/to/file.go"}[0],
 		ContentHash:    "hash123",
 		TrustScore:     0.75,
 		RetrievalCount: 5,
@@ -724,8 +765,8 @@ func TestTypeConversion_ToCoreEntry(t *testing.T) {
 	if coreEntry.SourceType != entry.SourceType {
 		t.Errorf("toCoreEntry SourceType = %q, want %q", coreEntry.SourceType, entry.SourceType)
 	}
-	if coreEntry.SourcePath != entry.SourcePath {
-		t.Errorf("toCoreEntry SourcePath = %q, want %q", coreEntry.SourcePath, entry.SourcePath)
+	if coreEntry.SourcePath == nil || entry.SourcePath == nil || *coreEntry.SourcePath != *entry.SourcePath {
+		t.Errorf("toCoreEntry SourcePath = %v, want %v", coreEntry.SourcePath, entry.SourcePath)
 	}
 	if coreEntry.TrustScore != entry.TrustScore {
 		t.Errorf("toCoreEntry TrustScore = %f, want %f", coreEntry.TrustScore, entry.TrustScore)
@@ -745,7 +786,7 @@ func TestTypeConversion_FromCoreEntry(t *testing.T) {
 		Content:          "core content",
 		Vector:           []float64{0.5, 0.6},
 		SourceType:       "file",
-		SourcePath:       "/path/to/file.ts",
+		SourcePath:       &[]string{"/path/to/file.ts"}[0],
 		ContentHash:      "hash456",
 		TrustScore:       0.9,
 		RetrievalCount:   10,

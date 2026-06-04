@@ -11,14 +11,12 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from datetime import datetime
 from typing import Any
 
 import psycopg2
 import psycopg2.extras
 
 from memini_core.embeddings import Embedder
-
 
 # ---------------------------------------------------------------------------
 # Schema SQL
@@ -152,14 +150,18 @@ class Database:
 
     def _ensure_schema(self) -> None:
         """Create tables and indexes if they don't exist (idempotent)."""
-        with self._conn.cursor() as cur:
+        conn = self._conn
+        assert conn is not None and not conn.closed
+        with conn.cursor() as cur:
             cur.execute(_SCHEMA_SQL)
 
     def _cursor(self) -> psycopg2.extensions.cursor:
         """Return a dict cursor on the current connection."""
         if self._conn is None or self._conn.closed:
             self.connect()
-        return self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        conn = self._conn
+        assert conn is not None and not conn.closed
+        return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # -- memories CRUD -------------------------------------------------------
 
