@@ -156,7 +156,7 @@ func (m *mockKGStore) GetMemory(ctx context.Context, id string, includeArchived 
 }
 func (m *mockKGStore) UpdateMemory(ctx context.Context, entry *core.MemoryEntry) error { return nil }
 func (m *mockKGStore) DeleteMemory(ctx context.Context, id string) error               { return nil }
-func (m *mockKGStore) CountMemories(ctx context.Context) (int64, error)                { return 0, nil }
+func (m *mockKGStore) CountMemories(ctx context.Context) (int64, error) { return 0, nil }
 func (m *mockKGStore) ListMemories(ctx context.Context, filter *core.SearchFilter, limit int) ([]*core.MemoryEntry, error) {
 	return nil, nil
 }
@@ -263,6 +263,19 @@ func (m *mockKGStore) SearchChunks(ctx context.Context, vector []float64, opts *
 func (m *mockKGStore) GetFileChunksByPath(_ context.Context, _ string) (*core.FileContentsResult, error) {
 	return nil, nil
 }
+
+func (m *mockKGStore) Has1024Support(_ context.Context) bool { return false }
+func (m *mockKGStore) AddMemory1024(_ context.Context, _ string, _ []float64) (string, error) {
+	return "", nil
+}
+func (m *mockKGStore) QueryMemories1024(_ context.Context, _ []float64, _ *core.SearchOptions) ([]*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (m *mockKGStore) GetMemory1024(_ context.Context, _ string) (*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (m *mockKGStore) CountMemories1024(_ context.Context) (int64, error) { return 0, nil }
+func (m *mockKGStore) DeleteMemory1024(_ context.Context, _ string) error { return nil }
 
 // mockLLMClient implements core.LLMClient for testing entity extraction.
 type mockLLMClient struct {
@@ -468,4 +481,31 @@ func TestEntityColor(t *testing.T) {
 			t.Errorf("EntityColor(%q) = %q, want %q", tt.entityType, got, tt.expected)
 		}
 	}
+}
+
+// Phase 2 part 1 stubs for new core.Store interface methods
+
+func (m *mockKGStore) GetUserProfile(ctx context.Context, peerID string) (*core.UserProfile, error) {
+	return nil, nil
+}
+
+func (m *mockKGStore) UpsertUserProfile(ctx context.Context, profile *core.UserProfile) error {
+	return nil
+}
+
+func (m *mockKGStore) GetSecuritySummary(ctx context.Context, hours int) (*core.SecuritySummary, error) {
+	return &core.SecuritySummary{}, nil
+}
+
+// Phase 3 stubs for agent_tools interface methods
+func (m *mockKGStore) RecordToolRequest(ctx context.Context, peerID, toolServer, toolName string) error {
+	return nil
+}
+
+func (m *mockKGStore) IncrementToolUse(ctx context.Context, peerID, toolServer, toolName string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockKGStore) GetAgentTools(ctx context.Context, peerID string) ([]*core.ToolRecord, error) {
+	return nil, nil
 }

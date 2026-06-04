@@ -1,0 +1,35 @@
+diff --git a/packages/opencode/src/cli/upgrade.ts b/packages/opencode/src/cli/upgrade.ts
+index 62b230a63..4cb466536 100644
+--- a/packages/opencode/src/cli/upgrade.ts
++++ b/packages/opencode/src/cli/upgrade.ts
+@@ -4,8 +4,30 @@ import { Flag } from "@opencode-ai/core/flag/flag"
+ import { Installation } from "@/installation"
+ import { InstallationVersion } from "@opencode-ai/core/installation/version"
+ import { GlobalBus } from "@/bus/global"
++import { NeuralgenticsUpdater } from "@/neuralgentics/updater"
+ 
+ export async function upgrade() {
++  // Neuralgentics: intercept vanilla updater
++  if (NeuralgenticsUpdater.isActive()) {
++    const config = await AppRuntime.runPromise(Config.Service.use((cfg) => cfg.getGlobal()))
++    if (config.autoupdate === false || Flag.OPENCODE_DISABLE_AUTOUPDATE) return
++
++    const latest = await NeuralgenticsUpdater.checkLatest().catch(() => {})
++    if (!latest) return
++
++    GlobalBus.emit("event", {
++      directory: "global",
++      payload: {
++        type: Installation.Event.UpdateAvailable.type,
++        properties: {
++          version: latest,
++          message: "Neuralgentics update available. Run ./scripts/update-opencode.sh to apply.",
++        },
++      },
++    })
++    return
++  }
++
+   const config = await AppRuntime.runPromise(Config.Service.use((cfg) => cfg.getGlobal()))
+   if (config.autoupdate === false || Flag.OPENCODE_DISABLE_AUTOUPDATE) return
+   const method = await Installation.method()

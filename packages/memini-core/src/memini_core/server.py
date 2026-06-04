@@ -14,8 +14,7 @@ Routes:
 from __future__ import annotations
 
 import os
-from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 
@@ -38,7 +37,6 @@ from memini_core.models import (
     TrustResponse,
 )
 from memini_core.trust import TrustEngine
-
 
 # ---------------------------------------------------------------------------
 # Application factory
@@ -149,7 +147,7 @@ def create_app(db_url: str | None = None) -> FastAPI:
     @app.get("/project/index", response_model=IndexResponse)
     def index_project() -> IndexResponse:
         """Trigger project indexing in the current working directory."""
-        result = indexer.index_directory()
+        indexer.index_directory()
         return IndexResponse(status="ok")
 
     return app

@@ -45,6 +45,10 @@ done
 # --- Cleanup ---
 cleanup() {
   log "Shutting down services..."
+
+  # Stop sidecar via its own script (managed PID file)
+  "$PROJECT_ROOT/scripts/sidecar.sh" stop 2>/dev/null || true
+
   for pid in "${PIDS[@]}"; do
     if kill -0 "$pid" 2>/dev/null; then
       verbose "Killing PID $pid"
@@ -126,18 +130,101 @@ start_broker() {
   log "MCP broker ready on port 8901"
 }
 
+# --- llama-server (Qwen3-0.6B on CPU) ---
+start_llama_server() {
+  if ! command -v llama-server &>/dev/null; then
+    warn "llama-server not found — skipping LLM service."
+    warn "Install llama.cpp or set NEURO_LLM_BASE_URL to an external endpoint."
+    return 0
+  fi
+
+  local model="${NEURO_LLM_MODEL:-unsloth/Qwen3-0.6B-GGUF:UD-Q4_K_XL}"
+  local port="${NEURO_LLM_PORT:-8903}"
+
+  log "Starting llama-server on port ${port} (model: ${model})..."
+  llama-server -hf "$model" --port "$port" --host 127.0.0.1 -c 32768 &
+  PIDS+=($!)
+  verbose "llama-server PID: ${PIDS[-1]}"
+
+  # Wait for it to be ready
+  local retries=0
+  while ! curl -sf "http://localhost:${port}/health" &>/dev/null; do
+    if [[ $retries -ge 60 ]]; then
+      warn "llama-server not responding after 60s — continuing anyway."
+      break
+    fi
+    retries=$((retries + 1))
+    sleep 2
+  done
+  log "llama-server ready on port ${port}"
+}
+
+# --- neuralgentics-core (Intent Broker + Extractor) ---
+start_core() {
+  if [[ ! -d "$PROJECT_ROOT/packages/core/src/neuralgentics_core" ]]; then
+    warn "neuralgentics-core package not found — skipping."
+    return 0
+  fi
+
+  log "Starting neuralgentics-core on port 8902..."
+  cd "$PROJECT_ROOT/packages/core"
+
+  export NEURO_LLM_BASE_URL="${NEURO_LLM_BASE_URL:-http://localhost:8903/v1}"
+  export NEURO_PORT="${NEURO_PORT:-8902}"
+
+  if command -v uv &>/dev/null; then
+    uv run python -m neuralgentics_core.server &
+  else
+    python3 -m neuralgentics_core.server &
+  fi
+  PIDS+=($!)
+  cd "$PROJECT_ROOT"
+  verbose "core PID: ${PIDS[-1]}"
+
+  # Wait for it to be ready
+  local retries=0
+  while ! curl -sf http://localhost:8902/health &>/dev/null; do
+    if [[ $retries -ge 20 ]]; then
+      warn "neuralgentics-core not responding after 20s — continuing anyway."
+      break
+    fi
+    retries=$((retries + 1))
+    sleep 1
+  done
+  log "neuralgentics-core ready on port 8902"
+}
+
+# --- Embedding Sidecar (gRPC) ---
+start_sidecar() {
+  local sidecar_script="$PROJECT_ROOT/scripts/sidecar.sh"
+
+  if [[ ! -x "$sidecar_script" ]]; then
+    warn "sidecar script not found or not executable — skipping sidecar."
+    return 0
+  fi
+
+  EMBED_DEVICE="${NEURALGENTICS_EMBED_DEVICE:-cpu}" \
+  "$sidecar_script" start 2>/dev/null || warn "sidecar failed to start — embedding will use NoOp fallback"
+}
+
 # --- Main ---
 main() {
   log "Starting Neuralgentics services..."
   $VERBOSE && log "Verbose mode enabled."
 
   start_memini_core
+  start_sidecar
   start_broker
+  start_llama_server
+  start_core
 
   log ""
   log "Neuralgentics is running."
-  log "  memini-core:  http://localhost:8900"
-  log "  MCP broker:   http://localhost:8901"
+  log "  memini-core:       http://localhost:8900"
+  log "  sidecar:           unix:///tmp/neuralgentics-embed.sock"
+  log "  MCP broker:        http://localhost:8901"
+  log "  neuralgentics-core: http://localhost:8902"
+  log "  llama-server:      http://localhost:8903"
   log ""
   log "Press Ctrl+C to stop."
 

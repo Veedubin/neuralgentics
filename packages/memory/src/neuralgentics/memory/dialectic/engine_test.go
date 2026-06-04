@@ -328,6 +328,19 @@ func (m *mockDialecticStore) GetFileChunksByPath(ctx context.Context, filePath s
 	return nil, nil
 }
 
+func (m *mockDialecticStore) Has1024Support(_ context.Context) bool { return false }
+func (m *mockDialecticStore) AddMemory1024(_ context.Context, _ string, _ []float64) (string, error) {
+	return "", nil
+}
+func (m *mockDialecticStore) QueryMemories1024(_ context.Context, _ []float64, _ *core.SearchOptions) ([]*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (m *mockDialecticStore) GetMemory1024(_ context.Context, _ string) (*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (m *mockDialecticStore) CountMemories1024(_ context.Context) (int64, error) { return 0, nil }
+func (m *mockDialecticStore) DeleteMemory1024(_ context.Context, _ string) error { return nil }
+
 // ─── Mock LLM Client ────────────────────────────────────────────────────────────
 
 // mockLLMClient implements core.LLMClient with configurable responses.
@@ -1374,4 +1387,31 @@ func TestDialecticEventJSONRoundTrip(t *testing.T) {
 	if decoded.EventType != "contradiction_found" {
 		t.Errorf("EventType mismatch: got %q, want %q", decoded.EventType, "contradiction_found")
 	}
+}
+
+// Phase 2 part 1 stubs for new core.Store interface methods
+
+func (m *mockDialecticStore) GetUserProfile(ctx context.Context, peerID string) (*core.UserProfile, error) {
+	return nil, nil
+}
+
+func (m *mockDialecticStore) UpsertUserProfile(ctx context.Context, profile *core.UserProfile) error {
+	return nil
+}
+
+func (m *mockDialecticStore) GetSecuritySummary(ctx context.Context, hours int) (*core.SecuritySummary, error) {
+	return &core.SecuritySummary{}, nil
+}
+
+// Phase 3 stubs for agent_tools interface methods
+func (m *mockDialecticStore) RecordToolRequest(ctx context.Context, peerID, toolServer, toolName string) error {
+	return nil
+}
+
+func (m *mockDialecticStore) IncrementToolUse(ctx context.Context, peerID, toolServer, toolName string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockDialecticStore) GetAgentTools(ctx context.Context, peerID string) ([]*core.ToolRecord, error) {
+	return nil, nil
 }

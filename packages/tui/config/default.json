@@ -1,0 +1,36 @@
+{
+  "$schema": "model-registry-v1",
+  "provider": {
+    "name": "ollama",
+    "baseURL": "https://ollama.com/v1"
+  },
+  "models": {
+    "big_model": {
+      "modelId": "deepseek-v4-pro",
+      "description": "Architectural decisions, design docs, complex reasoning"
+    },
+    "small_model": {
+      "modelId": "devstral-small-2:24b",
+      "description": "Code search, file reads, simple edits, git operations"
+    },
+    "fast_model": {
+      "modelId": "qwen3-coder-next",
+      "description": "Quick completions, status checks, linting, testing"
+    },
+    "extraction_model": {
+      "modelId": "gemma4:31b",
+      "description": "Compaction and memory extraction (reserved for T-026)"
+    }
+  },
+  "routing": {
+    "architect": "big_model",
+    "coder": "big_model",
+    "explorer": "small_model",
+    "tester": "fast_model",
+    "linter": "fast_model",
+    "git": "small_model",
+    "writer": "small_model",
+    "release": "small_model",
+    "scraper": "small_model"
+  }
+}

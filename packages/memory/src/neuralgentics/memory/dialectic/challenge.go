@@ -46,6 +46,9 @@ Return ONLY valid JSON. Do not include any explanation or markdown.`
 // It evaluates the challenge against the memory content, considers prior challenge
 // history, and returns a ChallengeEvent with the result.
 func ProcessChallenge(ctx context.Context, llm core.LLMClient, memory *core.MemoryEntry, challengeText string, history []core.ChallengeEvent) (*core.ChallengeEvent, error) {
+	if llm == nil {
+		return nil, fmt.Errorf("LLM client not configured")
+	}
 	if memory == nil {
 		return nil, fmt.Errorf("memory must not be nil")
 	}

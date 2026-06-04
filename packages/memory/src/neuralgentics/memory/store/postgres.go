@@ -28,6 +28,12 @@ type PostgresStore struct {
 	useVectorscale bool
 }
 
+// Note on prepared statements: pgx v5 automatically caches prepared statements
+// per-connection in the connection pool. When the same SQL query string is
+// executed repeatedly, pgx transparently prepares it on first use and reuses
+// the prepared statement on subsequent calls. No manual caching is needed.
+// See: https://pkg.go.dev/github.com/jackc/pgx/v5#hdr-Prepared_Statements
+
 // NewPostgresStore creates a new PostgresStore. Call Initialize() before use.
 func NewPostgresStore(cfg *core.Config) *PostgresStore {
 	return &PostgresStore{
@@ -50,8 +56,16 @@ func (s *PostgresStore) Initialize(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("parse database URL: %w", err)
 	}
-	poolConfig.MinConns = 1
-	poolConfig.MaxConns = 10
+
+	// Production-tuned connection pool settings for burst capacity and low latency.
+	// MinConns=4 keeps warm connections ready; MaxConns=25 handles burst traffic.
+	// MaxConnLifetime limits connections to 1h to recycle against stale connections.
+	// MaxConnIdleTime closes idle connections after 10min to release resources.
+	// HealthCheckPeriod validates connections every 30s.
+	poolConfig.MinConns = 4
+	poolConfig.MaxConns = 25
+	poolConfig.MaxConnLifetime = time.Hour
+	poolConfig.MaxConnIdleTime = 10 * time.Minute
 	poolConfig.HealthCheckPeriod = 30 * time.Second
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)

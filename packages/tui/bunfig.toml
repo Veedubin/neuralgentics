@@ -1,0 +1,7 @@
+[install]
+# Use exact versions for reproducibility
+exact = true
+
+[install.cache]
+# Disable global cache to ensure local node_modules
+disable = false

@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // ============================================================================
@@ -101,6 +102,7 @@ func NewProtocolState() *ProtocolState {
 type ProtocolMachine struct {
 	strictness StrictnessLevel
 	states     map[string]*ProtocolState
+	mu         sync.RWMutex
 }
 
 // NewProtocolMachine creates a new protocol enforcement machine.
@@ -114,6 +116,8 @@ func NewProtocolMachine(strictness StrictnessLevel) *ProtocolMachine {
 // InitState initializes a protocol state for a task. Returns an error
 // if a state already exists for the task.
 func (pm *ProtocolMachine) InitState(taskID string) *ProtocolState {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
 	state := NewProtocolState()
 	pm.states[taskID] = state
 	return state
@@ -121,13 +125,17 @@ func (pm *ProtocolMachine) InitState(taskID string) *ProtocolState {
 
 // GetState returns the protocol state for a task, or nil.
 func (pm *ProtocolMachine) GetState(taskID string) *ProtocolState {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
 	return pm.states[taskID]
 }
 
 // Enforce checks that all mandatory protocol steps have been completed
 // for a task. Returns an error in strict mode if steps are missing.
 func (pm *ProtocolMachine) Enforce(taskID string) (*ProtocolState, error) {
+	pm.mu.RLock()
 	state := pm.states[taskID]
+	pm.mu.RUnlock()
 	if state == nil {
 		return nil, fmt.Errorf("no protocol state for task %s", taskID)
 	}
@@ -149,7 +157,9 @@ func (pm *ProtocolMachine) Enforce(taskID string) (*ProtocolState, error) {
 // It validates that the transition is allowed and records violations
 // for invalid transitions.
 func (pm *ProtocolMachine) Advance(taskID string, step ProtocolStep) error {
+	pm.mu.RLock()
 	state := pm.states[taskID]
+	pm.mu.RUnlock()
 	if state == nil {
 		return fmt.Errorf("no protocol state for task %s", taskID)
 	}

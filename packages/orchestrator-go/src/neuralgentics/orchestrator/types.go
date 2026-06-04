@@ -118,6 +118,8 @@ type ContextPackage struct {
 	L1Summary string `json:"l1Summary,omitempty"`
 	// Trust scores for relevant memories
 	TrustScores map[string]float64 `json:"trustScores,omitempty"`
+	// Full skill content for the agent's assigned skill
+	SkillContent string `json:"skillContent,omitempty"`
 }
 
 // ScopeBoundaries defines what is IN and OUT of scope for a task.
@@ -380,7 +382,7 @@ type MemoryEntry struct {
 	Content        string         `json:"content"`
 	Vector         []float64      `json:"vector,omitempty"`
 	SourceType     string         `json:"sourceType"`
-	SourcePath     string         `json:"sourcePath,omitempty"`
+	SourcePath     *string        `json:"sourcePath,omitempty"`
 	ContentHash    string         `json:"contentHash"`
 	TrustScore     float64        `json:"trustScore"`
 	RetrievalCount int            `json:"retrievalCount"`

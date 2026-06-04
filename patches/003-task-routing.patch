@@ -1,0 +1,27 @@
+diff --git a/packages/opencode/src/tool/task.ts b/packages/opencode/src/tool/task.ts
+index a9a29debb..ae97f6400 100644
+--- a/packages/opencode/src/tool/task.ts
++++ b/packages/opencode/src/tool/task.ts
+@@ -12,6 +12,7 @@ import { Config } from "@/config/config"
+ import { Cause, Effect, Exit, Schema, Scope } from "effect"
+ import { EffectBridge } from "@/effect/bridge"
+ import { RuntimeFlags } from "@/effect/runtime-flags"
++import { NeuralgenticsOrchestrator } from "@/neuralgentics/orchestrator"
+ 
+ export interface TaskPromptOps {
+   cancel(sessionID: SessionID): Effect.Effect<void>
+@@ -132,6 +133,14 @@ export const TaskTool = Tool.define(
+         return yield* Effect.fail(new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`))
+       }
+ 
++      const routingError = NeuralgenticsOrchestrator.validateRouting({
++        subagentType: params.subagent_type,
++        description: params.description,
++      })
++      if (routingError) {
++        return yield* Effect.fail(new Error(routingError))
++      }
++
+       const session = params.task_id
+         ? yield* sessions.get(SessionID.make(params.task_id)).pipe(Effect.catchCause(() => Effect.succeed(undefined)))
+         : undefined

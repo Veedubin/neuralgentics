@@ -6,7 +6,9 @@ import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import numpy as np
+    pass
+
+from typing import Any
 
 
 class Embedder:
@@ -26,7 +28,7 @@ class Embedder:
         """Return the embedding dimension."""
         return self._dimension
 
-    def _ensure_model(self) -> object:
+    def _ensure_model(self: Embedder) -> Any:
         """Lazily load the sentence-transformers model."""
         if self._model is None:
             from sentence_transformers import SentenceTransformer
@@ -44,7 +46,7 @@ class Embedder:
             List of floats representing the embedding.
         """
         model = self._ensure_model()
-        vector = model.encode(text)
+        vector = model.encode(text)  # type: ignore[union-attr]
         if hasattr(vector, "tolist"):
             return vector.tolist()
         return list(vector)
@@ -61,7 +63,7 @@ class Embedder:
         if not texts:
             return []
         model = self._ensure_model()
-        vectors = model.encode(texts)
+        vectors = model.encode(texts)  # type: ignore[union-attr]
         if hasattr(vectors, "tolist"):
             return vectors.tolist()
         return [list(v) for v in vectors]

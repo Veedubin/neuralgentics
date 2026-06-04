@@ -248,6 +248,19 @@ func (m *mockStore) Stats(_ context.Context) (*core.StatusResult, error) {
 	return &core.StatusResult{}, nil
 }
 
+func (m *mockStore) Has1024Support(_ context.Context) bool { return false }
+func (m *mockStore) AddMemory1024(_ context.Context, _ string, _ []float64) (string, error) {
+	return "", nil
+}
+func (m *mockStore) QueryMemories1024(_ context.Context, _ []float64, _ *core.SearchOptions) ([]*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (m *mockStore) GetMemory1024(_ context.Context, _ string) (*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (m *mockStore) CountMemories1024(_ context.Context) (int64, error) { return 0, nil }
+func (m *mockStore) DeleteMemory1024(_ context.Context, _ string) error { return nil }
+
 // ─── Tests ─────────────────────────────────────────────────────────────────────
 
 func TestCreateRelationship(t *testing.T) {
@@ -382,4 +395,31 @@ func TestGetRelationshipSummary(t *testing.T) {
 	if summary.ByType["SUPERSEDES"] != 1 {
 		t.Errorf("expected 1 SUPERSEDES, got %d", summary.ByType["SUPERSEDES"])
 	}
+}
+
+// Phase 2 part 1 stubs for new core.Store interface methods
+
+func (m *mockStore) GetUserProfile(ctx context.Context, peerID string) (*core.UserProfile, error) {
+	return nil, nil
+}
+
+func (m *mockStore) UpsertUserProfile(ctx context.Context, profile *core.UserProfile) error {
+	return nil
+}
+
+func (m *mockStore) GetSecuritySummary(ctx context.Context, hours int) (*core.SecuritySummary, error) {
+	return &core.SecuritySummary{}, nil
+}
+
+// Phase 3 stubs for agent_tools interface methods
+func (m *mockStore) RecordToolRequest(ctx context.Context, peerID, toolServer, toolName string) error {
+	return nil
+}
+
+func (m *mockStore) IncrementToolUse(ctx context.Context, peerID, toolServer, toolName string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockStore) GetAgentTools(ctx context.Context, peerID string) ([]*core.ToolRecord, error) {
+	return nil, nil
 }

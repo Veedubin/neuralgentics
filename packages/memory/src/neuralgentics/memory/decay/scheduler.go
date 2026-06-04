@@ -16,6 +16,7 @@ type Scheduler struct {
 	interval time.Duration
 	stopCh   chan struct{}
 	wg       sync.WaitGroup
+	stopOnce sync.Once
 }
 
 // NewScheduler creates a new Scheduler with the given engine and tick interval.
@@ -39,7 +40,9 @@ func (s *Scheduler) Start() {
 
 // Stop signals the scheduler to stop and waits for the goroutine to finish.
 func (s *Scheduler) Stop() {
-	close(s.stopCh)
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+	})
 	s.wg.Wait()
 }
 

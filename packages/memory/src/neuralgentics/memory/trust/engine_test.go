@@ -303,6 +303,20 @@ func (m *mockStore) GetFileChunksByPath(_ context.Context, _ string) (*core.File
 	panic("stub")
 }
 
+// v0.7.0 dual-model RRF methods
+func (m *mockStore) Has1024Support(_ context.Context) bool { return false }
+func (m *mockStore) AddMemory1024(_ context.Context, _ string, _ []float64) (string, error) {
+	return "", fmt.Errorf("stub")
+}
+func (m *mockStore) QueryMemories1024(_ context.Context, _ []float64, _ *core.SearchOptions) ([]*core.MemoryEntry, error) {
+	return nil, nil
+}
+func (m *mockStore) GetMemory1024(_ context.Context, _ string) (*core.MemoryEntry, error) {
+	return nil, fmt.Errorf("stub")
+}
+func (m *mockStore) CountMemories1024(_ context.Context) (int64, error) { return 0, nil }
+func (m *mockStore) DeleteMemory1024(_ context.Context, _ string) error { return nil }
+
 // --- Helpers ---
 
 // addTestMemory is a helper that adds a memory to the mock store and returns its ID.
@@ -523,4 +537,31 @@ func TestClamp(t *testing.T) {
 			t.Errorf("clamp(%f, %f, %f) = %f, want %f", tt.v, tt.min, tt.max, got, tt.want)
 		}
 	}
+}
+
+// Phase 2 part 1 stubs for new core.Store interface methods
+
+func (m *mockStore) GetUserProfile(ctx context.Context, peerID string) (*core.UserProfile, error) {
+	return nil, nil
+}
+
+func (m *mockStore) UpsertUserProfile(ctx context.Context, profile *core.UserProfile) error {
+	return nil
+}
+
+func (m *mockStore) GetSecuritySummary(ctx context.Context, hours int) (*core.SecuritySummary, error) {
+	return &core.SecuritySummary{}, nil
+}
+
+// Phase 3 stubs for agent_tools interface methods
+func (m *mockStore) RecordToolRequest(ctx context.Context, peerID, toolServer, toolName string) error {
+	return nil
+}
+
+func (m *mockStore) IncrementToolUse(ctx context.Context, peerID, toolServer, toolName string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockStore) GetAgentTools(ctx context.Context, peerID string) ([]*core.ToolRecord, error) {
+	return nil, nil
 }

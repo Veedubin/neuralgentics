@@ -1,0 +1,48 @@
+{
+  "name": "@neuralgentics/overlay",
+  "version": "0.2.0",
+  "description": "Neuralgentics overlay package for OpenCode integration",
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/server.js",
+      "types": "./dist/server.d.ts"
+    },
+    "./library": {
+      "import": "./dist/neuralgentics/index.js",
+      "types": "./dist/neuralgentics/index.d.ts"
+    },
+    "./server": {
+      "import": "./dist/server.js",
+      "types": "./dist/server.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "node e2e_test.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "^1.15.0",
+    "zod": "^3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "opencode": "^1.15.0"
+  }
+}

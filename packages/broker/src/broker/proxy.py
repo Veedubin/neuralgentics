@@ -7,8 +7,8 @@ import logging
 from typing import Any
 
 from broker.launcher import Launcher
-from broker.registry import Registry
 from broker.models import ToolSummary
+from broker.registry import Registry
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +67,7 @@ class MCPProxy:
                 for t in tools_data
             ]
             self._registry.update_tools(server_name, summaries)
-            logger.info(
-                "Discovered %d tools from server '%s'", len(summaries), server_name
-            )
+            logger.info("Discovered %d tools from server '%s'", len(summaries), server_name)
         except Exception as exc:
             logger.warning("Failed to discover tools from '%s': %s", server_name, exc)
 
@@ -85,10 +83,8 @@ class MCPProxy:
         if entry is None:
             raise MCPProxyError(f"Server '{server_name}' not registered")
 
-        auto_init = False
         if not entry.tools:
             # Lazily initialize on first call
-            auto_init = True
             self.initialize(server_name)
 
         rpc_params: dict[str, Any] = {
@@ -124,17 +120,13 @@ class MCPProxy:
             proc.stdin.write(request_line)
             proc.stdin.flush()
         except BrokenPipeError as exc:
-            raise MCPProxyError(
-                f"Broken pipe writing to server '{server_name}'"
-            ) from exc
+            raise MCPProxyError(f"Broken pipe writing to server '{server_name}'") from exc
 
         # Read response line from stdout
         try:
             response_line = proc.stdout.readline()
         except Exception as exc:
-            raise MCPProxyError(
-                f"Error reading from server '{server_name}': {exc}"
-            ) from exc
+            raise MCPProxyError(f"Error reading from server '{server_name}': {exc}") from exc
 
         if not response_line:
             raise MCPProxyError(f"Empty response from server '{server_name}'")
@@ -144,8 +136,6 @@ class MCPProxy:
 
         if "error" in response:
             error = response["error"]
-            raise MCPProxyError(
-                f"MCP error from '{server_name}': {error.get('message', error)}"
-            )
+            raise MCPProxyError(f"MCP error from '{server_name}': {error.get('message', error)}")
 
         return response.get("result", {})

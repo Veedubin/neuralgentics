@@ -9,6 +9,16 @@ import (
 // ErrMissingDatabaseURL is returned when the required database URL is not configured.
 var ErrMissingDatabaseURL = errors.New("MEMINI_DB_URL environment variable is required")
 
+// EmbeddingMode defines which embedding pipeline to use for memory operations.
+// Mirrors Python memini-ai-dev v0.7.0 EMBEDDING_MODE.
+type EmbeddingMode string
+
+const (
+	EmbeddingModeCPU  EmbeddingMode = "cpu"  // 384-dim MiniLM only
+	EmbeddingModeAuto EmbeddingMode = "auto" // both 384 + 1024, RRF fused
+	EmbeddingModeGPU  EmbeddingMode = "gpu"  // 1024-dim BGE-Large only
+)
+
 // Config holds all configuration for the Go memory module.
 // It maps 1:1 to the Python memini-ai-dev environment variables.
 type Config struct {
@@ -17,8 +27,13 @@ type Config struct {
 	ProjectID     string `envconfig:"MEMINI_PROJECT_ID" default:"neuralgentics-default"`
 	EmbeddingAddr string `envconfig:"MEMINI_EMBEDDING_ADDR" default:"unix:///tmp/neuralgentics-embed.sock"`
 
+	// Dual-model RRF
+	EmbeddingMode EmbeddingMode `envconfig:"EMBEDDING_MODE" default:"auto"`
+	RRFK          int           `envconfig:"RRF_K" default:"60"`
+
 	// LLM (for tiered loading, KG, dialectic)
 	LLMBaseURL string `envconfig:"NEURAL_LLM_BASE_URL" default:"http://localhost:8903/v1"`
+	LLMAPIKey  string `envconfig:"NEURAL_LLM_API_KEY"`
 	LLMModel   string `envconfig:"NEURAL_LLM_MODEL" default:"qwen3-0.6b"`
 
 	// Feature gates (all default false — same as Python)
@@ -39,11 +54,38 @@ type Config struct {
 	LogLevel      string `envconfig:"MEMINI_LOG_LEVEL" default:"info"`
 }
 
-// Validate checks the configuration for critical errors.
+// ErrInvalidEmbeddingMode is returned when EmbeddingMode is not cpu/auto/gpu.
+var ErrInvalidEmbeddingMode = errors.New("EMBEDDING_MODE must be one of: cpu, auto, gpu")
+
+// Validate checks the configuration for critical errors and clamps ranges.
 func (c *Config) Validate() error {
 	if c.DatabaseURL == "" {
 		return ErrMissingDatabaseURL
 	}
+
+	// Default and validate embedding mode
+	if c.EmbeddingMode == "" {
+		c.EmbeddingMode = EmbeddingModeAuto
+	}
+
+	switch c.EmbeddingMode {
+	case EmbeddingModeCPU, EmbeddingModeAuto, EmbeddingModeGPU:
+		// valid
+	default:
+		return ErrInvalidEmbeddingMode
+	}
+
+	// Clamp RRF_K to [1, 1000]
+	if c.RRFK < 1 {
+		c.RRFK = 1
+	}
+	if c.RRFK > 1000 {
+		c.RRFK = 1000
+	}
+	if c.RRFK == 0 {
+		c.RRFK = 60 // default when env var is unset
+	}
+
 	return nil
 }
 

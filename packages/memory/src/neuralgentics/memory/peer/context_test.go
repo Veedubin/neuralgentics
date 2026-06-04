@@ -235,3 +235,5 @@ func TestPeerContext_ConcurrentSwitch(t *testing.T) {
 		t.Errorf("active peer ID = %q, want one of %q or %q", activeID, peer1, peer2)
 	}
 }
+
+// Phase 3 stubs for agent_tools interface methods - moved to peer/mock_store.go to avoid dup

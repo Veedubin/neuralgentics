@@ -61,8 +61,8 @@ RETURNING id
 const GetMemoryByID = `
 SELECT id, text, embedding, source_type, content_hash, metadata,
        trust_score, retrieval_count, is_archived, last_accessed_at,
-       created_at, updated_at, source_path,
-       supersedes_id, structured_fields, change_ratio, created_at_ms
+       source_path, supersedes_id, structured_fields, change_ratio, created_at_ms,
+       created_at, updated_at
 FROM memories
 WHERE id = $1 AND ($2::boolean OR is_archived = FALSE)
 `
@@ -70,8 +70,8 @@ WHERE id = $1 AND ($2::boolean OR is_archived = FALSE)
 const GetMemoryByIDIncludeArchived = `
 SELECT id, text, embedding, source_type, content_hash, metadata,
        trust_score, retrieval_count, is_archived, last_accessed_at,
-       created_at, updated_at, source_path,
-       supersedes_id, structured_fields, change_ratio, created_at_ms
+       source_path, supersedes_id, structured_fields, change_ratio, created_at_ms,
+       created_at, updated_at
 FROM memories
 WHERE id = $1
 `
@@ -95,6 +95,66 @@ UPDATE memories
 SET is_archived = TRUE, updated_at = NOW()
 WHERE id = $1
 RETURNING id
+`
+
+// ─── Dual-Model RRF: memories_1024 Queries ──────────────────────────────────
+
+const InsertMemory1024 = `
+INSERT INTO memories_1024 (memory_id, embedding)
+VALUES ($1, $2)
+ON CONFLICT (memory_id) DO UPDATE SET embedding = EXCLUDED.embedding
+RETURNING id
+`
+
+const SearchMemories1024Vector = `
+SELECT
+    m.id AS memory_id,
+    m.text,
+    m.source_type,
+    m.trust_score,
+    m.retrieval_count,
+    m.is_archived,
+    m.metadata,
+    m1024.embedding <=> $1::vector AS distance
+FROM memories_1024 m1024
+JOIN memories m ON m.id = m1024.memory_id
+WHERE m1024.embedding <=> $1::vector < $2
+  AND m.is_archived = FALSE
+ORDER BY m1024.embedding <=> $1::vector
+LIMIT $3
+`
+
+const GetMemory1024ByMemoryID = `
+SELECT id, memory_id, embedding
+FROM memories_1024
+WHERE memory_id = $1
+`
+
+const SearchMemories1024Joined = `
+SELECT
+    m.id AS memory_id,
+    m.text,
+    m.source_type,
+    m.trust_score,
+    m.retrieval_count,
+    m.is_archived,
+    m.metadata,
+    m1024.embedding <=> $1::vector AS distance
+FROM memories_1024 m1024
+JOIN memories m ON m.id = m1024.memory_id
+WHERE m.is_archived = FALSE
+ORDER BY m1024.embedding <=> $1::vector
+LIMIT $2
+`
+
+const CountMemories1024 = `
+SELECT COUNT(*) AS count FROM memories_1024
+`
+
+const DeleteMemory1024 = `
+DELETE FROM memories_1024
+WHERE memory_id = $1
+RETURNING memory_id
 `
 
 // ─── Trust Engine Queries ────────────────────────────────────────────────────
@@ -530,4 +590,64 @@ SELECT id, file_path, content, start_line, end_line
 FROM project_chunks
 WHERE file_path = $1
 ORDER BY start_line ASC
+`
+
+// ─── User Profile Queries ──────────────────────────────────────────────────────
+
+const GetUserProfileQuery = `
+SELECT id, peer_id, preferences, communication_style, expertise_level,
+       dialectic_notes, warmed_up, session_count, created_at, updated_at
+FROM user_profiles
+WHERE peer_id = $1
+`
+
+const UpsertUserProfileQuery = `
+INSERT INTO user_profiles (peer_id, preferences, communication_style, expertise_level,
+                           dialectic_notes, warmed_up, session_count, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+ON CONFLICT (peer_id) DO UPDATE SET
+    preferences = EXCLUDED.preferences,
+    communication_style = EXCLUDED.communication_style,
+    expertise_level = EXCLUDED.expertise_level,
+    dialectic_notes = EXCLUDED.dialectic_notes,
+    warmed_up = EXCLUDED.warmed_up,
+    session_count = EXCLUDED.session_count,
+    updated_at = NOW()
+`
+
+// ─── Security Summary Queries ──────────────────────────────────────────────────
+
+const SecuritySummaryTotalEvents = `
+SELECT COUNT(*) FROM audit_log
+WHERE occurred_at >= NOW() - ($1 || ' hours')::interval
+`
+
+const SecuritySummaryCriticalCount = `
+SELECT COUNT(*) FROM audit_log
+WHERE severity = 'critical'
+AND occurred_at >= NOW() - ($1 || ' hours')::interval
+`
+
+const SecuritySummaryEventsPerType = `
+SELECT event_type, COUNT(*) as count
+FROM audit_log
+WHERE occurred_at >= NOW() - ($1 || ' hours')::interval
+GROUP BY event_type
+ORDER BY count DESC
+`
+
+const SecuritySummaryEventsPerAgent = `
+SELECT agent_name, COUNT(*) as count
+FROM audit_log
+WHERE occurred_at >= NOW() - ($1 || ' hours')::interval
+AND agent_name IS NOT NULL
+GROUP BY agent_name
+ORDER BY count DESC
+`
+
+const SecuritySummarySeverityCounts = `
+SELECT severity, COUNT(*) as count
+FROM audit_log
+WHERE occurred_at >= NOW() - ($1 || ' hours')::interval
+GROUP BY severity
 `

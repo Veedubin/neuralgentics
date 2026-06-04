@@ -87,15 +87,36 @@ type Store interface {
 	DeleteChunksByPath(ctx context.Context, path string) error
 	SearchChunks(ctx context.Context, vector []float64, opts *SearchProjectOptions) ([]*ChunkResult, error)
 	GetFileChunksByPath(ctx context.Context, filePath string) (*FileContentsResult, error)
+
+	// ─── Dual-Model RRF: 1024-dim Operations ──────────────────────────────────
+	AddMemory1024(ctx context.Context, memoryID string, vector []float64) (string, error)
+	QueryMemories1024(ctx context.Context, vector []float64, opts *SearchOptions) ([]*MemoryEntry, error)
+	GetMemory1024(ctx context.Context, memoryID string) (*MemoryEntry, error)
+	CountMemories1024(ctx context.Context) (int64, error)
+	DeleteMemory1024(ctx context.Context, memoryID string) error
+
+	// ─── User Profile ─────────────────────────────────────────────────────────
+	GetUserProfile(ctx context.Context, peerID string) (*UserProfile, error)
+	UpsertUserProfile(ctx context.Context, profile *UserProfile) error
+
+	// ─── Security Summary ──────────────────────────────────────────────────────
+	GetSecuritySummary(ctx context.Context, hours int) (*SecuritySummary, error)
+
+	// ─── Agent Tools (Lazy Tool Exposure) ────────────────────────────────────────
+	RecordToolRequest(ctx context.Context, peerID, toolServer, toolName string) error
+	IncrementToolUse(ctx context.Context, peerID, toolServer, toolName string) (bypass bool, err error)
+	GetAgentTools(ctx context.Context, peerID string) ([]*ToolRecord, error)
 }
 
 // Embedder is the abstract interface for generating text embeddings.
 // The default implementation is a gRPC client to the Python embedding sidecar.
 type Embedder interface {
 	Embed(ctx context.Context, text string) ([]float64, error)
+	Embed1024(ctx context.Context, text string) ([]float64, error)
 	EmbedBatch(ctx context.Context, texts []string) ([][]float64, error)
 	Health(ctx context.Context) error
 	Close(ctx context.Context) error
+	Dim() int
 }
 
 // Searcher is the abstract interface for hybrid semantic + text search.
