@@ -52,7 +52,7 @@ jobs:
           MODULES="packages/memory packages/orchestrator-go packages/broker-go packages/backend-go"
           for m in $MODULES; do
             echo "::group::Building $m"
-            (cd "$m" && go build ./...)
+            (cd "$m" && GOWORK=off go build ./...)
             echo "::endgroup::"
           done
 
@@ -61,7 +61,7 @@ jobs:
           MODULES="packages/memory packages/orchestrator-go packages/broker-go packages/backend-go"
           for m in $MODULES; do
             echo "::group::Vetting $m"
-            (cd "$m" && go vet ./...)
+            (cd "$m" && GOWORK=off go vet ./...)
             echo "::endgroup::"
           done
 
@@ -70,7 +70,7 @@ jobs:
           MODULES="packages/memory packages/orchestrator-go packages/broker-go packages/backend-go"
           for m in $MODULES; do
             echo "::group::Testing $m"
-            (cd "$m" && go test -short -timeout 60s ./...)
+            (cd "$m" && GOWORK=off go test -short -timeout 60s ./...)
             echo "::endgroup::"
           done
 
@@ -128,7 +128,7 @@ jobs:
 
       - name: Build backend binary
         run: |
-          cd packages/backend-go && go build -o neuralgentics-backend ./cmd/backend/
+          GOWORK=off cd packages/backend-go && go build -o neuralgentics-backend ./cmd/backend/
 
       - name: Run smoke test
         env:
@@ -229,7 +229,7 @@ jobs:
 
       - name: Build backend binary
         run: |
-          cd packages/backend-go && go build -o neuralgentics-backend ./cmd/backend/
+          GOWORK=off cd packages/backend-go && go build -o neuralgentics-backend ./cmd/backend/
 
       - name: Install overlay dependencies
         working-directory: overlay/packages/opencode
