@@ -1,0 +1,253 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gates:
+    name: Go Quality Gates
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: neuralgentics_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go 1.24
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Go module cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-
+
+      - name: Build all Go modules
+        run: |
+          MODULES="packages/memory packages/orchestrator-go packages/broker-go packages/backend-go"
+          for m in $MODULES; do
+            echo "::group::Building $m"
+            (cd "$m" && go build ./...)
+            echo "::endgroup::"
+          done
+
+      - name: Vet all Go modules
+        run: |
+          MODULES="packages/memory packages/orchestrator-go packages/broker-go packages/backend-go"
+          for m in $MODULES; do
+            echo "::group::Vetting $m"
+            (cd "$m" && go vet ./...)
+            echo "::endgroup::"
+          done
+
+      - name: Test all Go modules
+        run: |
+          MODULES="packages/memory packages/orchestrator-go packages/broker-go packages/backend-go"
+          for m in $MODULES; do
+            echo "::group::Testing $m"
+            (cd "$m" && go test -short -timeout 60s ./...)
+            echo "::endgroup::"
+          done
+
+  smoke-test:
+    name: Smoke Test (Go Backend + DB)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: neuralgentics_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go 1.24
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Go module cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-
+
+      - name: Install pgvector extension
+        env:
+          PGPASSWORD: testpassword
+        run: |
+          psql -h localhost -p 5432 -U postgres -d neuralgentics_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Apply database migrations
+        env:
+          PGPASSWORD: testpassword
+        run: |
+          MIGRATIONS_DIR="packages/memory/src/neuralgentics/memory/store/migrations/postgres"
+          for f in "${MIGRATIONS_DIR}"/*.up.sql; do
+            echo "Applying migration: $(basename "$f")"
+            psql -h localhost -p 5432 -U postgres -d neuralgentics_test -f "$f"
+          done
+
+      - name: Build backend binary
+        run: |
+          cd packages/backend-go && go build -o neuralgentics-backend ./cmd/backend/
+
+      - name: Run smoke test
+        env:
+          MEMINI_EMBEDDING_ADDR: noop
+          EMBEDDING_MODE: auto
+          NEURALGENTICS_DB_URL: postgresql://postgres:testpassword@localhost:5432/neuralgentics_test?sslmode=disable
+        run: |
+          chmod +x tests/smoke-test-mvp.sh
+          bash tests/smoke-test-mvp.sh --ci
+
+  overlay-ts:
+    name: Overlay TypeScript
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: overlay/packages/opencode
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: overlay/packages/opencode
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: overlay/packages/opencode
+        run: npm run build
+
+      - name: E2E Test
+        working-directory: overlay/packages/opencode
+        env:
+          MEMINI_EMBEDDING_ADDR: noop
+        run: npm run test:e2e || echo "E2E test requires Go backend with DB — expected to fail in CI without DB"
+
+  overlay-e2e:
+    name: Overlay E2E (with DB)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: neuralgentics_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go 1.24
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Go module cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-
+
+      - name: Install pgvector extension
+        env:
+          PGPASSWORD: testpassword
+        run: |
+          psql -h localhost -p 5432 -U postgres -d neuralgentics_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Apply database migrations
+        env:
+          PGPASSWORD: testpassword
+        run: |
+          MIGRATIONS_DIR="packages/memory/src/neuralgentics/memory/store/migrations/postgres"
+          for f in "${MIGRATIONS_DIR}"/*.up.sql; do
+            echo "Applying migration: $(basename "$f")"
+            psql -h localhost -p 5432 -U postgres -d neuralgentics_test -f "$f"
+          done
+
+      - name: Build backend binary
+        run: |
+          cd packages/backend-go && go build -o neuralgentics-backend ./cmd/backend/
+
+      - name: Install overlay dependencies
+        working-directory: overlay/packages/opencode
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: overlay/packages/opencode
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: overlay/packages/opencode
+        run: npm run build
+
+      - name: Run overlay E2E test
+        working-directory: overlay/packages/opencode
+        env:
+          MEMINI_EMBEDDING_ADDR: noop
+          EMBEDDING_MODE: auto
+          NEURALGENTICS_DB_URL: postgresql://postgres:testpassword@localhost:5432/neuralgentics_test?sslmode=disable
+          NEURALGENTICS_BACKEND_PATH: ${{ github.workspace }}/packages/backend-go/neuralgentics-backend
+        run: npm run test:e2e

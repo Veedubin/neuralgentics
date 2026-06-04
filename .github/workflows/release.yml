@@ -1,0 +1,341 @@
+# ─── Neuralgentics Release Pipeline ──────────────────────────────────────────
+# Builds 5 platform targets, aggregates checksums, creates GitHub Release,
+# and pushes container images to GHCR.
+#
+# Triggers:
+#   - Push of v* tag (e.g. v0.1.0, v0.1.1, v0.2.0)
+#   - Manual workflow_dispatch for testing
+#
+# Build matrix:
+#   linux-amd64, linux-arm64, darwin-arm64, windows-amd64, windows-arm64
+#
+# Note: windows-arm64 has no bun build --compile target; falls back to
+#       bun build bundle + requires Bun runtime on the target machine.
+# ────────────────────────────────────────────────────────────────────────────────
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0-rc1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Extract version from tag, stripping the leading 'v'
+  VERSION: ${{ github.ref_name != '' && startsWith(github.ref_name, 'v') && github.ref_name || inputs.tag }}
+
+jobs:
+  # ── Job 1: Build binaries for all 5 targets ────────────────────────────────
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Linux x86_64 (ubiquitous) ──
+          - target: linux-amd64
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            bun_target: bun-linux-x64
+            archive_fmt: tar.gz
+
+          # ── Linux ARM64 (Graviton, Raspberry Pi 4/5 64-bit) ──
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            bun_target: bun-linux-arm64
+            archive_fmt: tar.gz
+
+          # ── macOS ARM64 (Apple Silicon only) ──
+          - target: darwin-arm64
+            runner: macos-latest
+            goos: darwin
+            goarch: arm64
+            bun_target: bun-darwin-arm64
+            archive_fmt: tar.gz
+
+          # ── Windows x86_64 ──
+          - target: windows-amd64
+            runner: windows-latest
+            goos: windows
+            goarch: amd64
+            bun_target: bun-windows-x64
+            archive_fmt: zip
+
+          # ── Windows ARM64 (Snapdragon X, Surface Pro X) ──
+          # NOTE: bun build --compile has no bun-windows-arm64 target.
+          #       TUI ships as a bun bundle requiring the Bun runtime.
+          - target: windows-arm64
+            runner: windows-latest
+            goos: windows
+            goarch: arm64
+            bun_target: none
+            archive_fmt: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go 1.24
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3'
+
+      - name: Go module cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-
+
+      # ── Build Go backend ────────────────────────────────────────────────
+      - name: Build Go backend (${{ matrix.goos }}/${{ matrix.goarch }})
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          cd packages/backend-go
+          VERSION="${GITHUB_REF_NAME#v}"
+          # For workflow_dispatch, use the input tag
+          if [ -n "${{ inputs.tag }}" ]; then
+            VERSION="${{ inputs.tag }}"
+            VERSION="${VERSION#v}"
+          fi
+          go build -trimpath \
+            -ldflags="-s -w -X main.version=${VERSION}" \
+            -o neuralgentics-backend ./cmd/backend/
+          # On Windows, rename to .exe
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            mv neuralgentics-backend neuralgentics-backend.exe
+          fi
+        shell: bash
+
+      # ── Build TUI (standalone binary) ──────────────────────────────────
+      - name: Build TUI (${{ matrix.target }})
+        if: matrix.bun_target != 'none'
+        run: |
+          cd packages/tui
+          bun install --frozen-lockfile
+          bun build --compile \
+            --target=${{ matrix.bun_target }} \
+            --outfile=dist/neuralgentics \
+            src/index.ts
+          # On Windows, rename to .exe
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            mv dist/neuralgentics dist/neuralgentics.exe
+          fi
+        shell: bash
+
+      # ── Build TUI (bundle fallback — Windows ARM64) ───────────────────
+      - name: Build TUI — bundle fallback (${{ matrix.target }})
+        if: matrix.bun_target == 'none'
+        run: |
+          cd packages/tui
+          bun install --frozen-lockfile
+          bun build src/index.ts --outdir=dist --target=bun
+        shell: bash
+
+      # ── Assemble archive ──────────────────────────────────────────────
+      - name: Assemble archive
+        run: |
+          mkdir -p dist/neuralgentics/bin dist/neuralgentics/lib/embedding-sidecar
+
+          # Go backend
+          cp packages/backend-go/neuralgentics-backend* dist/neuralgentics/bin/ 2>/dev/null || true
+
+          # TUI binary (or bundle fallback)
+          if [ "${{ matrix.bun_target }}" != "none" ]; then
+            cp packages/tui/dist/neuralgentics* dist/neuralgentics/bin/ 2>/dev/null || true
+          else
+            # Windows ARM64: copy bundle output alongside bun binary reference
+            cp -r packages/tui/dist/* dist/neuralgentics/bin/ 2>/dev/null || true
+          fi
+
+          # Python sidecar source (no venv — users install deps separately)
+          if [ -d "packages/memory/cmd/embedding-sidecar" ]; then
+            cp -r packages/memory/cmd/embedding-sidecar/embedding_sidecar/ \
+                  dist/neuralgentics/lib/embedding-sidecar/ 2>/dev/null || true
+            cp packages/memory/cmd/embedding-sidecar/main.py \
+               packages/memory/cmd/embedding-sidecar/requirements.txt \
+               dist/neuralgentics/lib/embedding-sidecar/ 2>/dev/null || true
+            if [ -d "packages/memory/cmd/embedding-sidecar/proto" ]; then
+              cp -r packages/memory/cmd/embedding-sidecar/proto/ \
+                    dist/neuralgentics/lib/embedding-sidecar/ 2>/dev/null || true
+            fi
+          fi
+
+          # Install script
+          if [ -f "scripts/install.sh" ]; then
+            cp scripts/install.sh dist/neuralgentics/install.sh
+            chmod +x dist/neuralgentics/install.sh
+          fi
+
+          # Make binaries executable
+          chmod +x dist/neuralgentics/bin/* 2>/dev/null || true
+
+          # Create archive
+          cd dist
+          ARCHIVE_NAME="neuralgentics-$(echo "${{ github.ref_name }}" | sed 's/^v//')-${{ matrix.target }}"
+          # For workflow_dispatch, prefer the input tag
+          if [ -n "${{ inputs.tag }}" ]; then
+            ARCHIVE_NAME="neuralgentics-$(echo "${{ inputs.tag }}" | sed 's/^v//')-${{ matrix.target }}"
+          fi
+
+          if [ "${{ matrix.archive_fmt }}" = "tar.gz" ]; then
+            tar -czf "${ARCHIVE_NAME}.tar.gz" neuralgentics/
+            echo "archive=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_OUTPUT
+          else
+            # Windows: use PowerShell Compress-Archive
+            powershell -Command "Compress-Archive -Path 'neuralgentics' -DestinationPath '${ARCHIVE_NAME}.zip' -Force"
+            echo "archive=${ARCHIVE_NAME}.zip" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+        id: archive
+
+      # ── Generate SHA256 ───────────────────────────────────────────────
+      - name: Generate SHA256
+        run: |
+          cd dist
+          if command -v sha256sum &>/dev/null; then
+            sha256sum "${{ steps.archive.outputs.archive }}" >> checksum-${{ matrix.target }}.txt
+          else
+            # macOS fallback
+            shasum -a 256 "${{ steps.archive.outputs.archive }}" >> checksum-${{ matrix.target }}.txt
+          fi
+          cat checksum-${{ matrix.target }}.txt
+        shell: bash
+
+      # ── Upload as build artifact (for checksum aggregation) ───────────
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: neuralgentics-${{ matrix.target }}
+          path: dist/${{ steps.archive.outputs.archive }}
+          retention-days: 1
+
+      - name: Upload checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksum-${{ matrix.target }}
+          path: dist/checksum-${{ matrix.target }}.txt
+          retention-days: 1
+
+  # ── Job 2: Assemble checksums + create GitHub Release ──────────────────
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: success()
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Merge checksums
+        run: |
+          cat artifacts/checksum-*/*.txt > checksums.txt
+          cat checksums.txt
+
+      - name: Move archives to staging
+        run: |
+          mkdir -p staging
+          find artifacts/neuralgentics-* -type f \( -name '*.tar.gz' -o -name '*.zip' \) \
+            -exec cp {} staging/ \;
+          cp checksums.txt staging/
+          ls -lh staging/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Neuralgentics ${{ github.ref_name }}"
+          body_path: CHANGELOG.md
+          files: staging/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+      - name: Update latest tag alias
+        run: |
+          # Move the 'latest' mutable tag to point to this release
+          git tag -f latest ${{ github.sha }}
+          git push origin latest --force
+        shell: bash
+
+  # ── Job 3: Build and push container images ─────────────────────────────
+  containers:
+    name: Build & Push Container Images
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: success()
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & Push PostgreSQL + pgvector
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: containers/Dockerfile.postgres
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/neuralgentics-postgres:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/neuralgentics-postgres:latest
+
+      - name: Build & Push embedding sidecar
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: containers/Dockerfile.sidecar
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/neuralgentics-sidecar:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/neuralgentics-sidecar:latest
+
+      - name: Build & Push Go backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: containers/Dockerfile.backend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/neuralgentics-backend:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/neuralgentics-backend:latest
