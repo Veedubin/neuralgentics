@@ -1,3 +1,15 @@
+!!! WARNING
+
+    **THIS DOCUMENT IS ARCHIVED AS OF 2026-06-04.**
+    It describes an older version of Neuralgentics and may reference
+    APIs, install paths, or env vars that no longer exist.
+
+    For current documentation, see:
+    <https://neuralgentics.github.io/neuralgentics/>
+    or the source under `docs/` in the `main` branch.
+
+---
+
 # Architecture: Neuralgentics
 
 ## System Overview

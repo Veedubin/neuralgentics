@@ -7,6 +7,7 @@ __pycache__/
 # Build artifacts
 dist/
 build/
+site/          # mkdocs build output (deployed to gh-pages branch)
 *.egg-info/
 *.tsbuildinfo
 
@@ -22,3 +23,8 @@ uv.lock
 
 # Logs
 *.log
+
+# Environment variables (contains secrets — never commit)
+.env
+.env.local
+.env.*.local

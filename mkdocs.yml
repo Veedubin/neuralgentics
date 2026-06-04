@@ -1,0 +1,128 @@
+site_name: Neuralgentics
+site_description: Agentic coding orchestration with a trust-weighted memory engine
+site_url: https://neuralgentics.github.io/neuralgentics/
+repo_url: https://github.com/neuralgentics/neuralgentics
+repo_name: neuralgentics/neuralgentics
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.tooltips
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: green
+      accent: lime
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: green
+      accent: lime
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+      minify_js: true
+      minify_css: true
+      htmlmin_opts:
+        remove_comments: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+  - pymdownx.caret
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+  - Architecture:
+      - System Overview: architecture/overview.md
+      - Broker Flow: architecture/broker-flow.md
+      - Dispatch Flow: architecture/dispatch-flow.md
+      - Permission Model: architecture/permission-model.md
+  - Reference:
+      - Environment Variables: reference/env-vars.md
+      - Memory System: reference/memory-system.md
+      - Kanban System: reference/kanban-system.md
+      - Session Lifecycle: reference/session-lifecycle.md
+  - Troubleshooting: troubleshooting.md
+  - Development: development.md
+  - Design:
+      - v4 Roll Your Own App: design/v4-roll-your-own-app-FINAL.md
+      - v0.1.0 Release Pipeline: design/v0.1.0-release-pipeline.md
+      - Broker Wave 2 Hardening: design/broker-wave2-hardening.md
+      - Broker Server Catalog: design/broker-server-catalog-prompting.md
+      - Neuralgentics Memory Port v2: design/neuralgentics-memory-port-plan-v2-final.md
+      - Plugin/Backend Integration: design/plugin-backend-integration.md
+      - Opportunity Detector: design/v4-FINAL-ADDENDUM-opportunity-detector.md
+      - Aggregator-Aware Detector: design/v4-FINAL-ADDENDUM-2-aggregator-aware-detector.md
+  - Archive:
+      - Pre-docs (v0): archive/v0-pre-docs/ARCHITECTURE.md
+      - "Pre-docs: Broker": archive/v0-pre-docs/BROKER.md
+      - "Pre-docs: API": archive/v0-pre-docs/API_REFERENCE.md
+      - "Pre-docs: Migration": archive/v0-pre-docs/MIGRATION_GUIDE.md
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/neuralgentics/neuralgentics
+      name: Neuralgentics on GitHub
+
+# Legacy design docs in `docs/design/` predate this site and contain cross-
+# references to design files that don't exist in this repo (they lived in a
+# sibling `boomerang-v3` repo). Suppress those warnings so `mkdocs build
+# --strict` can pass without rewriting historical design notes.
+validation:
+  links:
+    not_found: ignore
+  nav:
+    omitted_files: ignore
+    absolute_links: ignore

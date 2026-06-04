@@ -1,35 +1,29 @@
 # Neuralgentics
 
-Neuralgentics is a specialized coding agent built on OpenCode. It is not a fork of the OpenCode repository; rather, it is a set of patches and plugins applied to the OpenCode base. To set up, download the OpenCode base, apply Neuralgentics patches, and build.
+> Specialized coding agent built on OpenCode. Trust-weighted memory. Permission-gated MCP.
 
-## Architecture
+📖 **Full documentation: <https://neuralgentics.github.io/neuralgentics/>**
 
-The system follows a layered approach to separate high-level orchestration from low-level data persistence:
+## Quick links
 
-**OpenCode (Base)** $\rightarrow$ **Neuralgentics Plugin (TypeScript)** $\rightarrow$ **memini-core (Python HTTP)** $\rightarrow$ **PostgreSQL/pgvector**
+- [Installation](https://neuralgentics.github.io/neuralgentics/getting-started/installation/)
+- [Quickstart](https://neuralgentics.github.io/neuralgentics/getting-started/quickstart/)
+- [Architecture overview](https://neuralgentics.github.io/neuralgentics/architecture/overview/)
+- [Environment variables](https://neuralgentics.github.io/neuralgentics/reference/env-vars/)
+- [Troubleshooting](https://neuralgentics.github.io/neuralgentics/troubleshooting/)
 
-*   **MCP Router**: Used exclusively for interfacing with external tools. Native memory and core agent logic bypass MCP for performance and reliability.
+## 30-second pitch
 
-## Components
+Neuralgentics is a coding-agent runtime that:
 
-- `neuralgentics-plugin`: TypeScript-based extension for OpenCode providing specialized agent routing and protocol enforcement.
-- `memini-core`: Python server handling semantic memory, trust scoring, and knowledge graph management.
-- `neuralgentics-patches`: A collection of diffs to modify the OpenCode TUI and core behavior.
-- `neuralgentics-cli`: Build and installation scripts for environment setup.
+1. **Routes tasks to specialist sub-agents** (coder, architect, tester, ...)
+   via a typed routing matrix
+2. **Stores everything in a trust-weighted memory engine** (PostgreSQL + pgvector)
+3. **Mediates all external tool access through an MCP broker** that enforces
+   role-based permissions and reduces tool-catalog tokens by 95%
+4. **Speaks MCP to the world** (42 JSON-RPC methods, stdio transport)
+5. **Installs in one command** (`./scripts/install.sh`) or one
+   `podman-compose up`
 
-## Build
-
-To build and install the project:
-
-```bash
-./scripts/build.sh && ./scripts/install.sh
-```
-
-## Development
-
-1.  **Backend**: Start the `memini-core` Python server in one terminal.
-2.  **Frontend/Orchestrator**: Run the OpenCode base with the Neuralgentics plugin enabled in another terminal.
-
-## License
-
-Proprietary / See LICENSE file for details.
+HACK THE PLANET. See the [docs](https://neuralgentics.github.io/neuralgentics/)
+for everything else.
