@@ -156,7 +156,7 @@ MOCKUP -- not a real screenshot.
 
 MOCKUP -- not a real screenshot. Trust scores and decay rates are illustrative.
 
-## Pick Where to Go Next
+## Quick Links
 
 | If you want to... | Go here → |
 | :--- | :--- |
@@ -166,6 +166,8 @@ MOCKUP -- not a real screenshot. Trust scores and decay rates are illustrative.
 | **See how dispatch works** | [Dispatch Flow](architecture/dispatch-flow/) |
 | **Dive into the memory engine** | [Memory System Reference](reference/memory-system/) |
 | **Review the session lifecycle** | [Session Lifecycle](reference/session-lifecycle/) |
+| **Configure the runtime** | [Environment Variables](reference/env-vars/) |
+| **Fix something that's broken** | [Troubleshooting](troubleshooting/) |
 
 ---
 
