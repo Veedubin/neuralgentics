@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"neuralgentics/src/neuralgentics/memory/core"
@@ -87,6 +88,7 @@ func (s *PostgresStore) GetAgentTools(ctx context.Context, peerID string) ([]*co
 			&rec.FirstRequestedAt, &lastUsedAt, &rec.UseCount, &rec.BypassBroker,
 		)
 		if err != nil {
+			slog.Warn("scan agent tool row", "err", err)
 			continue
 		}
 		rec.LastUsedAt = lastUsedAt

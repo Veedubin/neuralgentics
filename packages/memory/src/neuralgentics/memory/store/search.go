@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 
@@ -153,6 +154,7 @@ func scanVectorSearchRows(rows pgx.Rows) ([]*core.MemoryEntry, error) {
 			&distance,
 		)
 		if err != nil {
+			slog.Warn("scan vector search row", "err", err)
 			continue
 		}
 
@@ -207,6 +209,7 @@ func scanTextSearchRows(rows pgx.Rows) ([]*core.MemoryEntry, error) {
 			&rank,
 		)
 		if err != nil {
+			slog.Warn("scan text search row", "err", err)
 			continue
 		}
 
