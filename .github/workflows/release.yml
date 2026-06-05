@@ -141,14 +141,16 @@ jobs:
         run: |
           cd packages/tui
           bun install
+          # On Windows, bun --compile already appends .exe; write to the
+          # .exe path directly to avoid a "same file" mv error.
+          OUTFILE="dist/neuralgentics"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            OUTFILE="dist/neuralgentics.exe"
+          fi
           bun build --compile \
             --target=${{ matrix.bun_target }} \
-            --outfile=dist/neuralgentics \
+            --outfile="${OUTFILE}" \
             src/index.ts
-          # On Windows, rename to .exe
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            mv dist/neuralgentics dist/neuralgentics.exe
-          fi
         shell: bash
 
       # ── Build TUI (bundle fallback — Windows ARM64) ───────────────────
