@@ -86,7 +86,16 @@ export class NeuralgenticsClient {
     dbUrl?: string;
     spawn?: boolean;
   }) {
-    this.binaryPath = options?.binaryPath ?? resolveBackendPath();
+    // Only resolve binary path when actually needed (spawning or explicitly provided).
+    // When spawn:false and no explicit path, defer resolution entirely.
+    if (options?.binaryPath) {
+      this.binaryPath = options.binaryPath;
+    } else if (options?.spawn !== false) {
+      this.binaryPath = resolveBackendPath();
+    } else {
+      // Defer resolution — will be resolved lazily if needed later.
+      this.binaryPath = "";
+    }
     const dbUrl = options?.dbUrl ?? resolveDbUrl();
 
     this.readyPromise = new Promise<void>((resolve, reject) => {
