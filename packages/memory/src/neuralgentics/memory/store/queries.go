@@ -497,10 +497,7 @@ LIMIT $1
 // ─── Stats & Count Queries ────────────────────────────────────────────────────
 
 const GetMemoryCount = `
-SELECT COUNT(*) as total,
-       COUNT(*) FILTER (WHERE is_archived = FALSE) as active,
-       COUNT(*) FILTER (WHERE is_archived = TRUE) as archived
-FROM memories
+SELECT COUNT(*) FROM memories WHERE is_archived = FALSE
 `
 
 const ContentExistsQuery = `

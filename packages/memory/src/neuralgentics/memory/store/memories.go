@@ -143,16 +143,11 @@ func (s *PostgresStore) CountMemories(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("database pool not initialized")
 	}
 
-	var active int64
-	err := s.pool.QueryRow(ctx, GetMemoryCount).Scan(nil, &active, nil)
-	if err != nil {
-		// Fallback: simple count
-		err = s.pool.QueryRow(ctx, "SELECT COUNT(*) FROM memories WHERE is_archived = FALSE").Scan(&active)
-		if err != nil {
-			return 0, fmt.Errorf("count memories: %w", err)
-		}
+	var count int64
+	if err := s.pool.QueryRow(ctx, GetMemoryCount).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count memories: %w", err)
 	}
-	return active, nil
+	return count, nil
 }
 
 // ListMemories returns a list of memories with optional filter.
