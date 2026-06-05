@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -270,6 +271,7 @@ func (s *PostgresStore) GetRelationships(ctx context.Context, memoryID string) (
 		var r core.Relationship
 		err := rows.Scan(&r.ID, &r.SourceID, &r.TargetID, &r.RelationshipType, &r.Confidence, &r.CreatedAt, nil)
 		if err != nil {
+			slog.Warn("scan relationship row", "err", err)
 			continue
 		}
 		results = append(results, r)
@@ -313,6 +315,7 @@ func (s *PostgresStore) GetSupersessionChain(ctx context.Context, memoryID strin
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+			slog.Warn("scan supersession chain row", "err", err)
 			continue
 		}
 		chain = append(chain, id)
@@ -379,6 +382,7 @@ func (s *PostgresStore) GetEntitiesByType(ctx context.Context, entityType string
 	for rows.Next() {
 		var e core.Entity
 		if err := rows.Scan(&e.ID, &e.Name, &e.EntityType, &e.CanonicalName, &e.Confidence, &e.MentionCount, &e.FirstSeenAt, &e.LastSeenAt); err != nil {
+			slog.Warn("scan entity by type row", "err", err)
 			continue
 		}
 		results = append(results, &e)
@@ -402,6 +406,7 @@ func (s *PostgresStore) SearchEntities(ctx context.Context, name string, limit i
 	for rows.Next() {
 		var e core.Entity
 		if err := rows.Scan(&e.ID, &e.Name, &e.EntityType, &e.CanonicalName, &e.Confidence, &e.MentionCount, &e.FirstSeenAt, &e.LastSeenAt); err != nil {
+			slog.Warn("scan search entity row", "err", err)
 			continue
 		}
 		results = append(results, &e)
@@ -437,6 +442,7 @@ func (s *PostgresStore) GetEntityRelationships(ctx context.Context, entityID str
 	for rows.Next() {
 		var r core.EntityRelationship
 		if err := rows.Scan(&r.ID, &r.SourceEntityID, &r.TargetEntityID, &r.RelationshipType, &r.Confidence, &r.CreatedAt); err != nil {
+			slog.Warn("scan entity relationship row", "err", err)
 			continue
 		}
 		results = append(results, r)
@@ -608,6 +614,7 @@ func (s *PostgresStore) ListPeers(ctx context.Context, limit int) ([]*core.PeerP
 	for rows.Next() {
 		var p core.PeerProfile
 		if err := rows.Scan(&p.ID, &p.Name, &p.Role, &p.TrustLevel, nil, &p.IsActive, &p.CreatedAt, &p.LastActiveAt); err != nil {
+			slog.Warn("scan peer row", "err", err)
 			continue
 		}
 		results = append(results, &p)
@@ -679,6 +686,7 @@ func (s *PostgresStore) GetSharedMemories(ctx context.Context, peerID string, li
 			&sharedAt,
 		)
 		if err != nil {
+			slog.Warn("scan shared memory row", "err", err)
 			continue
 		}
 
@@ -911,7 +919,8 @@ func (s *PostgresStore) GetThoughtChain(ctx context.Context, chainID string) (*c
 			&contentHash, &memoryID, &t.CreatedAt,
 		)
 		if err != nil {
-			continue // skip malformed rows
+			slog.Warn("scan thought row", "err", err)
+			continue
 		}
 
 		if revisesThoughtID != nil {
@@ -965,6 +974,7 @@ func (s *PostgresStore) GetRelatedChains(ctx context.Context, query string, limi
 	for rows.Next() {
 		var cid string
 		if err := rows.Scan(&cid); err != nil {
+			slog.Warn("scan related chain row", "err", err)
 			continue
 		}
 		chainIDs = append(chainIDs, cid)
@@ -1450,6 +1460,7 @@ WHERE embedding IS NOT NULL`
 		var id string
 		var score float64
 		if err := rows.Scan(&id, &chunk.FilePath, &chunk.Content, &chunk.StartLine, &chunk.EndLine, &score); err != nil {
+			slog.Warn("scan chunk row", "err", err)
 			continue
 		}
 		chunk.Score = score
@@ -1477,6 +1488,7 @@ func (s *PostgresStore) GetFileChunksByPath(ctx context.Context, filePath string
 		var chunk core.ChunkResult
 		var id string
 		if err := rows.Scan(&id, &chunk.FilePath, &chunk.Content, &chunk.StartLine, &chunk.EndLine); err != nil {
+			slog.Warn("scan file chunk row", "err", err)
 			continue
 		}
 		chunks = append(chunks, chunk)
