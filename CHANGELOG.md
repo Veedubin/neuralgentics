@@ -5,6 +5,95 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-06-05
+
+Patch release: 12 test failures discovered during Session 23's full code
+review, plus several refactors and process improvements. All 578 TUI
+tests pass; all 4 Go modules build and test clean.
+
+### Fixed
+
+- **CRITICAL: `Broker.DeregisterServer` killed the shared MCP proxy for ALL
+  servers.** Removing one server from the registry would silently break
+  every other running server's MCP communication. The proxy is now
+  correctly treated as broker-level, not server-level. Regression test
+  `TestDeregisterServer_DoesNotKillSharedProxy` added. (Commit `6cfc0ee`)
+- **`TestProjectIndexer_Index_ConcurrentIndexing` was flaky** (3/3
+  deterministic runs failed pre-fix). The mock store completed before
+  the test's 50ms sleep, so the second concurrent call never saw the
+  "already running" guard. Added `blockAddChunk`/`unblockAddChunk`
+  channels to make the test deterministic. (Commit `57d06cd`)
+- **11 TUI test failures** in `neuralgentics-client.test.ts` (10) and
+  `setup.test.ts` (2). Root cause: `NeuralgenticsClient` constructor
+  called `resolveBackendPath()` unconditionally, throwing when the
+  binary wasn't installed even with `spawn:false`. Defer the path
+  resolution until the binary is actually needed. (Commit `e98ac53`)
+- **`CountMemories` had a broken primary query** — `Scan(nil, &active,
+  nil)` for a 3-column SQL was invalid pgx. Simplified to a single
+  `COUNT(*) WHERE is_archived = FALSE` with a matching single-column
+  Scan. Removed the broken fallback query that was masking the bug.
+  Regression test added. (Commits `803f4d9`, `4f8f668`)
+- **13 silent `rows.Scan` error swallows** in `packages/memory/.../store/`
+  (memories.go, search.go, agent_tools.go). All now use `slog.Warn`
+  before `continue` so failures are visible. (Commit `23cd7e8`)
+- **2 nil,nil stub methods** (`GetTrustAdjustments`,
+  `ListFadingMemories`) replaced with explicit "not implemented"
+  errors so callers can distinguish "feature unavailable" from
+  "no results." (Commit `f764ac8`)
+
+### Added
+
+- **3 regression tests** for previously untested or thinly-tested
+  areas: `TestBroker_Call_HasTimeout` (characterization test, broker
+  has 30s proxy timeout but Call has no `context.Context` param),
+  `TestGetMemory_IncludeArchived` (locks in correct bool handling),
+  and 10 unit tests in `context_builder_test.go` for the previously
+  0% coverage `context_builder.go`. (Commits `d18b646`, `c4ef87b`,
+  `b11c6a8`)
+- **`packages/tui/src/vnode-types.ts`** — type interfaces for
+  OpenTUI VNode refs that capture write-side property shapes
+  (ProxiedVNode's mapped type only captures getter return types).
+  Used to replace 14 `any` type escapes across `index.ts` and 4 panel
+  files. (Commit `9918798`)
+- **Promise-based mutex** in `CompactionOrchestrator` replacing the
+  boolean-flag anti-pattern. Includes 2 new regression tests for
+  sequential and error-recovery paths. (Commit `5f4657c`)
+- **Certs directory regenerated** (`certs/server.crt`,
+  `certs/server.key`, `certs/initdb.d/01-enable-ssl.sh`) — was
+  deleted in the Session 21 bloat cleanup and silently broke
+  `neuralgentics-test-pg` startup. SSL is back on, port 6000.
+- **New skill: `update-gh-docs`** — checklist + neuralgentics
+  tailoring for updating GitHub-flavored docs (README, CHANGELOG,
+  release notes, mkdocs) before a release tag. (Commit `3f59c81`)
+
+### Changed
+
+- **AGENTS.md: 3 new mandatory rules.**
+  - **R4:** One task per coder per dispatch. Coder context windows
+    degrade after ~60% utilization; combined dispatches (T-065+T-066)
+    produce sloppy second-half output.
+  - **R5:** Coders launch a `boomerang-linter` sub-agent (read-only
+    scan) and apply the fixes themselves. Coder owns the diff;
+    linter is an advisor, not a writer.
+  - **R6:** Every release card spawns a child T-DOCS card that
+    invokes `update-gh-docs` before the tag is pushed. The release
+    card is not "done" until the docs card is "done." Motivated by
+    the v0.1.0 install-URL pointing to a non-existent release asset
+    (fixed post-tag in commit `afdc89d`).
+- **Kanban skill: 4 new granularity rules (G1-G4)** — one logical
+  change per card, lint work is a separate `T-LINT-NNN` card,
+  refactor of N files is at least N cards.
+- **Orchestrator skill: dispatch granularity rules** added as
+  section 4.1.
+
+### Quality gates (Session 23 closeout)
+
+- `go vet` — 4/4 Go modules clean
+- `go test -short` — 4/4 Go modules PASS
+- `tsc --noEmit` — TUI + overlay both clean
+- `bun test` — **578 pass / 0 fail** (up from 565/11 in v0.1.0)
+- All 5 platform builds still green in the release workflow
+
 ## [0.1.0] - 2026-06-04
 
 The first public release of Neuralgentics. Multi-agent orchestration with
