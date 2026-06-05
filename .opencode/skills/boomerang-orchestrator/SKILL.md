@@ -121,7 +121,7 @@ Architect returns a **roadmap document** with this structure:
 ## Phase 2: ...
 ```
 
-Architect writes the roadmap to `docs/roadmap-<project-slug>.md` AND saves a thin summary to memini-ai with `project` metadata. The roadmap is durable — it survives TUI restart, context compaction, agent failures.
+Architect writes the roadmap to `docs/roadmap-<project-slug>.md` AND saves a thin summary to memoryManager with `project` metadata. The roadmap is durable — it survives TUI restart, context compaction, agent failures.
 
 ### 3. Kanban Seed (kanban-board-manager skill)
 
@@ -191,7 +191,7 @@ Finally, the orchestrator invokes the **todo-list-updater** skill to refresh `TA
 
 ### Why this is prompts, not code
 
-The user explicitly asked for prompts, not new infrastructure. The data layer already exists (`TASKS.md` is the board; `memini-ai` is the durable memory; the broker is the permission boundary). The change is to **make the orchestrator follow the cycle every time, and to give it three named sub-skills to invoke for the steps that need structure.**
+The user explicitly asked for prompts, not new infrastructure. The data layer already exists (`TASKS.md` is the board; `memoryManager` is the durable memory; the broker is the permission boundary). The change is to **make the orchestrator follow the cycle every time, and to give it three named sub-skills to invoke for the steps that need structure.**
 
 ## Triggers
 
@@ -223,18 +223,18 @@ Use the **skill-self-audit** sub-skill when:
 
 ### Mandatory Steps (NEVER SKIP)
 
-1. **Query memini-ai** (MANDATORY FIRST ACTION) — Query memini-ai for context before any planning
- 2. **Sequential Thinking** (MANDATORY SECOND ACTION) — Call memini-ai-dev_add_thought immediately after memory query to analyze the request
+1. **Query memoryManager** (MANDATORY FIRST ACTION) — Query memoryManager for context before any planning
+ 2. **Sequential Thinking** (MANDATORY SECOND ACTION) — Call memoryManager_add_thought immediately after memory query to analyze the request
 3. **Plan** — Create implementation plan (MANDATORY unless explicitly waived)
 4. **Delegate ALL work** via Task tool — You CANNOT write code, edit files, run bash, or do implementation work. Your only purpose is to delegate to sub-agents.
 5. **Git check** — Before any code changes, verify git status
 6. **Quality gates** — After sub-agents complete code changes, run quality checks
 7. **Update Docs & Todos** — Update documentation as needed
-8. **Save to memory** — After everything is complete, save a summary to memini-ai
+8. **Save to memory** — After everything is complete, save a summary to memoryManager
 
 ### Sequential Thinking Enforcement
 
-You MUST use `memini-ai-dev_add_thought` for:
+You MUST use `memoryManager_add_thought` for:
 - Complex multi-step problems
 - Tasks with unclear scope
 - Architectural decisions
@@ -247,7 +247,7 @@ Adjust total_thoughts as needed. Do not stop at 1-2 thoughts if the problem is c
 
 When context usage reaches approximately 40%:
 1. Trigger the `/handoff` skill to wrap up current work
-2. Save all critical context to memini-ai
+2. Save all critical context to memoryManager
 3. OpenCode has built-in context compaction that handles this automatically
 4. After compaction, re-read AGENTS.md, TASKS.md, HANDOFF.md, and README.md to restore essential context
 5. Continue from where you left off
@@ -269,19 +269,19 @@ This keeps the context window low while preserving important instructions.
 ### Sub-Agent Requirements
 
 When delegating to sub-agents, include in your prompt:
-- "Query memini-ai before starting work"
-- "Save your work to memini-ai when complete"
-- "Use memini-ai-dev_add_thought if this is a complex task"
-- "Use tiered memory: standard saves for routine work, memini-ai-dev_add_memory for high-value architectural decisions and session summaries"
+- "Query memoryManager before starting work"
+- "Save your work to memoryManager when complete"
+- "Use memoryManager_add_thought if this is a complex task"
+- "Use tiered memory: standard saves for routine work, memoryManager_add_memory for high-value architectural decisions and session summaries"
 
 ### Trust-Weighted Memory Protocol
 
-memini-ai uses trust scoring. High-value work should be tagged with `project` metadata:
+memoryManager uses trust scoring. High-value work should be tagged with `project` metadata:
 
 #### When Saving:
-- **Routine work** (error logs, quick fixes, chat turns): Use standard `memini-ai-dev_add_memory`
-- **High-value work** (architectural decisions, verified successes, session summaries): Use `memini-ai-dev_add_memory` with a descriptive `project` tag
-- **Session summaries**: Always use `memini-ai-dev_add_memory` — these are high-value for resuming work
+- **Routine work** (error logs, quick fixes, chat turns): Use standard `memoryManager_add_memory`
+- **High-value work** (architectural decisions, verified successes, session summaries): Use `memoryManager_add_memory` with a descriptive `project` tag
+- **Session summaries**: Always use `memoryManager_add_memory` — these are high-value for resuming work
 
 #### Trust Signals:
 After completing work, consider adjusting trust based on outcomes:
@@ -292,11 +292,11 @@ After completing work, consider adjusting trust based on outcomes:
 
 #### When Searching:
 - Default searches use the configured strategy automatically
-- For explicit control: `memini-ai-dev_query_memories` with `strategy: "tiered"` (Fast Reply) or `strategy: "vector_only"` (Archivist)
-- Use `memini-ai-dev_query_kg` for knowledge graph queries
+- For explicit control: `memoryManager_query_memories` with `strategy: "tiered"` (Fast Reply) or `strategy: "vector_only"` (Archivist)
+- Use `memoryManager_query_kg` for knowledge graph queries
 
 #### Orchestrator-Specific:
-As orchestrator, use `memini-ai-dev_add_memory` for:
+As orchestrator, use `memoryManager_add_memory` for:
 - Session summaries (after handoff)
 - Major architectural decisions made during planning
 - Complex dependency graphs or task analysis results
@@ -371,9 +371,9 @@ User Request
   ↓
 1. INTAKE & EXTRAPOLATION      (orchestrator: build Context Package with implied reqs, ambiguity, edge cases)
   ↓
-2. MEMORY QUERY                (memini-ai-dev_query_memories)
+2. MEMORY QUERY                (memoryManager_query_memories)
   ↓
-3. SEQUENTIAL THINK            (memini-ai-dev_add_thought)
+3. SEQUENTIAL THINK            (memoryManager_add_thought)
   ↓
 4. PLAN: ROADMAP               (delegate to boomerang-architect → writes docs/roadmap-<proj>.md)
   ↓
@@ -391,13 +391,13 @@ User Request
   ↓
 9. TODO LIST UPDATE            (invoke todo-list-updater for current phase)
   ↓
-10. DOCS & MEMORY SAVE         (TASKS.md, AGENTS.md, HANDOFF.md, memini-ai)
+10. DOCS & MEMORY SAVE         (TASKS.md, AGENTS.md, HANDOFF.md, memoryManager)
 ```
 
 ### Mandatory Steps (NEVER SKIP)
 
-1. **Query memini-ai** (MANDATORY FIRST ACTION) — Query memini-ai for context before any planning
-2. **Sequential Thinking** (MANDATORY SECOND ACTION) — Call `memini-ai-dev_add_thought` immediately after memory query to analyze the request
+1. **Query memoryManager** (MANDATORY FIRST ACTION) — Query memoryManager for context before any planning
+2. **Sequential Thinking** (MANDATORY SECOND ACTION) — Call `memoryManager_add_thought` immediately after memory query to analyze the request
 3. **Extrapolate** (NEW IN v3) — Build the Context Package's implied-reqs section. Never pass a raw prompt to the architect.
 4. **Roadmap** — Architect produces `docs/roadmap-<proj>.md` (phases → tasks, each task narrow enough for one coder).
 5. **Kanban seed** — Invoke `kanban-board-manager` skill. One card per task, with status, dependencies, and assignee.
@@ -408,31 +408,31 @@ User Request
 10. **Wrap-up audit** — Walk the board. Unaccounted cards are broken, re-architected, or requeued.
 11. **Skill self-audit** — Invoke `skill-self-audit` skill. Repeated processes become skills via `boomerang-agent-builder`.
 12. **Todo list update** — Invoke `todo-list-updater` skill for the current phase.
-13. **Save to memory** — `memini-ai-dev_add_memory` with `project` tag.
+13. **Save to memory** — `memoryManager_add_memory` with `project` tag.
 
-## memini-ai MCP Tools
+## memoryManager MCP Tools
 
 | Tool | Purpose |
 |------|---------|
-| `memini-ai-dev_query_memories` | Semantic search over memories |
-| `memini-ai-dev_add_memory` | Store a new memory entry |
-| `memini-ai-dev_search_project` | Search indexed project files |
-| `memini-ai-dev_index_project` | Trigger project indexing |
-| `memini-ai-dev_get_file_contents` | Reconstruct file from indexed chunks |
-| `memini-ai-dev_get_status` | Check memini-ai server status |
-| `memini-ai-dev_query_kg` | Query knowledge graph |
-| `memini-ai-dev_extract_entities` | Extract entities from memory |
-| `memini-ai-dev_get_entity_graph` | Get entity connections |
-| `memini-ai-dev_get_trust_score` | Get memory trust score |
-| `memini-ai-dev_adjust_trust` | Adjust memory trust |
-| `memini-ai-dev_find_contradictions` | Find contradictory memories |
-| `memini-ai-dev_resolve_contradiction` | Resolve conflicting memories |
+| `memoryManager_query_memories` | Semantic search over memories |
+| `memoryManager_add_memory` | Store a new memory entry |
+| `memoryManager_search_project` | Search indexed project files |
+| `memoryManager_index_project` | Trigger project indexing |
+| `memoryManager_get_file_contents` | Reconstruct file from indexed chunks |
+| `memoryManager_get_status` | Check memoryManager server status |
+| `memoryManager_query_kg` | Query knowledge graph |
+| `memoryManager_extract_entities` | Extract entities from memory |
+| `memoryManager_get_entity_graph` | Get entity connections |
+| `memoryManager_get_trust_score` | Get memory trust score |
+| `memoryManager_adjust_trust` | Adjust memory trust |
+| `memoryManager_find_contradictions` | Find contradictory memories |
+| `memoryManager_resolve_contradiction` | Resolve conflicting memories |
 
 ### Knowledge Graph Query Example
 
 ```javascript
 // Query knowledge graph for entity relationships
-memini-ai-dev_query_kg({
+memoryManager_query_kg({
   query: JSON.stringify({
     entity_a: "authentication",
     relationship_types: ["RELATED_TO", "SUPERSEDES"],
@@ -446,7 +446,7 @@ memini-ai-dev_query_kg({
 
 ```javascript
 // Adjust trust based on agent feedback
-memini-ai-dev_adjust_trust({
+memoryManager_adjust_trust({
   memory_id: "memory-uuid-here",
   signal: "agent_used"  // +0.05 trust
 })

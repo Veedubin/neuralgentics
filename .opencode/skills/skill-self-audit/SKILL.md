@@ -91,7 +91,7 @@ Whether or not a skill was created, the audit result is recorded:
 - **Skills marked for improvement:** T-YYY → skill name → reason
 - **No new skills needed:** a one-liner explaining why the cycle's processes were all unique or already covered
 
-This is saved to memini-ai with `project` metadata so the next session can see what was learned.
+This is saved to memoryManager with `project` metadata so the next session can see what was learned.
 
 ## Output Format
 
