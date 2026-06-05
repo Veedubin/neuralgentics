@@ -660,7 +660,7 @@ The following sections of the v4-FINAL document (`v4-roll-your-own-app-FINAL.md`
 | **Version** | v4-FINAL-ADDENDUM-1 |
 | **Status** | Complete — supersedes v4-FINAL budget enforcement |
 | **Supersedes** | v4-FINAL §502 #8, §503 #4, §508, §509.2 P1-b |
-| **Builds on** | [v4-roll-your-own-app-FINAL.md](v4-roll-your-own-app-FINAL.md) (T-RFC-004-final) |
+| **Builds on** | [v4-roll-your-own-app-FINAL.md](v4-roll-your-own-app-FINAL/) (T-RFC-004-final) |
 | **v4-FINAL Memory ID** | `400a2db3-af29-4d76-9f09-c95c95d0ea88` |
 | **Line count** | ~390 |
 | **Detection patterns** | 8 (sequential tool chains, repeated identical calls, high-cost turns, long card retries, re-reading same files, missed parallel opportunities, manual aggregation, error-and-retry loops) |

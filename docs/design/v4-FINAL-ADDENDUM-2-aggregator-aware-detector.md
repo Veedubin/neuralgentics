@@ -8,7 +8,7 @@
 > **Addendum #2 to v4-FINAL.** Extends the Opportunity Detector (addendum 1) with aggregator-aware lookup. Before suggesting "build a new skill," the detector consults mcpservers.org, the official MCP Registry, orchestra-research/AI-research-SKILLs, the Anthropic Skills Hub, npm, PyPI, and our own skills directory. If a match exists, the user gets a 1-line install command instead of a build task. This shifts the detector from "always suggest build" to "first check if someone else has solved this."
 
 **Supersedes:** Nothing — purely additive. All addendum 1 content carries forward unchanged.  
-**Builds on:** [v4-FINAL-ADDENDUM-opportunity-detector.md](v4-FINAL-ADDENDUM-opportunity-detector.md) (addendum 1) and [v4-roll-your-own-app-FINAL.md](v4-roll-your-own-app-FINAL.md) (v4-FINAL).
+**Builds on:** [v4-FINAL-ADDENDUM-opportunity-detector.md](v4-FINAL-ADDENDUM-opportunity-detector/) (addendum 1) and [v4-roll-your-own-app-FINAL.md](v4-roll-your-own-app-FINAL/) (v4-FINAL).
 
 **Reason for this addendum:** User feedback — "We could also try to suggest MCP servers from the aggregator sites. Plus there are skills aggregation sites too." The user correctly observed that many detected patterns have ALREADY been solved by the community. Suggesting "build" when "install" would take minutes is wasteful.
 
@@ -619,7 +619,7 @@ The competitive moat:
 | **Version** | v4-FINAL-ADDENDUM-2 |
 | **Status** | Complete — Addendum #2 to v4-FINAL |
 | **Supersedes** | Nothing — purely additive |
-| **Builds on** | [v4-FINAL-ADDENDUM-opportunity-detector.md](v4-FINAL-ADDENDUM-opportunity-detector.md) (addendum 1), [v4-roll-your-own-app-FINAL.md](v4-roll-your-own-app-FINAL.md) (v4-FINAL) |
+| **Builds on** | [v4-FINAL-ADDENDUM-opportunity-detector.md](v4-FINAL-ADDENDUM-opportunity-detector/) (addendum 1), [v4-roll-your-own-app-FINAL.md](v4-roll-your-own-app-FINAL/) (v4-FINAL) |
 | **v4-FINAL Memory ID** | `400a2db3-af29-4d76-9f09-c95c95d0ea88` |
 | **Addendum 1 Memory ID** | `359f0dcd-c973-430f-971c-c3e6b7df49a6` |
 | **Line count** | ~430 |

@@ -5,7 +5,7 @@
 **Status:** DESIGN (Architecture Decision)  
 **Author:** boomerang-architect  
 **Supersedes:** (none — net-new capability)  
-**References:** [`DESIGN_stateless_agents_v1.md`](./DESIGN_stateless_agents_v1.md), [`ARCHITECTURE_PLAN_V5.md`](./ARCHITECTURE_PLAN_V5.md)
+**References:** [`DESIGN_stateless_agents_v1.md`](DESIGN_stateless_agents_v1/), [`ARCHITECTURE_PLAN_V5.md`](ARCHITECTURE_PLAN_V5/)
 
 ---
 
@@ -1324,7 +1324,7 @@ Implement it following the design specification.
 
 ### 10.1 With Stateless Agent Protocol
 
-The fine-grained scoping system is designed to work with the stateless memory-backed protocol from [`DESIGN_stateless_agents_v1.md`](./DESIGN_stateless_agents_v1.md):
+The fine-grained scoping system is designed to work with the stateless memory-backed protocol from [`DESIGN_stateless_agents_v1.md`](DESIGN_stateless_agents_v1/):
 
 | Aspect | Integration |
 |--------|------------|
