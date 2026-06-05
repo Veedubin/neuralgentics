@@ -10,6 +10,7 @@ import { Box, Text } from "@opentui/core";
 import type { ThemeColors } from "../themes/types.js";
 import type { OpenCodeStatus } from "../opencode-client/index.js";
 import type { SessionManagerStatus } from "../session/index.js";
+import type { TextVNode, BoxVNode } from "../vnode-types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -29,10 +30,8 @@ export class StatusBar {
   private _data: StatusBarData;
   private _colors: ThemeColors;
 
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  private _textRef: any = null;
-  private _boxRef: any = null;
-  /* eslint-enable @typescript-eslint/no-explicit-any */
+  private _textRef: TextVNode | null = null;
+  private _boxRef: BoxVNode | null = null;
 
   constructor(data: StatusBarData, colors: ThemeColors) {
     this._data = data;
@@ -62,7 +61,7 @@ export class StatusBar {
       id: "status-content",
       content: this._buildContent(),
       fg: this._colors.textAccent,
-    });
+    }) as unknown as TextVNode;
 
     this._boxRef = Box({
       id: "status-bar",
@@ -70,8 +69,8 @@ export class StatusBar {
       backgroundColor: this._colors.statusBarBg,
       flexDirection: "row",
       padding: 0,
-    });
-    this._boxRef.add(this._textRef);
+    }) as unknown as BoxVNode;
+    (this._boxRef as unknown as { add(child: unknown): void }).add(this._textRef);
 
     return { box: this._boxRef, textRef: this._textRef };
   }

@@ -7,6 +7,7 @@
 
 import { Box, Text, ScrollBox } from "@opentui/core";
 import type { ThemeColors } from "../themes/types.js";
+import type { TextVNode, ScrollBoxVNode, BoxVNode } from "../vnode-types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -35,11 +36,9 @@ export class ChainPanel {
 
   private _colors: ThemeColors;
 
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  private _textRef: any = null;
-  private _scrollRef: any = null;
-  private _boxRef: any = null;
-  /* eslint-enable @typescript-eslint/no-explicit-any */
+  private _textRef: TextVNode | null = null;
+  private _scrollRef: ScrollBoxVNode | null = null;
+  private _boxRef: BoxVNode | null = null;
 
   constructor(colors: ThemeColors) {
     this._colors = colors;
@@ -96,9 +95,9 @@ export class ChainPanel {
       id: "chain-content",
       content: this._buildContent(),
       fg: this._colors.textSecondary,
-    });
+    }) as unknown as TextVNode;
 
-    this._scrollRef = ScrollBox({ scrollY: true, scrollX: false, height: "100%" });
+    this._scrollRef = ScrollBox({ scrollY: true, scrollX: false, height: "100%" }) as unknown as ScrollBoxVNode;
     this._scrollRef.add(this._textRef);
 
     this._boxRef = Box({
@@ -112,8 +111,8 @@ export class ChainPanel {
       height: "100%",
       backgroundColor: this._colors.chainBg,
       flexDirection: "column",
-    });
-    this._boxRef.add(this._scrollRef);
+    }) as unknown as BoxVNode;
+    (this._boxRef as unknown as { add(child: unknown): void }).add(this._scrollRef);
 
     return { box: this._boxRef, textRef: this._textRef, scrollRef: this._scrollRef };
   }

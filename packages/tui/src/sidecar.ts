@@ -315,10 +315,10 @@ export async function checkDatabase(): Promise<{
         close() {},
         error() {},
       },
-    } as any);
+    } as unknown as Parameters<typeof Bun.connect>[0]);
     conn.end();
     return { available: true, host: dbHost, port: dbPort };
-  } catch (e: any) {
+  } catch (_e: unknown) {
     return {
       available: false,
       host: dbHost,

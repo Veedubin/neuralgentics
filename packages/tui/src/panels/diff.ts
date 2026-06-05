@@ -14,11 +14,7 @@ import {
   Box,
   Text,
 } from "@opentui/core";
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// OpenTUI VNode factory functions return ProxiedVNode types that
-// aren't instantiable — we use `any` for VNode refs, matching the
-// pattern in index.ts.
+import type { BoxVNode, TextVNode } from "../vnode-types.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -410,10 +406,9 @@ export class DiffPanel {
   private _statusMessage: string = "";
 
   // VNode references for TUI rendering (set during mount)
-  // OpenTUI VNodes are ProxiedVNode types — use `any` for refs, matching index.ts pattern
-  private _panelBox: any = null;
-  private _contentText: any = null;
-  private _statusText: any = null;
+  private _panelBox: BoxVNode | null = null;
+  private _contentText: TextVNode | null = null;
+  private _statusText: TextVNode | null = null;
 
   /** Current panel state. */
   get state(): DiffPanelState {
@@ -533,7 +528,7 @@ export class DiffPanel {
    * This builds a modal overlay Box that can be shown/hidden atop the
    * chat panel area. The panel shows the diff with y/n/q controls.
    */
-  createRenderable(): any {
+  createRenderable(): BoxVNode {
     const panelBox = Box({
       id: "diff-panel",
       border: true,
@@ -566,11 +561,11 @@ export class DiffPanel {
     panelBox.add(contentText);
     panelBox.add(statusText);
 
-    this._panelBox = panelBox;
-    this._contentText = contentText;
-    this._statusText = statusText;
+    this._panelBox = panelBox as unknown as BoxVNode;
+    this._contentText = contentText as unknown as TextVNode;
+    this._statusText = statusText as unknown as TextVNode;
 
-    return panelBox;
+    return panelBox as unknown as BoxVNode;
   }
 
   // ── Private methods ──────────────────────────────────────────────────────
