@@ -59,7 +59,10 @@ export class CompactionOrchestrator {
   private readonly monitor: TokenMonitor;
 
   // ─── Mutex & Queue ──────────────────────────────────────────────────────
+  /** Whether a compaction is currently in progress (fast-reject guard). */
   private compacting = false;
+  /** Promise-chain for async-serialized access to the compaction critical section. */
+  private compactionLock: Promise<void> = Promise.resolve();
   private queued = false;
 
   // ─── Model availability ─────────────────────────────────────────────────
@@ -229,6 +232,29 @@ export class CompactionOrchestrator {
     return this.compact();
   }
 
+  // ─── Promise-based Lock (serialization) ───────────────────────────────
+
+  /**
+   * Promise-based mutex that serializes access to a critical section.
+   *
+   * If a caller is already inside the lock, subsequent callers are queued
+   * in order and execute one at a time. This is safe for both sync and
+   * async code paths (no race window between check and set).
+   */
+  private async withLock<T>(fn: () => Promise<T>): Promise<T> {
+    const prev = this.compactionLock;
+    let release!: () => void;
+    this.compactionLock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+
   // ─── Manual Compaction ─────────────────────────────────────────────────
 
   /**
@@ -238,11 +264,16 @@ export class CompactionOrchestrator {
    * @throws Error if the extraction model is unavailable.
    */
   async compact(): Promise<CompactionResult | null> {
-    // ─── Mutex: reject double-/compact ────────────────────────────────────
+    // ─── Fast-reject: refuse double-/compact ──────────────────────────────
     if (this.compacting) {
       console.warn("[compaction] Compaction already in progress — double-/compact rejected");
       return null;
     }
+
+    // ─── Set flag BEFORE any await (closes the read-check-write race) ────
+    this.compacting = true;
+    this.queued = false;
+    this.emitStatusChange("compacting");
 
     // ─── Check model availability (lazy init) ─────────────────────────────
     if (this.modelAvailable === null) {
@@ -250,133 +281,134 @@ export class CompactionOrchestrator {
     }
 
     if (!this.modelAvailable) {
+      this.compacting = false;
+      this.emitStatusChange("monitoring");
       throw new Error(
         `Extraction model ${this.config.extractionModelId} is unavailable. ` +
         `Auto-compaction is disabled. Fix the model or use /compact with a custom model.`,
       );
     }
 
-    this.compacting = true;
-    this.queued = false;
-    this.emitStatusChange("compacting");
-    const startTime = Date.now();
+    // ─── Execute compaction inside promise-based lock ────────────────────
+    // The withLock serializes the actual work for any callers that arrive
+    // before the fast-reject flag takes effect (e.g. during the model check
+    // await above). Without it, a second caller could see `compacting ===
+    // false` and also proceed.
+    return this.withLock(async () => {
+      const startTime = Date.now();
 
-    try {
-      // ─── Step 1: Get messages from session ──────────────────────────────
-      const messages = await this.deps.session.messages(
-        this.deps.session.sessionId,
-      );
-      const tokensBefore = estimateMessageTokens(messages);
-
-      // ─── Step 2: Filter messages ────────────────────────────────────────
-      const filterResult = filterMessages(messages, this.config.maxFilteredContentChars);
-
-      if (filterResult.extractionText.trim().length === 0) {
-        console.log("[compaction] No content to extract after filtering");
-        this.compacting = false;
-        this.emitStatusChange("monitoring");
-        return null;
-      }
-
-      // ─── Step 3: Extract facts via gemma4:31b ───────────────────────────
-      const extractionResult = await extractFacts(
-        filterResult.extractionText,
-        this.deps.callExtractionModel,
-        this.config.extractionModelId,
-        this.config.extractionProvider,
-        this.config.maxFactsPerCycle,
-      );
-
-      // ─── Step 4: Write facts to Neuralgentics ───────────────────────────
-      const memoryIds = await writeFactsToMemory(extractionResult.facts, this.deps);
-
-      // ─── Step 5: Revert session ─────────────────────────────────────────
-      let reverted = false;
       try {
-        await this.deps.session.revert(this.deps.session.sessionId);
-        reverted = true;
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`[compaction] Session revert failed: ${msg}`);
-      }
+        // ─── Step 1: Get messages from session ──────────────────────────────
+        const messages = await this.deps.session.messages(
+          this.deps.session.sessionId,
+        );
+        const tokensBefore = estimateMessageTokens(messages);
 
-      // ─── Step 6: Reseed (T-028 stub) ────────────────────────────────────
-      let reseeded = false;
-      let tokensAfter = tokensBefore;
-      if (this.deps.session.sessionId) {
+        // ─── Step 2: Filter messages ────────────────────────────────────────
+        const filterResult = filterMessages(messages, this.config.maxFilteredContentChars);
+
+        if (filterResult.extractionText.trim().length === 0) {
+          console.log("[compaction] No content to extract after filtering");
+          this.emitStatusChange("monitoring");
+          return null;
+        }
+
+        // ─── Step 3: Extract facts via gemma4:31b ───────────────────────────
+        const extractionResult = await extractFacts(
+          filterResult.extractionText,
+          this.deps.callExtractionModel,
+          this.config.extractionModelId,
+          this.config.extractionProvider,
+          this.config.maxFactsPerCycle,
+        );
+
+        // ─── Step 4: Write facts to Neuralgentics ───────────────────────────
+        const memoryIds = await writeFactsToMemory(extractionResult.facts, this.deps);
+
+        // ─── Step 5: Revert session ─────────────────────────────────────────
+        let reverted = false;
         try {
-          const reseedResult = await this.deps.reseed(
-            this.deps.neuralgentics,
-            this.deps.session.sessionId,
-          );
-          reseeded = true;
-          tokensAfter = reseedResult.totalTokens;
+          await this.deps.session.revert(this.deps.session.sessionId);
+          reverted = true;
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
-          console.warn(`[compaction] Reseed failed: ${msg}`);
-          // Estimate: even without reseed, reverting saves most tokens
-          tokensAfter = estimateTokensForMemoryIds(memoryIds.length);
+          console.warn(`[compaction] Session revert failed: ${msg}`);
         }
+
+        // ─── Step 6: Reseed (T-028 stub) ────────────────────────────────────
+        let reseeded = false;
+        let tokensAfter = tokensBefore;
+        if (this.deps.session.sessionId) {
+          try {
+            const reseedResult = await this.deps.reseed(
+              this.deps.neuralgentics,
+              this.deps.session.sessionId,
+            );
+            reseeded = true;
+            tokensAfter = reseedResult.totalTokens;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`[compaction] Reseed failed: ${msg}`);
+            // Estimate: even without reseed, reverting saves most tokens
+            tokensAfter = estimateTokensForMemoryIds(memoryIds.length);
+          }
+        }
+
+        // ─── Calculate savings ratio ────────────────────────────────────────
+        const tokensSpentOnCompaction = estimateExtractionCost(filterResult.extractionText);
+        const tokensSaved = Math.max(0, tokensBefore - tokensAfter);
+        const savingsRatio = tokensSpentOnCompaction > 0
+          ? tokensSaved / tokensSpentOnCompaction
+          : 0;
+
+        const result: CompactionResult = {
+          factsExtracted: extractionResult.facts.length,
+          memoryIds,
+          tokensBefore,
+          tokensAfter,
+          savingsRatio,
+          reverted,
+          reseeded,
+          messagesFiltered: filterResult.filteredOut,
+          durationMs: Date.now() - startTime,
+        };
+
+        // ─── Update state ──────────────────────────────────────────────────
+        this.compactionCount++;
+        this.monitor.update(tokensAfter);
+        this.monitor.resetAfterCompaction(tokensAfter);
+        this.emitStatusChange("monitoring");
+
+        console.log(
+          `[compaction] Cycle #${this.compactionCount} complete: ` +
+          `${result.factsExtracted} facts, ` +
+          `${result.tokensBefore} → ${result.tokensAfter} tokens, ` +
+          `${result.savingsRatio.toFixed(1)}:1 savings, ` +
+          `${result.durationMs}ms`,
+        );
+
+        // ─── Notify listeners ──────────────────────────────────────────────
+        for (const listener of this.compactionCompleteListeners) {
+          try { listener(result); } catch { /* swallow */ }
+        }
+
+        return result;
+
+      } catch (err: unknown) {
+        this.emitStatusChange("monitoring");
+
+        const error = err instanceof Error ? err : new Error(String(err));
+        console.error(`[compaction] Compaction failed: ${error.message}`);
+
+        for (const listener of this.errorListeners) {
+          try { listener(error); } catch { /* swallow */ }
+        }
+
+        throw error;
+      } finally {
+        this.compacting = false;
       }
-
-      // ─── Calculate savings ratio ────────────────────────────────────────
-      // Savings ratio = tokens saved / tokens spent on compaction overhead.
-      // tokensSaved = tokensBefore - tokensAfter
-      // tokensSpent = extraction LLM cost (prompt + response overhead)
-      // A 10:1 ratio means we saved 10x more tokens than we spent on compaction.
-      const tokensSpentOnCompaction = estimateExtractionCost(filterResult.extractionText);
-      const tokensSaved = Math.max(0, tokensBefore - tokensAfter);
-      const savingsRatio = tokensSpentOnCompaction > 0
-        ? tokensSaved / tokensSpentOnCompaction
-        : 0;
-
-      const result: CompactionResult = {
-        factsExtracted: extractionResult.facts.length,
-        memoryIds,
-        tokensBefore,
-        tokensAfter,
-        savingsRatio,
-        reverted,
-        reseeded,
-        messagesFiltered: filterResult.filteredOut,
-        durationMs: Date.now() - startTime,
-      };
-
-      // ─── Update state ──────────────────────────────────────────────────
-      this.compactionCount++;
-      this.monitor.update(tokensAfter);
-      this.monitor.resetAfterCompaction(tokensAfter);
-      this.compacting = false;
-      this.emitStatusChange("monitoring");
-
-      console.log(
-        `[compaction] Cycle #${this.compactionCount} complete: ` +
-        `${result.factsExtracted} facts, ` +
-        `${result.tokensBefore} → ${result.tokensAfter} tokens, ` +
-        `${result.savingsRatio.toFixed(1)}:1 savings, ` +
-        `${result.durationMs}ms`,
-      );
-
-      // ─── Notify listeners ──────────────────────────────────────────────
-      for (const listener of this.compactionCompleteListeners) {
-        try { listener(result); } catch { /* swallow */ }
-      }
-
-      return result;
-
-    } catch (err: unknown) {
-      this.compacting = false;
-      this.emitStatusChange("monitoring");
-
-      const error = err instanceof Error ? err : new Error(String(err));
-      console.error(`[compaction] Compaction failed: ${error.message}`);
-
-      for (const listener of this.errorListeners) {
-        try { listener(error); } catch { /* swallow */ }
-      }
-
-      throw error;
-    }
+    });
   }
 
   /**

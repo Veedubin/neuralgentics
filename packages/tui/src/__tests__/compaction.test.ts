@@ -512,6 +512,66 @@ describe("compaction: CompactionOrchestrator", () => {
     await firstCompact;
   });
 
+  test("recovers after compaction — flag and lock reset for subsequent calls", async () => {
+    const deps = createMockDeps();
+    // Make extraction slow
+    deps.callExtractionModel = mock(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return JSON.stringify({ facts: [{ text: "test", confidence: 0.8, tags: [] }] });
+    });
+
+    const orchestrator = new CompactionOrchestrator(deps);
+    await orchestrator.checkModelAvailability();
+
+    expect(orchestrator.compactCount).toBe(0);
+
+    // First compaction — run to completion
+    const firstResult = await orchestrator.compact();
+    expect(firstResult).not.toBeNull();
+    expect(orchestrator.compactCount).toBe(1);
+
+    // Second compaction — should proceed (flag was reset)
+    const secondResult = await orchestrator.compact();
+    expect(secondResult).not.toBeNull();
+    expect(orchestrator.compactCount).toBe(2);
+
+    // Third compaction — also should proceed
+    const thirdResult = await orchestrator.compact();
+    expect(thirdResult).not.toBeNull();
+    expect(orchestrator.compactCount).toBe(3);
+  });
+
+  test("flag is reset after compaction error", async () => {
+    // Create deps that fail on the first call
+    let callCount = 0;
+    const deps = createMockDeps({
+      session: {
+        ...createMockDeps().session,
+        messages: mock(async (_sessionId?: string | null) => {
+          callCount++;
+          if (callCount === 1) {
+            throw new Error("Session messages failed");
+          }
+          return [
+            createMockChatMessage("user", "Some test content for retry"),
+          ];
+        }),
+      },
+    });
+
+    const orchestrator = new CompactionOrchestrator(deps);
+    await orchestrator.checkModelAvailability();
+
+    // First compaction should throw
+    await expect(orchestrator.compact()).rejects.toThrow(/Session messages failed/);
+    expect(orchestrator.compactCount).toBe(0);
+
+    // Second compaction should succeed (flag was reset via finally)
+    const result = await orchestrator.compact();
+    expect(result).not.toBeNull();
+    expect(orchestrator.compactCount).toBe(1);
+  });
+
   test("queues mid-prompt compaction", async () => {
     const deps = createMockDeps({
       session: {
