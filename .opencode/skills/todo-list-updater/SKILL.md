@@ -52,7 +52,7 @@ The todo list lives in `TASKS.md` (or in a project-specific location if the proj
 ## Reference
 - Roadmap: `docs/roadmap-<proj>.md`
 - Kanban board: this file (TASKS.md)
-- Memory: memini-ai memory ids for session summaries
+- Memory: memoryManager memory ids for session summaries
 ```
 
 The "Current Phase" section is the **headline** of the file. It should be scannable in 30 seconds.
@@ -89,7 +89,7 @@ When the Current Phase is fully Done (all cards in `done` or `archived`), this o
 
 ### sync_to_memory()
 
-Optional. Saves the current todo list to memini-ai with `project` metadata. The orchestrator does this on handoff. The skill does not run this automatically; it is invoked on demand.
+Optional. Saves the current todo list to memoryManager with `project` metadata. The orchestrator does this on handoff. The skill does not run this automatically; it is invoked on demand.
 
 ## Rules
 
