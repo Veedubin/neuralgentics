@@ -166,3 +166,35 @@ None — all cells for OpenClaw were citable.
 **Total `(needs research)` cells: 5** (all in the Permissions column)
 
 No `[UNVERIFIED]` data was used — all facts were sourced from web-verified URLs.
+---
+
+## Final Ship Record — Session 22, commit 8384134
+
+**Status: SHIPPED. Live and verified.**
+
+- **Commit:** `8384134` on `main` in `Veedubin/neuralgentics`
+- **Scope:** 13 files changed, 2004 insertions, 45 deletions
+- **Pushed:** 2026-06-04
+
+### Production changes
+1. `mkdocs.yml` line 3 — `site_url` from `neuralgentics.github.io/...` to `veedubin.github.io/...` (the actual live URL)
+2. `docs/index.md` — full rewrite to 174 lines (hero, problem, what-it-is, dispatch diagram, why-different, 6-framework comparison, 3 MOCKUPs, quicklinks, CTA)
+3. `scripts/install.sh` — 7 new functions for interactive install prompts, wired into main(), `--dry-run` regression fixed
+4. 9 secondary docs — 28 broken `.md` quicklinks rewritten to folder form
+
+### Verification (all green)
+- `bash -n scripts/install.sh` → exit 0
+- `mkdocs build --strict` → exit 0
+- `bash scripts/install.sh --dry-run --yes` → completes WITHOUT starting any podman container (bug fix)
+- Interactive prompts (stdin piping) → all prompts fire, validation works
+- GitHub Actions on commit 8384134: CI ✅, Docs ✅, pages build and deployment ✅
+- Live site `https://veedubin.github.io/neuralgentics/` → HTTP 200, contains all new content
+- All 5 quicklink URLs → HTTP 200 (no more 404s)
+
+### Zero-Error Rule fired
+Sub-agent Card A claimed "OK" without exercising the `--dry-run` path. Orchestrator caught the regression where dry-run was actually starting a real podman container. Fixed inline.
+
+### Outstanding
+- `v0.1.0` git tag not yet pushed (workflow ready, one command triggers release matrix)
+- 5 `(needs research)` cells in the comparison table — honest, not fabricated
+- TODO #18, #19, #20 still queued
