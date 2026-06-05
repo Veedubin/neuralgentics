@@ -127,7 +127,7 @@ modern monospace font.
 
 | #   | Diagram                         | Lives in                          | Shows                                                                                                                          |
 |-----|---------------------------------|-----------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
-| 1   | **System Architecture**         | `architecture/overview.md`        | Go backend ↔ Python memini-ai ↔ PostgreSQL/pgvector; MCP boundary; TS plugin in OpenCode; broker as the gate                  |
+| 1   | **System Architecture**         | `architecture/overview.md`        | Go backend ↔ Python memoryManager ↔ PostgreSQL/pgvector; MCP boundary; TS plugin in OpenCode; broker as the gate                  |
 | 2   | **Broker Permission Gating**    | `architecture/broker-flow.md`     | Agent request → role check → catalog filter → Jaccard intent match → expand server → permission recheck → JSON-RPC call → reply  |
 | 3   | **Orchestrator Dispatch Pipeline** | `architecture/dispatch-flow.md` | User prompt → orchestrator thought chain → task decomposition → routing matrix lookup → context package build → Task() → agent   |
 | 4   | **Permission Matrix Heatmap**   | `architecture/permission-model.md` | Table-form diagram: 8 agent roles (rows) × 14 MCP server categories (columns); cells = allow/deny                              |
