@@ -94,15 +94,6 @@ nav:
       - Session Lifecycle: reference/session-lifecycle.md
   - Troubleshooting: troubleshooting.md
   - Development: development.md
-  - Design:
-      - v4 Roll Your Own App: design/v4-roll-your-own-app-FINAL.md
-      - v0.1.0 Release Pipeline: design/v0.1.0-release-pipeline.md
-      - Broker Wave 2 Hardening: design/broker-wave2-hardening.md
-      - Broker Server Catalog: design/broker-server-catalog-prompting.md
-      - Neuralgentics Memory Port v2: design/neuralgentics-memory-port-plan-v2-final.md
-      - Plugin/Backend Integration: design/plugin-backend-integration.md
-      - Opportunity Detector: design/v4-FINAL-ADDENDUM-opportunity-detector.md
-      - Aggregator-Aware Detector: design/v4-FINAL-ADDENDUM-2-aggregator-aware-detector.md
   - Archive:
       - Pre-docs (v0): archive/v0-pre-docs/ARCHITECTURE.md
       - "Pre-docs: Broker": archive/v0-pre-docs/BROKER.md
@@ -115,14 +106,3 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/Veedubin/neuralgentics
       name: Neuralgentics on GitHub
-
-# Legacy design docs in `docs/design/` predate this site and contain cross-
-# references to design files that don't exist in this repo (they lived in a
-# sibling `boomerang-v3` repo). Suppress those warnings so `mkdocs build
-# --strict` can pass without rewriting historical design notes.
-validation:
-  links:
-    not_found: ignore
-  nav:
-    omitted_files: ignore
-    absolute_links: ignore
