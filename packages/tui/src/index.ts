@@ -23,6 +23,12 @@ import {
   Input,
   ScrollBox,
 } from "@opentui/core";
+import type {
+  ProxiedVNode,
+  TextRenderable,
+  BoxRenderable,
+  InputRenderable,
+} from "@opentui/core";
 import { parseKanbanBoard, formatKanbanForPanel, type KanbanBoard } from "./kanban/index.js";
 import { handleSlashCommand, handleMemoryCommand, handleChainCommand, type CommandDependencies } from "./commands.js";
 import { initSidecar, checkDatabase, registerSidecarShutdown } from "./sidecar.js";
@@ -34,6 +40,7 @@ import { ThemeManager } from "./themes/index.js";
 import type { ThemeColors } from "./themes/types.js";
 import { FocusManager, initPanelAriaLabels, toggleHighContrast, type PanelName } from "./a11y/index.js";
 import { TokenCounter } from "./observability/token-counter.js";
+import type { TextVNode, BoxVNode, InputVNode } from "./vnode-types.js";
 
 // ─── Theme Manager (T-032) ────────────────────────────────────────────────────
 
@@ -77,13 +84,22 @@ const state: AppState = {
 };
 
 // ─── ProxiedVNode references (delegated property access after mount) ───────────
+// Assigned once in buildLayout(); all callbacks run after that assignment.
+// Using definite assignment assertions (!) since the lifecycle guarantees
+// these are set before any callback fires.
+//
+// ProxiedVNode maps getter return types only (TS limitation with getter/setter
+// pairs in mapped types). We use writable interface types (TextVNode, BoxVNode,
+// InputVNode) and cast from the factory return value at the single assignment
+// site. Property reads like .content return StyledText/RGBA from ProxiedVNode,
+// but property writes accept string via the delegated proxy at runtime. The
+// interface types capture the write-side shape for compile-time checking.
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-let kanbanText: any;
-let chatText: any;
-let chainText: any;
-let statusText: any;
-let inputVNode: any;
+let kanbanText!: TextVNode;
+let chatText!: TextVNode;
+let chainText!: TextVNode;
+let statusText!: TextVNode;
+let inputVNode!: InputVNode;
 
 /** OpenCode SDK client — initialized in main(), used by input handler. */
 let opencodeClient: OpenCodeClient | null = null;
@@ -93,7 +109,6 @@ let sessionManager: SessionManager | null = null;
 let neuralgenticsClient: NeuralgenticsClient | null = null;
 /** Token counter — tracks token usage per call and provides /spend data (T-033). */
 let tokenCounter: TokenCounter | null = null;
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** Diff panel — T-030. Modal overlay shown when user runs `/diff` or after a code change. */
 let diffPanel: DiffPanel | null = null;
@@ -103,14 +118,12 @@ let diffPanel: DiffPanel | null = null;
 const focusManager = new FocusManager();
 
 // Panel VNode references keyed by panel name (for focus highlighting)
-/* eslint-disable @typescript-eslint/no-explicit-any */
-const panelVNodes: Record<PanelName, any> = {
+const panelVNodes: Record<PanelName, BoxVNode | null> = {
   kanban: null,
   chat: null,
   chain: null,
   input: null,
 };
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -155,9 +168,10 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
   // ── Main 3-column row ──────────────────────────────────────────────────────
 
   // Kanban panel (~30%)
-  kanbanText = Text({ content: buildKanbanContent(), fg: c.textPrimary });
+  const kanbanTextNode = Text({ content: buildKanbanContent(), fg: c.textPrimary });
+  kanbanText = kanbanTextNode as unknown as TextVNode;
   const kanbanScroll = ScrollBox({ scrollY: true, scrollX: false, height: "100%" });
-  kanbanScroll.add(kanbanText);
+  kanbanScroll.add(kanbanTextNode);
   const kanbanPanel = Box({
     id: "kanban-panel",
     border: true,
@@ -171,12 +185,13 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
     flexDirection: "column",
   });
   kanbanPanel.add(kanbanScroll);
-  panelVNodes.kanban = kanbanPanel;
+  panelVNodes.kanban = kanbanPanel as unknown as BoxVNode;
 
   // Chat panel (~50%)
-  chatText = Text({ content: state.chatMessages.join("\n"), fg: c.textPrimary });
+  const chatTextNode = Text({ content: state.chatMessages.join("\n"), fg: c.textPrimary });
+  chatText = chatTextNode as unknown as TextVNode;
   const chatScroll = ScrollBox({ scrollY: true, scrollX: false, height: "100%" });
-  chatScroll.add(chatText);
+  chatScroll.add(chatTextNode);
   const chatPanel = Box({
     id: "chat-panel",
     border: true,
@@ -190,12 +205,13 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
     flexDirection: "column",
   });
   chatPanel.add(chatScroll);
-  panelVNodes.chat = chatPanel;
+  panelVNodes.chat = chatPanel as unknown as BoxVNode;
 
   // Chain panel (~20%)
-  chainText = Text({ content: state.chainThoughts.join("\n"), fg: c.textSecondary });
+  const chainTextNode = Text({ content: state.chainThoughts.join("\n"), fg: c.textSecondary });
+  chainText = chainTextNode as unknown as TextVNode;
   const chainScroll = ScrollBox({ scrollY: true, scrollX: false, height: "100%" });
-  chainScroll.add(chainText);
+  chainScroll.add(chainTextNode);
   const chainPanel = Box({
     id: "chain-panel",
     border: true,
@@ -209,7 +225,7 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
     flexDirection: "column",
   });
   chainPanel.add(chainScroll);
-  panelVNodes.chain = chainPanel;
+  panelVNodes.chain = chainPanel as unknown as BoxVNode;
 
   // Assemble the 3-column row
   const mainRow = Box({
@@ -225,10 +241,11 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
 
   // ── Status bar (1 row) ─────────────────────────────────────────────────────
 
-  statusText = Text({
+  const statusTextNode = Text({
     content: buildStatusBarText(),
     fg: c.textAccent,
   });
+  statusText = statusTextNode as unknown as TextVNode;
   const statusBarBox = Box({
     id: "status-bar",
     height: 1,
@@ -236,24 +253,24 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
     flexDirection: "row",
     padding: 0,
   });
-  statusBarBox.add(statusText);
+  statusBarBox.add(statusTextNode);
 
   // ── Input bar (1 row) ───────────────────────────────────────────────────────
 
   const promptLabel = Text({ content: "> ", fg: c.textAccent });
 
-  inputVNode = Input({
+  const inputNode = Input({
     value: "",
     placeholder: "Type a message or /command...",
     textColor: COLORS.textPrimary,
     backgroundColor: COLORS.inputBarBg,
     flexGrow: 1,
     onSubmit: async () => {
-      const value: string = inputVNode.value ?? "";
+      const value: string = inputNode.value ?? "";
       if (value.trim().length === 0) return;
 
       // Clear input immediately
-      inputVNode.value = "";
+      inputNode.value = "";
 
       // Handle slash commands
       if (value.trim().startsWith("/")) {
