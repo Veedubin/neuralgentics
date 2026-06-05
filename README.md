@@ -1,40 +1,108 @@
 # Neuralgentics
 
-> Specialized coding agent built on OpenCode. Trust-weighted memory. Permission-gated MCP.
+> An open-source agent runtime, built for engineers who ship.
 
-📖 **Full documentation: <https://neuralgentics.github.io/neuralgentics/>**
+**23 specialist agents, a trust-scored memory engine, and a permissions-based tool broker — all in a 26 MB Go binary.** No cloud account, no telemetry, no vendor lock-in. You run it on your machine; it remembers what your agents did; it stops them from doing things they shouldn't.
+
+📖 **Full documentation: <https://veedubin.github.io/neuralgentics/>**
+
+---
+
+## What it does
+
+- **Memory Engine** — Every decision an agent makes lands in PostgreSQL + pgvector with a **trust score** (default 0.5). Successful patterns get promoted; failed approaches decay and fade. The system is honest about what worked.
+- **MCP Broker** — All tool calls go through a broker that enforces role-based permissions: 23 roles, 7 restricted server classes. `github-mcp` is gated to `boomerang-git` only. The broker also cuts the tool list in agent prompts, reducing token overhead by up to 95% per dispatch.
+- **Kanban Board** — A real 7-state finite state machine (`triage → todo → ready ↔ running ↔ blocked → done → archived`), not a TODO list. Every transition is logged. `failureLimit=2` auto-archives a card that keeps failing.
+- **Tiered Context Loading** — L0 (~100 tokens, always-injected summary) + L1 (~2K tokens, key decisions) + L2 (unbounded, on-demand). New agents start with the same context humans do after skimming a project wiki.
+- **Multi-Agent Routing** — One routing matrix maps task type to specialist agent. Architect designs, coder implements, tester gates, git commits. Enforced at the code level, not by convention.
+- **Stateless Agent Protocol** — Agents receive ~200-token seed prompts and fetch their own context from memory. Wrap-ups are stored back. Token overhead per dispatch drops to a few hundred tokens, and a fresh agent picks up where the last one left off.
+
+---
 
 ## Quick links
 
-- [Installation](https://neuralgentics.github.io/neuralgentics/getting-started/installation/)
-- [Quickstart](https://neuralgentics.github.io/neuralgentics/getting-started/quickstart/)
-- [Architecture overview](https://neuralgentics.github.io/neuralgentics/architecture/overview/)
-- [Environment variables](https://neuralgentics.github.io/neuralgentics/reference/env-vars/)
-- [Troubleshooting](https://neuralgentics.github.io/neuralgentics/troubleshooting/)
+- [Installation](https://veedubin.github.io/neuralgentics/getting-started/installation/)
+- [Quickstart](https://veedubin.github.io/neuralgentics/getting-started/quickstart/)
+- [System overview](https://veedubin.github.io/neuralgentics/architecture/overview/)
+- [Dispatch flow](https://veedubin.github.io/neuralgentics/architecture/dispatch-flow/)
+- [Permission model](https://veedubin.github.io/neuralgentics/architecture/permission-model/)
+- [Environment variables](https://veedubin.github.io/neuralgentics/reference/env-vars/)
+- [Memory system](https://veedubin.github.io/neuralgentics/reference/memory-system/)
+- [Kanban system](https://veedubin.github.io/neuralgentics/reference/kanban-system/)
+- [Troubleshooting](https://veedubin.github.io/neuralgentics/troubleshooting/)
+- [Development](https://veedubin.github.io/neuralgentics/development/)
+
+---
+
+## Install
+
+```bash
+# One-line install (Linux, macOS, WSL2)
+curl -LsSf https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash
+```
+
+The install script handles Go, Node, podman, and SSL certs. It detects WSL2, prompts for the install prefix, and supports `--dry-run` and `--yes` flags. See the [installation guide](https://veedubin.github.io/neuralgentics/getting-started/installation/) for the full option list.
+
+---
+
+## Architecture at a glance
+
+```text
+    USER PROMPT
+         │
+         ▼
+   ╔══════════════════╗
+   ║   ORCHESTRATOR   ║ ◄── Routes by intent to specialist agent
+   ╚══════════════════╝
+         │
+         ├─→ MEMORY (PostgreSQL + pgvector, trust-scored)
+         │     L0 summary  ·  L1 decisions  ·  L2 full history
+         │
+         ├─→ KANBAN (FSM: triage→todo→ready→running→done)
+         │     Cards persist across sessions
+         │
+         └─→ MCP BROKER (RBAC: 23 roles × 7 restricted servers)
+               ✓ if role authorized  ·  ✗ → audit log + reject
+```
+
+A task enters the orchestrator, gets routed to a specialist, who calls the broker for tools, who checks RBAC, who executes — and every decision lands in the trust-scored memory store.
+
+---
+
+## What ships
+
+| Component | Size | Purpose |
+| :--- | :--- | :--- |
+| `packages/backend-go/` | 26 MB binary | JSON-RPC server, 42 methods, stdio transport |
+| `packages/memini-core/` | Python | pgvector memory + trust engine + decay scheduler |
+| `packages/broker-go/` | Go | RBAC enforcement + tool call routing + audit log |
+| `packages/orchestrator-go/` | Go | Routing matrix + card lifecycle + dispatch |
+| `packages/tui/` | TypeScript | Terminal UI (OpenTUI-based, mockups in docs) |
+| `overlay/packages/opencode/` | TypeScript | Plugin that wires the runtime into OpenCode |
+
+Eight concrete agent roles ship in the project: **architect, coder, explorer, git, orchestrator, reviewer, tester, writer**. The 23 in the broker matrix extend these with finer-grained permission scopes.
+
+---
 
 ## 30-second pitch
 
 Neuralgentics is a coding-agent runtime that:
 
-1. **Routes tasks to specialist sub-agents** (coder, architect, tester, ...)
-   via a typed routing matrix
-2. **Stores everything in a trust-weighted memory engine** (PostgreSQL + pgvector)
-3. **Mediates all external tool access through an MCP broker** that enforces
-   role-based permissions and reduces tool-catalog tokens by 95%
-4. **Speaks MCP to the world** (42 JSON-RPC methods, stdio transport)
-5. **Installs in one command** (`./scripts/install.sh`) or one
-   `podman-compose up`
+1. **Routes tasks to specialist sub-agents** (architect, coder, tester, git, ...) via a typed routing matrix
+2. **Stores everything in a trust-weighted memory engine** (PostgreSQL + pgvector) — successful patterns get promoted, failed ones decay
+3. **Mediates all external tool access through an MCP broker** that enforces role-based permissions and reduces tool-catalog tokens by 95%
+4. **Speaks MCP to the world** — 42 JSON-RPC methods, stdio transport, broker-gated
+5. **Installs in one command** (`./scripts/install.sh`) or one `podman-compose up`
 
-HACK THE PLANET. See the [docs](https://neuralgentics.github.io/neuralgentics/)
-for everything else.
+Agent prompts are ~200 tokens each. State lives in memory, not in the prompt. Open-source under the MIT License.
+
+HACK THE PLANET. See the [docs](https://veedubin.github.io/neuralgentics/) for everything else.
+
+---
 
 ## Development setup
 
-Neuralgentics uses [`uv`](https://docs.astral.sh/uv/) to manage Python dependencies
-from the `pyproject.toml` files in each Python package, and `npm` for the
-TypeScript overlay. **There are no vendored dependencies in the repo** — all
-build artifacts, virtualenvs, and the vendored OpenCode source are excluded
-by `.gitignore` and re-created locally on first run.
+Neuralgentics uses [`uv`](https://docs.astral.sh/uv/) to manage Python dependencies from the `pyproject.toml` files in each Python package, and `npm` for the TypeScript overlay. **There are no vendored dependencies in the repo** — all build artifacts, virtualenvs, and the vendored OpenCode source are excluded by `.gitignore` and re-created locally on first run.
 
 ```bash
 # 1. Install uv (one-time)
@@ -58,4 +126,10 @@ make all          # lint + typecheck + build + test + smoke
 make docs-serve   # serve the documentation site locally
 ```
 
-The `[Makefile](./Makefile)` documents every target.
+The [Makefile](./Makefile) documents every target.
+
+---
+
+## License
+
+MIT.
