@@ -1310,8 +1310,7 @@ func (s *PostgresStore) LogTrustAdjustment(ctx context.Context, adj *core.TrustA
 
 // GetTrustAdjustments retrieves trust adjustments for a memory.
 func (s *PostgresStore) GetTrustAdjustments(ctx context.Context, memoryID string, limit int) ([]*core.TrustAdjustment, error) {
-	// TODO: implement trust adjustment history query
-	return nil, nil
+	return nil, fmt.Errorf("not implemented: GetTrustAdjustments")
 }
 
 // ─── Decay Operations ───────────────────────────────────────────────────────
@@ -1328,8 +1327,7 @@ func (s *PostgresStore) UpdateDecayRate(ctx context.Context, memoryID string, ra
 
 // ListFadingMemories returns memories approaching archive threshold.
 func (s *PostgresStore) ListFadingMemories(ctx context.Context, threshold float64, limit int) ([]*core.MemoryEntry, error) {
-	// TODO: implement fading memories query (trust score near archive threshold)
-	return nil, nil
+	return nil, fmt.Errorf("not implemented: ListFadingMemories")
 }
 
 // ─── Project Indexer Operations ──────────────────────────────────────────────
