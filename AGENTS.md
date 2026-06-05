@@ -98,3 +98,41 @@ All `code-implementation` outputs MUST pass `reviewer` before `tester` runs inte
 
 ### Rule 3: Parallelism Allowed Only For Independent Tasks
 Multiple coders may run in parallel ONLY when tasks have no shared files and no design dependencies.
+
+### Rule 4: One Task Per Coder Per Dispatch (Mandatory)
+A single coder dispatch must contain **exactly ONE task** (T-XXX). Never bundle multiple tasks (e.g., T-065 + T-066) into one prompt, even if they are in the same module or "logically related."
+
+**Rationale:** Coder agents have a finite context window. After ~60% utilization they start producing sloppy, hallucinated, or incomplete output. Splitting work into single-task dispatches keeps each coder within its sweet spot and forces clean wrap-ups (commit, memory save, quality gates) at the natural boundary of each task.
+
+**Enforcement:**
+- The orchestrator MUST scope each coder dispatch to a single card.
+- If two related fixes would benefit from one agent's context, dispatch them as **two sequential coder cards** (T-065 first, then T-066) — the second coder can read T-065's commit and wrap-up memory to pick up where the first left off.
+- Testers and architects may still be multi-task because they are read-only; this rule applies specifically to `boomerang-coder` dispatches.
+
+### Rule 5: Coders Delegate Lint/Format to Sub-Agents (Mandatory)
+A coder MUST NOT run `gofmt`/`goimports`/`eslint`/`prettier`/`ruff`/`black` style fixes inline. The coder's job is the **logical change** (implement, fix, refactor). Style enforcement is a separate concern that belongs to a `boomerang-linter` sub-dispatch.
+
+**How it works:**
+- The coder's wrap-up MUST include a list of "files touched that need linting" (with the lint tool per file: e.g., `gofmt -w` for `.go`, `bun run lint --fix` for `.ts`, `ruff check --fix` for `.py`).
+- The orchestrator then dispatches a `boomerang-linter` card (T-LINT-XXX) that:
+  1. Reads the coder's wrap-up memory
+  2. Runs the appropriate linter/formatter on each touched file
+  3. Re-runs tests to confirm style changes didn't break anything
+  4. Commits the lint changes as a separate commit (e.g., `style(memory): gofmt + goimports after T-065`)
+- This keeps the coder's context focused on the actual bug fix and gives the linter agent a clean, scoped job.
+
+**Exception:** If the coder's change is purely stylistic (no logical change, e.g., a rename), the coder may lint inline. But any non-trivial code change should defer lint to a sub-agent.
+
+*(Added 2026-06-05 Session 23 after observing coder context get pulled into formatting concerns at the end of long dispatches. Formalizes the "coder writes logic, linter enforces style" split.)*
+
+## Future Direction: Git-Heavy Workflow
+Once the kanban + linter sub-dispatch workflow is stable (Session 24+), the user wants to migrate toward a **git-heavy** model where:
+- Each card lives on its own feature branch (e.g., `git checkout -b t-065-scan-error-propagation`).
+- Commits are small, atomic, and reference the card ID in the message (`fix(memory): ...  Refs: T-065`).
+- The orchestrator (or `boomerang-git` sub-agents) handles branch creation, rebases, and PR opening.
+- The kanban card status is updated from git state (e.g., PR merged → card done).
+- Rollback is a single `git revert` instead of an undo dance in working memory.
+
+This is **not in scope for Session 23** — it's the long-term direction. The orchestrator should keep the existing 1-commit-per-area pattern but START including `Refs: T-XXX` in commit messages so the future git-heavy migration has clean history to work with.
+
+*(Added 2026-06-05 Session 23 after a T-065+T-066 combined dispatch produced coherent work for the first half then degraded to "recommendations for next steps" instead of finishing the second task. Cost: 1 wasted dispatch, partial quality. Going forward: 1 task = 1 dispatch = 1 wrap-up = 1 memory save.)*

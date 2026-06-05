@@ -144,3 +144,30 @@ Use **Gemini** for routine board operations. The board manager is mostly mechani
 - **Do not** create a card without a roadmap link (except in `triage`, where the card IS the rough idea).
 - **Do not** move a card to `done` without evidence. The board manager should refuse and prompt the worker for the wrap-up JSON.
 - **Do not** auto-promote a card to `ready` if its dependencies are not all `done`. The orchestrator (or board manager's `find_ready_cards()`) checks this explicitly.
+
+## Card Granularity Rules (Added Session 23)
+
+These rules govern **how fine-grained a card should be**. Over-broad cards waste context and degrade worker output.
+
+### Rule G1: One logical change per card
+A card's "Acceptance" should fit in **one logical change**. Examples of properly-scoped cards:
+- ✅ "Fix silent error swallowing in 7 Scan loops in store package"
+- ✅ "Fix CountMemories broken primary query"
+- ✅ "Add regression test for CountMemories"
+- ❌ "Refactor memory store package" (too broad — 1768 LOC god-file)
+- ❌ "Fix memory store bugs" (too vague)
+
+If a logical change touches multiple files in the same module, that's fine — one card, one dispatch. But if it touches multiple unrelated concerns (e.g., error handling + a new feature + perf), that's three cards.
+
+### Rule G2: Cards that need linting spawn a separate card
+If a card's "Scope IN" includes "touch N files" and the touched files will need lint/format work, the card's wrap-up should list those files explicitly so a follow-up `T-LINT-XXX` card can dispatch to a `boomerang-linter` agent. Do not bundle the lint work into the coder's dispatch.
+
+Card convention:
+- Logic-fix cards: `T-NNN · <verb> <thing> — <one-line summary>`
+- Lint-only cards: `T-LINT-NNN · <tool> <files> after <T-XXX>`
+
+### Rule G3: Cards that span new code + tests split
+A "fix this bug" card is fine to include "add regression test" in the same dispatch (the test proves the fix). But a "fill coverage gap" card that is purely about adding tests to existing code should be `T-TEST-NNN`, not bundled with a refactor.
+
+### Rule G4: Refactor of N>1 file splits into N or more cards
+A refactor that splits a 1768-LOC file into 10 files is **at least 10 cards** (one per new file extraction), executed sequentially. Don't try to do all 10 in one dispatch.
