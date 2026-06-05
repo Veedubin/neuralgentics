@@ -152,6 +152,22 @@ For each `ready` card, the orchestrator:
 3. **Delegates** via the Task tool with the Context Package inline. Never "look at TASKS.md and figure out what to do." The card's scope IS the task.
 4. **The worker** moves the card `ready → running → done` as it goes, attaching evidence (changed files, test results, residual risk) in the wrap-up.
 
+#### 4.1 Dispatch Granularity Rules (enforced)
+
+The orchestrator MUST scope each `boomerang-coder` dispatch to **exactly ONE card**. The card IS the dispatch.
+
+- ❌ **WRONG:** "T-065 + T-066: fix scan loops + CountMemories + stubs in one prompt"
+- ✅ **RIGHT:** Two sequential coder dispatches. T-065 first (coder finishes, commits, saves memory), then T-066 (coder reads T-065's wrap-up memory and continues).
+- ❌ **WRONG:** "Fix all the bugs in the memory store package"
+- ✅ **RIGHT:** One card per bug, with regression tests.
+
+Linting/formatting is a **separate concern** from the logical change. The coder's wrap-up MUST list every file that needs lint work. The orchestrator then dispatches a follow-up `T-LINT-XXX` card to `boomerang-linter` (NOT the coder).
+
+- ❌ **WRONG:** Coder runs `gofmt -w` on their way out the door.
+- ✅ **RIGHT:** Coder commits the logical fix, lists `gofmt: packages/memory/.../store/*.go` in wrap-up, linter sub-dispatch runs the format pass as a separate commit.
+
+Test coverage gaps discovered during a refactor card spawn a `T-TEST-NNN` card, not a scope-creep into the refactor.
+
 ### 5. Wrap-up Audit (orchestrator + self-audit skill)
 
 Before ending the turn, the orchestrator runs a **board audit**:
