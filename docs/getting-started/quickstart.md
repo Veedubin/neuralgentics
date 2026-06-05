@@ -7,7 +7,7 @@ Get Neuralgentics from "Clone" to "First Dispatch" in under 5 minutes.
 ### 1. Install the Runtime
 If you haven't already, run the binary installer:
 ```bash
-curl -fsSL https://github.com/Veedubin/neuralgentics/releases/latest/download/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash
 ```
 
 ### 2. Initialize Infrastructure

@@ -47,7 +47,7 @@ This is the fastest way to get started. We provide pre-built binaries for Linux,
 ### Steps
 1. **Run the installer:**
    ```bash
-   curl -fsSL https://github.com/Veedubin/neuralgentics/releases/latest/download/install.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash
    ```
 2. **Verify the install:**
    ```bash
@@ -109,6 +109,6 @@ Neuralgentics fully supports Windows Subsystem for Linux.
 ### Upgrade Paths
 To upgrade an existing installation to the latest version:
 ```bash
-curl -fsSL https://github.com/Veedubin/neuralgentics/releases/latest/download/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash
 ```
 The installer will detect the existing prefix and overwrite binaries while preserving your `.env` and `memini-core` data.
