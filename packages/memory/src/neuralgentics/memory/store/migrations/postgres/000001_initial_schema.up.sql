@@ -1,5 +1,5 @@
 -- Neuralgentics Memory System: Initial Schema
--- Direct port of memini-ai-dev/src/memini_ai/postgres/schema.py
+-- Direct port of memoryManager/src/memoryManager/postgres/schema.py
 -- All 11 tables + indexes, preserving identical structure.
 
 -- Enable pgvector extension for vector data type (required)

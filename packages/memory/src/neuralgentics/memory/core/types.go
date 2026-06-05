@@ -7,7 +7,7 @@ import (
 
 // MemoryEntry represents a single semantic memory stored in the system.
 // It maps directly to the PostgreSQL memories table schema and preserves
-// all fields from the Python memini-ai-dev implementation.
+// all fields from the Python memoryManager implementation.
 type MemoryEntry struct {
 	ID               string         `json:"id,omitempty"`
 	Content          string         `json:"content"`

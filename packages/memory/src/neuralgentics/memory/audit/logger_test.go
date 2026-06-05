@@ -413,7 +413,7 @@ func TestLogToolInvocation(t *testing.T) {
 		context.Background(),
 		"session-1",
 		"boomerang-coder",
-		"memini-ai-dev_query_memories",
+		"memoryManager_query_memories",
 		map[string]any{"query": "neuralgentics"},
 	)
 	if err != nil {
@@ -433,8 +433,8 @@ func TestLogToolInvocation(t *testing.T) {
 	if logged.AgentName != "boomerang-coder" {
 		t.Errorf("expected AgentName 'boomerang-coder', got %q", logged.AgentName)
 	}
-	if logged.ToolName != "memini-ai-dev_query_memories" {
-		t.Errorf("expected ToolName 'memini-ai-dev_query_memories', got %q", logged.ToolName)
+	if logged.ToolName != "memoryManager_query_memories" {
+		t.Errorf("expected ToolName 'memoryManager_query_memories', got %q", logged.ToolName)
 	}
 	if logged.Details["query"] != "neuralgentics" {
 		t.Errorf("expected Details query 'neuralgentics', got %v", logged.Details["query"])

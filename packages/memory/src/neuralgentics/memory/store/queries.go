@@ -1,7 +1,7 @@
 package store
 
 // SQL query constants for the PostgreSQL/pgvector storage layer.
-// Ported from memini-ai-dev/src/memini_ai/postgres/queries.py.
+// Ported from memoryManager/src/memoryManager/postgres/queries.py.
 // All queries use pgx $N parameter placeholders.
 
 // ─── Vector Search Queries ───────────────────────────────────────────────────
