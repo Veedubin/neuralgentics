@@ -27,7 +27,7 @@ Agent prompts are ~200 tokens each. State lives in memory, not in the prompt. Sh
          │
          ▼
   ╔══════════════════╗
-  ║   THOUGHT CHAIN  ║ ◄── Logged to memini-ai
+  ║   THOUGHT CHAIN  ║ ◄── Logged to memoryManager
   ╚══════════════════╝
          │
          ▼

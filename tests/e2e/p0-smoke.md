@@ -34,7 +34,7 @@ cd packages/tui && bun run start
 - **File paths**: `packages/tui/package.json`, `packages/tui/src/index.ts`, `packages/tui/src/__tests__/setup.test.ts`
 - **Tests**: 5 in `setup.test.ts`
 - **Summary**: Zig 0.14.0 installed, @opentui/core v0.3.1, hello-world TUI renders
-- **Verified by**: T-019 wrap-up (memini-ai: T-019 DONE)
+- **Verified by**: T-019 wrap-up (memoryManager: T-019 DONE)
 
 ### T-020 · Go JSON-RPC Client (P0-b)
 

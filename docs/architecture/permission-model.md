@@ -24,7 +24,7 @@ The following matrix is the **authoritative** view of the `DefaultServerRoles` m
  linter         │  ✓  │  ✓  │  -  │  -  │  ✓  │  ✓  │  -
  mcp-specialist │  ✓  │  ✓  │  -  │  -  │  -  │  -  │  -
 
-  Column keys:  mem = memini-ai-dev   (allow-all)
+  Column keys:  mem = memoryManager   (allow-all)
                 neu = neuralgentics   (allow-all)
                 gh  = github-mcp      (boomerang-git + orchestrator only)
                 ply = playwright      (tester, scraper, researcher)
@@ -46,7 +46,7 @@ The following matrix is the **authoritative** view of the `DefaultServerRoles` m
 
 ### The "Allow-All" Baseline
 Two servers are configured as `allow-all`:
-1. `memini-ai-dev`: Every agent needs memory access.
+1. `memoryManager`: Every agent needs memory access.
 2. `neuralgentics`: Every agent needs to interact with the core runtime.
 
 ### Restricted Servers

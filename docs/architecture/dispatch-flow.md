@@ -11,7 +11,7 @@ Neuralgentics does not use simple linear prompts. It uses a **decompositional pi
          │
          ▼
  ╔══════════════════╗
- ║   THOUGHT CHAIN  ║ ◄── Logged to memini-ai
+ ║   THOUGHT CHAIN  ║ ◄── Logged to memoryManager
  ╚══════════════════╝
          │
          ▼
@@ -44,7 +44,7 @@ Neuralgentics does not use simple linear prompts. It uses a **decompositional pi
 ## 🛠️ Process Details
 
 ### 1. Thought Chain
-Before acting, the orchestrator must "think." It uses `memini-ai-dev_add_thought` to record its reasoning. This prevents "hallucinated paths" and allows developers to audit *why* a specific agent was chosen for a task.
+Before acting, the orchestrator must "think." It uses `memoryManager_add_thought` to record its reasoning. This prevents "hallucinated paths" and allows developers to audit *why* a specific agent was chosen for a task.
 
 ### 2. Task Decomposition
 The orchestrator transforms a prompt into a list of tasks in `TASKS.md`. 
@@ -61,6 +61,6 @@ The routing matrix is a hard-coded rule set that prevents agent misuse. For exam
 ### 4. The Context Package
 To stay token-efficient, the orchestrator does not send a dump of all project files. It constructs a **Context Package** containing:
 - The specific User Request.
-- Relevant file snippets via `memini-ai-dev_search_project`.
+- Relevant file snippets via `memoryManager_search_project`.
 - Previous decisions from L1 memory.
 - Defined boundaries (what is IN vs OUT of scope).
