@@ -23,12 +23,7 @@ import {
   Input,
   ScrollBox,
 } from "@opentui/core";
-import type {
-  ProxiedVNode,
-  TextRenderable,
-  BoxRenderable,
-  InputRenderable,
-} from "@opentui/core";
+
 import { parseKanbanBoard, formatKanbanForPanel, type KanbanBoard } from "./kanban/index.js";
 import { handleSlashCommand, handleMemoryCommand, handleChainCommand, type CommandDependencies } from "./commands.js";
 import { initSidecar, checkDatabase, registerSidecarShutdown } from "./sidecar.js";
@@ -558,6 +553,7 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
       }
     },
   });
+  inputVNode = inputNode as unknown as InputVNode;
 
   const inputBar = Box({
     height: 1,
@@ -565,7 +561,7 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
     flexDirection: "row",
   });
   inputBar.add(promptLabel);
-  inputBar.add(inputVNode);
+  inputBar.add(inputNode);
 
   // ── Theme change handler (T-032) ──────────────────────────────────────────
 
@@ -584,14 +580,14 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
     chatText.fg = COLORS.textPrimary;
     chainText.fg = COLORS.textSecondary;
     statusText.fg = COLORS.textAccent;
-    (promptLabel as any).content = "> ";
-    (promptLabel as any).fg = COLORS.textAccent;
-    if (statusBarBox) (statusBarBox as any).backgroundColor = COLORS.statusBarBg;
+    (promptLabel as unknown as TextVNode).content = "> ";
+    (promptLabel as unknown as TextVNode).fg = COLORS.textAccent;
+    if (statusBarBox) (statusBarBox as unknown as BoxVNode).backgroundColor = COLORS.statusBarBg;
     if (inputVNode) {
       inputVNode.textColor = COLORS.textPrimary;
       inputVNode.backgroundColor = COLORS.inputBarBg;
     }
-    (rootColumn as any).backgroundColor = COLORS.bg;
+    (rootColumn as unknown as BoxVNode).backgroundColor = COLORS.bg;
     state.chatMessages.push(`Theme: ${theme.label}`);
     chatText.content = state.chatMessages.join("\n");
   });
@@ -738,9 +734,9 @@ async function main(): Promise<void> {
       state.chatMessages.push(`⚠ ${err.message}`);
       state.chatMessages.push("⚠ Agent loop offline — memory operations still available via Go backend");
       state.opencodeStatus = "degraded";
-    } else if (err instanceof Error && "degraded" in err && (err as any).degraded === true) {
+    } else if (err && typeof err === "object" && "degraded" in err && (err as { degraded?: unknown }).degraded === true) {
       // OpenCodeStartError — already in degraded mode via statusChange listener
-      console.error(`[opencode] ${err.message}`);
+      console.error(`[opencode] ${"message" in err ? (err as { message?: unknown }).message : String(err)}`);
     } else {
       const msg = err instanceof Error ? err.message : String(err);
       state.chatMessages.push(`⚠ OpenCode failed: ${msg}`);
