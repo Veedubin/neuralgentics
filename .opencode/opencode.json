@@ -43,7 +43,7 @@
   },
   "autoupdate": false,
   "mcp": {
-    "memini-ai-dev": {
+    "memoryManager": {
       "type": "local",
       "command": ["uv", "run", "--directory", "${NEURALGENTICS_ROOT}/packages/memini-core", "python", "-m", "memini_core.server"],
       "environment": {
