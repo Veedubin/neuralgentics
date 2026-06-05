@@ -109,21 +109,85 @@ A single coder dispatch must contain **exactly ONE task** (T-XXX). Never bundle 
 - If two related fixes would benefit from one agent's context, dispatch them as **two sequential coder cards** (T-065 first, then T-066) — the second coder can read T-065's commit and wrap-up memory to pick up where the first left off.
 - Testers and architects may still be multi-task because they are read-only; this rule applies specifically to `boomerang-coder` dispatches.
 
-### Rule 5: Coders Delegate Lint/Format to Sub-Agents (Mandatory)
-A coder MUST NOT run `gofmt`/`goimports`/`eslint`/`prettier`/`ruff`/`black` style fixes inline. The coder's job is the **logical change** (implement, fix, refactor). Style enforcement is a separate concern that belongs to a `boomerang-linter` sub-dispatch.
+### Rule 5: Coder Launches Linter Sub-Agent (Scan → Return → Apply → Verify)
+The coder owns the diff. The linter is a **read-only scan sub-agent** that identifies what to fix — the coder applies the fix and writes the commit. The coder may also re-launch the linter (or a tester) to verify the fix landed cleanly.
 
-**How it works:**
-- The coder's wrap-up MUST include a list of "files touched that need linting" (with the lint tool per file: e.g., `gofmt -w` for `.go`, `bun run lint --fix` for `.ts`, `ruff check --fix` for `.py`).
-- The orchestrator then dispatches a `boomerang-linter` card (T-LINT-XXX) that:
-  1. Reads the coder's wrap-up memory
-  2. Runs the appropriate linter/formatter on each touched file
-  3. Re-runs tests to confirm style changes didn't break anything
-  4. Commits the lint changes as a separate commit (e.g., `style(memory): gofmt + goimports after T-065`)
-- This keeps the coder's context focused on the actual bug fix and gives the linter agent a clean, scoped job.
+**The flow inside one coder dispatch:**
 
-**Exception:** If the coder's change is purely stylistic (no logical change, e.g., a rename), the coder may lint inline. But any non-trivial code change should defer lint to a sub-agent.
+```
+1. Coder makes the logical change (edit code, add test, etc.)
+2. Coder launches boomerang-linter sub-agent (via Task tool) with:
+     - The list of files the coder touched
+     - The project root
+     - "Run the project's linters/formatters in CHECK mode (no writes).
+      Return: (a) list of files that fail lint, (b) the exact diff lint would apply,
+      (c) any other findings (missing test coverage, suspicious patterns)."
+3. Linter returns a structured report. Coder reads it.
+4. Coder APPLIES the linter's suggested fixes (writes the diff itself, runs the formatter
+   in WRITE mode if needed: `gofmt -w file.go`, `bun run lint --fix`, etc.).
+5. Coder re-runs the linter sub-agent to verify clean.
+6. If linter also runs the test suite (e.g., pytest with --collect-only, or vitest run),
+   coder runs the actual tests too: `go test`, `bun test`, `pytest`.
+7. Coder commits, saves memory, returns to orchestrator.
+```
 
-*(Added 2026-06-05 Session 23 after observing coder context get pulled into formatting concerns at the end of long dispatches. Formalizes the "coder writes logic, linter enforces style" split.)*
+**Why this split:**
+- The linter has a **narrow, mechanical** job (read file → run tool → report). Perfect for a sub-agent.
+- The coder has the **logical context** of the change (why the code looks the way it does). Only the coder can decide whether a lint warning is a real bug or a false positive.
+- Linter suggestions are returned as data, not applied autonomously — the coder is the gate.
+- Re-running the linter in step 5 catches anything the coder missed when applying fixes.
+
+**What the linter sub-agent does NOT do:**
+- Write files. Linter is read-only.
+- Commit. Only the coder commits.
+- Save memory. Only the coder saves the wrap-up memory.
+- Decide whether to apply a fix. The coder decides.
+
+**Tool mapping (linter sub-agent picks based on file extension):**
+| Extension | Linter | Formatter |
+|-----------|--------|-----------|
+| `.go` | `go vet`, `golangci-lint` if installed | `gofmt -w`, `goimports -w` |
+| `.ts`, `.tsx` | `eslint`, `tsc --noEmit` | `eslint --fix`, `prettier --write` |
+| `.py` | `ruff check`, `mypy` | `ruff format`, `black` |
+| `.sh` | `shellcheck` | `shfmt -w` |
+| `.md` | `markdownlint` (if installed) | `prettier --write` |
+
+**Example prompt the coder uses to launch the linter sub-agent:**
+
+> "You are boomerang-linter. Project root: `/home/jcharles/...`. Files to scan: `packages/memory/src/neuralgentics/memory/store/memories.go`, `packages/memory/src/neuralgentics/memory/store/queries.go`. Run in CHECK MODE only (no writes). For each tool in the table, run it on these files and return a structured report: `{file, line, tool, severity, message, suggested_fix}`. Do not commit, do not edit, do not save memory. Return the report as your final message."
+
+**Coder's wrap-up MUST include** the linter report's summary (count of issues found, count fixed) so the orchestrator can verify the loop was followed.
+
+*(Added 2026-06-05 Session 23. First version had the linter doing the commit. Corrected: linter is a scan/advisor, coder is the writer. The handoff is "linter says what" → "coder writes the fix" → "linter verifies" → "coder commits".)*
+
+### Rule 6: Release Cards MUST Spawn a Docs Card (Mandatory)
+Every release card (`T-REL-NNN`) MUST include a child `T-DOCS-NNN` card that invokes the `update-gh-docs` skill before the tag is pushed. The release card is not "done" until the docs card is "done."
+
+**Why:** Prior to Session 23, the v0.1.0 release shipped with an install URL that pointed to a non-existent release asset. The user fixed it post-tag in commit `afdc89d`. The fix should not have been needed — the `update-gh-docs` skill would have caught it during the release card workflow.
+
+**Enforcement:**
+- The kanban-board-manager MUST refuse to create a release card without a corresponding docs card in `blocked` or `todo` status.
+- The orchestrator MUST dispatch `T-DOCS-NNN` before `T-REL-NNN`.
+- The release card's "Acceptance" section MUST include "T-DOCS-XXX done" as a checkbox.
+- The release card's "Depends on" section MUST list `T-DOCS-XXX`.
+
+**Where the docs updates go (neuralgentics-specific):**
+- `README.md` (install command, version badge, quickstart)
+- `CHANGELOG.md` (new top section for the new version)
+- `docs/index.md` (hero copy, latest features)
+- `mkdocs.yml` (`site_url`, `repo_url`, version, new pages)
+- `package.json` (root + `packages/tui`, `packages/opencode` version fields)
+- `.github/workflows/release.yml` (Go version, build matrix, container job status)
+
+**Where the docs updates do NOT go (local-only, never public):**
+- `HANDOFF.md`, `CONTEXT.md`, `TASKS.md` (gitignored session artifacts)
+- `certs/`, `.venv/`, `node_modules/`, `build/`, `dist/`, `site/`
+- `opencode-base/`
+- `docs/design/session-*.md`, `docs/design/*-plan*.md` (internal design docs)
+
+**See also:** `skills/update-gh-docs/SKILL.md` for the full checklist and generic flow.
+
+*(Added 2026-06-05 Session 23 after v0.1.0 shipped with an install URL pointing to a non-existent release asset. The post-tag fix should not have been needed; the docs card catches it during the release workflow.)*
 
 ## Future Direction: Git-Heavy Workflow
 Once the kanban + linter sub-dispatch workflow is stable (Session 24+), the user wants to migrate toward a **git-heavy** model where:
