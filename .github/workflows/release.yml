@@ -92,10 +92,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Go 1.24
+      - name: Setup Go 1.25
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -117,6 +117,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
+          GOWORK: off
         run: |
           cd packages/backend-go
           VERSION="${GITHUB_REF_NAME#v}"
@@ -139,7 +140,7 @@ jobs:
         if: matrix.bun_target != 'none'
         run: |
           cd packages/tui
-          bun install --frozen-lockfile
+          bun install
           bun build --compile \
             --target=${{ matrix.bun_target }} \
             --outfile=dist/neuralgentics \
@@ -155,7 +156,7 @@ jobs:
         if: matrix.bun_target == 'none'
         run: |
           cd packages/tui
-          bun install --frozen-lockfile
+          bun install
           bun build src/index.ts --outdir=dist --target=bun
         shell: bash
 
@@ -290,11 +291,15 @@ jobs:
         shell: bash
 
   # ── Job 3: Build and push container images ─────────────────────────────
+  # TODO: Re-enable when containers/Dockerfile.{postgres,sidecar,backend,tui}
+  #       are added to the repo. The Dockerfiles were planned for v0.1.0
+  #       but are tracked as a follow-up. The v0.1.0 release ships the
+  #       5-platform binaries only.
   containers:
     name: Build & Push Container Images
     runs-on: ubuntu-latest
     needs: [build]
-    if: success()
+    if: false
 
     steps:
       - name: Checkout
