@@ -508,7 +508,7 @@ cd overlay/packages/opencode && bun test test/go-backend-client.test.ts
 
 ## 15. References
 
-- [Broker design doc](../broker-server-catalog-prompting.md)
+- [Broker design doc](broker-server-catalog-prompting/)
 - [Go memory module source](../../packages/memory/src/neuralgentics/memory/)
 - [Go orchestrator source](../../packages/orchestrator-go/src/neuralgentics/orchestrator/)
 - [Go broker source](../../packages/broker-go/src/neuralgentics/broker/)

@@ -49,4 +49,4 @@ Once inside the TUI, try a simple orchestrator task:
 | 2 | `neuralgentics --version` | Returns `v0.1.0` |
 | 3 | First Task | Task transitions from `triage` $\rightarrow$ `running` $\rightarrow$ `done` |
 
-If you encounter any issues, check the [Troubleshooting Guide](../troubleshooting.md).
+If you encounter any issues, check the [Troubleshooting Guide](../troubleshooting/).

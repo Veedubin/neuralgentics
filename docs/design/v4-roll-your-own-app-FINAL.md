@@ -7,8 +7,8 @@
 **Chain ID:** `299ae563-2812-43e2-8742-5af11a8bca75`
 
 **Builds on:**
-- v3 — [boomerang-v3-vs-hermes-nextgen.md](../../../docs/design/boomerang-v3-vs-hermes-nextgen.md) (T-RFC-003, Hermes-competitive analysis)
-- v4-CORRECTION — [boomerang-v4-roll-your-own-app-CORRECTION.md](../../../docs/design/boomerang-v4-roll-your-own-app-CORRECTION.md) (T-RFC-004-correction, neuralgentics-native)
+- v3 — [boomerang-v3-vs-hermes-nextgen.md](boomerang-v3-vs-hermes-nextgen/) (T-RFC-003, Hermes-competitive analysis)
+- v4-CORRECTION — [boomerang-v4-roll-your-own-app-CORRECTION.md](boomerang-v4-roll-your-own-app-CORRECTION/) (T-RFC-004-correction, neuralgentics-native)
 - v1 (T-RFC-001), v2 (T-RFC-002)
 - All v4-CORRECTION technical decisions carry forward unchanged unless overridden here
 
@@ -761,8 +761,8 @@ These are features that establish categorical advantage. They are NOT in v0.1.0 
 |-------|-------|
 | **Version** | 4-FINAL |
 | **Status** | Complete — supersedes v4-CORRECTION |
-| **Supersedes** | [boomerang-v4-roll-your-own-app-CORRECTION.md](../../../docs/design/boomerang-v4-roll-your-own-app-CORRECTION.md) (T-RFC-004-correction) |
-| **Builds on** | [boomerang-v3-vs-hermes-nextgen.md](../../../docs/design/boomerang-v3-vs-hermes-nextgen.md) (T-RFC-003) |
+| **Supersedes** | [boomerang-v4-roll-your-own-app-CORRECTION.md](boomerang-v4-roll-your-own-app-CORRECTION/) (T-RFC-004-correction) |
+| **Builds on** | [boomerang-v3-vs-hermes-nextgen.md](boomerang-v3-vs-hermes-nextgen/) (T-RFC-003) |
 | **v1 Memory ID** | `233c1df8-a9fc-44b7-b2fd-b5dbb077a6dc` |
 | **v2 Memory ID** | `650ba67b-b5e7-478d-ac44-3a6a2fb5d144` |
 | **v3 Memory ID** | `871142a5-391b-49b3-938e-8269f725e0dc` |

@@ -30,6 +30,7 @@ NC='\033[0m'
 # ─── Defaults ────────────────────────────────────────────────────────────────
 
 PREFIX="${NEURALGENTICS_PREFIX:-$HOME/.neuralgentics}"
+NEURALGENTICS_DATA_DIR="${NEURALGENTICS_DATA_DIR:-$HOME/.local/share/neuralgentics}"
 BIN_LINK_DIR="$HOME/.local/bin"
 VERSION="${DEFAULT_VERSION}"
 REPO=""
@@ -37,6 +38,7 @@ NO_PATH=false
 NO_VERIFY=false
 DRY_RUN=false
 VERBOSE=false
+NON_INTERACTIVE=false
 
 # ─── Logging ─────────────────────────────────────────────────────────────────
 
@@ -65,6 +67,8 @@ Usage: $(basename "$0") [options]
 Options:
     -h, --help              Show this help
     -v, --verbose           Verbose output
+    -y, --yes               Non-interactive: accept all defaults
+        --non-interactive   Same as --yes
         --no-path           Don't modify shell rc files
         --no-verify         Skip SHA256 verification
         --dry-run           Show what would be done without executing
@@ -93,9 +97,11 @@ while [[ $# -gt 0 ]]; do
         --no-path)         NO_PATH=true; shift ;;
         --no-verify)       NO_VERIFY=true; shift ;;
         --dry-run)         DRY_RUN=true; shift ;;
+        -y|--yes|--non-interactive)
+                           NON_INTERACTIVE=true; shift ;;
         --prefix)
             [[ -n "${2:-}" ]] || { err "--prefix requires an argument"; exit 1; }
-            PREFIX="$2"; shift 2
+            PREFIX="$2"; _PREFIX_EXPLICIT=true; shift 2
             ;;
         --version)
             [[ -n "${2:-}" ]] || { err "--version requires an argument"; exit 1; }
@@ -693,16 +699,504 @@ verify_install() {
     fi
 }
 
+# ─── Interactive prompts ──────────────────────────────────────────────────────
+
+detect_real_home() {
+    local real_home="$HOME"
+    # If running under sudo, look up the invoking user's home
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        local sudo_home
+        sudo_home="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || true)"
+        [[ -n "$sudo_home" ]] && real_home="$sudo_home"
+    fi
+    # Fallback if HOME is unset or empty
+    if [[ -z "${HOME:-}" ]]; then
+        local fallback_home
+        fallback_home="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6 || true)"
+        [[ -n "$fallback_home" ]] && real_home="$fallback_home"
+    fi
+    printf '%s' "$real_home"
+}
+
+prompt_install_location() {
+    # If --prefix was explicitly passed or NON_INTERACTIVE, skip the prompt
+    if [[ -n "${_PREFIX_EXPLICIT:-}" ]] || $NON_INTERACTIVE; then
+        # Compute DATA_DIR from PREFIX for non-interactive/default path
+        if [[ "$PREFIX" == "$HOME/.neuralgentics" || "$PREFIX" == "$(detect_real_home)/.neuralgentics" ]]; then
+            local real_home
+            real_home="$(detect_real_home)"
+            NEURALGENTICS_DATA_DIR="${NEURALGENTICS_DATA_DIR:-$real_home/.local/share/neuralgentics}"
+        elif [[ "$PREFIX" == "$PWD/.neuralgentics" ]]; then
+            NEURALGENTICS_DATA_DIR="$PREFIX"
+        else
+            NEURALGENTICS_DATA_DIR="${NEURALGENTICS_DATA_DIR:-$PREFIX}"
+        fi
+        export NEURALGENTICS_PREFIX="$PREFIX"
+        export NEURALGENTICS_DATA_DIR
+        return 0
+    fi
+
+    local real_home
+    real_home="$(detect_real_home)"
+
+    # WSL detection for warning
+    local wsl_flag=false
+    if [[ -f /proc/version ]]; then
+        local proc_ver
+        proc_ver="$(cat /proc/version 2>/dev/null || true)"
+        if [[ "$proc_ver" =~ [Mm]icrosoft || "$proc_ver" =~ WSL ]]; then
+            wsl_flag=true
+        fi
+    fi
+    if [[ -n "${WSL_DISTRO_NAME:-}" || -n "${WSL_INTEROP:-}" ]]; then
+        wsl_flag=true
+    fi
+
+    printf '\n' >&2
+    printf "${CYAN}Where should Neuralgentics install?${NC}\n" >&2
+    printf "  1) Local to this project (%s)\n" "$PWD" >&2
+    printf "  2) Home directory (%s)\n" "$real_home" >&2
+    printf "  3) Custom path\n" >&2
+
+    if $wsl_flag; then
+        printf "\n  ${ORANGE}⚠  WSL detected — install paths must stay inside the Linux distro (no /mnt/c)${NC}\n" >&2
+    fi
+
+    while true; do
+        printf "Choice [1/2/3] (default: 2): " >&2
+        local choice
+        read -r choice || choice=""
+
+        # Default to 2 (home dir)
+        [[ -z "$choice" ]] && choice="2"
+
+        case "$choice" in
+            1)
+                PREFIX="$PWD/.neuralgentics"
+                NEURALGENTICS_DATA_DIR="$PREFIX"
+                BIN_LINK_DIR="$PREFIX/bin"
+                ;;
+            2)
+                PREFIX="$real_home/.neuralgentics"
+                NEURALGENTICS_DATA_DIR="$real_home/.local/share/neuralgentics"
+                BIN_LINK_DIR="$real_home/.local/bin"
+                ;;
+            3)
+                printf "Enter custom path: " >&2
+                local custom_path
+                read -r custom_path || custom_path=""
+                if [[ -z "$custom_path" ]]; then
+                    err "Path cannot be empty"
+                    continue
+                fi
+                # Expand ~ to real_home
+                custom_path="${custom_path/#\~/$real_home}"
+                # Must be absolute
+                if [[ "$custom_path" != /* ]]; then
+                    err "Path must be absolute (start with /). Example: $real_home/neuralgentics"
+                    continue
+                fi
+                # Warn on obvious footguns
+                if [[ "$custom_path" == "/" || "$custom_path" == "/usr" || "$custom_path" == "/etc" || "$custom_path" == "/root" ]]; then
+                    err "Installing to $custom_path is not safe. Choose a user-writable directory."
+                    continue
+                fi
+                # WSL: warn about /mnt/ paths
+                if $wsl_flag && [[ "$custom_path" == /mnt/* ]]; then
+                    warn "$custom_path is on the Windows filesystem (/mnt/)."
+                    warn "Linux binaries on /mnt/ may have permission issues."
+                    warn "Consider a path inside the WSL filesystem (e.g. ~/.neuralgentics)."
+                    printf "Continue anyway? [y/N] " >&2
+                    local mnt_answer
+                    read -r mnt_answer || mnt_answer=""
+                    if [[ ! "$mnt_answer" =~ ^[Yy] ]]; then
+                        continue
+                    fi
+                fi
+                # Validate writable
+                if ! mkdir -p "$custom_path" 2>/dev/null; then
+                    err "Cannot create directory: $custom_path"
+                    continue
+                fi
+                local tmp_test
+                tmp_test="$(mktemp "$custom_path/.neuralgentics_write_test_XXXXXX" 2>/dev/null || true)"
+                if [[ -z "$tmp_test" ]]; then
+                    err "$custom_path is not writable. Choose a different path."
+                    rmdir "$custom_path" 2>/dev/null || true
+                    continue
+                fi
+                rm -f "$tmp_test"
+
+                PREFIX="$custom_path"
+                NEURALGENTICS_DATA_DIR="$custom_path"
+                BIN_LINK_DIR="$custom_path/bin"
+                ;;
+            *)
+                err "Invalid choice. Enter 1, 2, or 3."
+                continue
+                ;;
+        esac
+        break
+    done
+
+    export NEURALGENTICS_PREFIX="$PREFIX"
+    export NEURALGENTICS_DATA_DIR
+    # Recompute INSTALL_BIN now that PREFIX may have changed
+    INSTALL_BIN="$PREFIX/bin"
+    log "Install prefix:  $PREFIX"
+    log "Data directory:  $NEURALGENTICS_DATA_DIR"
+    log "Bin link dir:    $BIN_LINK_DIR"
+    return 0
+}
+
+generate_env_file() {
+    local env_host="$1"
+    local env_port="$2"
+    local env_user="$3"
+    local env_password="$4"
+    local env_db="$5"
+    local env_path="${6:-$NEURALGENTICS_DATA_DIR/.env}"
+
+    # Ensure the data directory exists
+    mkdir -p "$NEURALGENTICS_DATA_DIR"
+
+    cat > "$env_path" <<ENVEOF
+# Generated by neuralgentics installer on $(date -u '+%Y-%m-%d %H:%M UTC')
+# DO NOT COMMIT — this file is in .gitignore
+POSTGRES_HOST="${env_host}"
+POSTGRES_PORT="${env_port}"
+POSTGRES_USER="${env_user}"
+POSTGRES_PASSWORD="${env_password}"
+POSTGRES_DB="${env_db}"
+ENVEOF
+
+    chmod 600 "$env_path"
+    verbose "Wrote .env to $env_path"
+}
+
+prompt_database() {
+    # If .env already exists with valid config, skip
+    local env_file="$NEURALGENTICS_DATA_DIR/.env"
+    if [[ -f "$env_file" ]]; then
+        # Check for all 5 required keys
+        local missing=0
+        for key in POSTGRES_HOST POSTGRES_PORT POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB; do
+            if ! grep -q "^${key}=" "$env_file" 2>/dev/null; then
+                missing=$((missing + 1))
+            fi
+        done
+        if [[ $missing -eq 0 ]]; then
+            log "Database already configured. Details in $env_file"
+            return 0
+        fi
+    fi
+
+    # Non-interactive: default to starting a fresh container
+    if $NON_INTERACTIVE; then
+        _start_fresh_db
+        return $?
+    fi
+
+    printf '\n' >&2
+    printf "${CYAN}Neuralgentics needs a PostgreSQL database with the pgvector extension.${NC}\n" >&2
+
+    while true; do
+        printf "Start one now using podman-compose? [Y/n] (default: Y): " >&2
+        local answer
+        read -r answer || answer=""
+
+        # Default to Y
+        if [[ -z "$answer" || "$answer" =~ ^[Yy] ]]; then
+            _start_fresh_db
+            return $?
+        fi
+
+        if [[ "$answer" =~ ^[Nn]$ ]]; then
+            break
+        fi
+        # Invalid input, re-prompt
+        err "Please enter Y or n."
+    done
+
+    # User said n — offer sub-options
+    printf '\n' >&2
+    printf "Connect to existing PostgreSQL:\n" >&2
+    printf "  1) Enter connection details now\n" >&2
+    printf "  2) Use an existing .env file\n" >&2
+
+    while true; do
+        printf "Choice [1/2] (default: 1): " >&2
+        local sub_choice
+        read -r sub_choice || sub_choice=""
+        [[ -z "$sub_choice" ]] && sub_choice="1"
+
+        case "$sub_choice" in
+            1)
+                _prompt_connection_details
+                return $?
+                ;;
+            2)
+                _prompt_env_file
+                return $?
+                ;;
+            *)
+                err "Invalid choice. Enter 1 or 2."
+                continue
+                ;;
+        esac
+    done
+}
+
+_start_fresh_db() {
+    # Check for podman
+    if ! command -v podman >/dev/null 2>&1; then
+        err "podman not found. Install it first: https://podman.io/getting-started/installation"
+        err "Skipping database setup. Run 'neuralgentics db setup' later to configure."
+        return 1
+    fi
+
+    # Check for existing container
+    local container_name="neuralgentics-pg"
+    local is_running
+    is_running="$(podman inspect "$container_name" --format '{{.State.Running}}' 2>/dev/null || echo "false")"
+
+    if [[ "$is_running" == "true" ]]; then
+        log "Container '$container_name' is already running"
+    else
+        local container_exists
+        container_exists="$(podman inspect "$container_name" >/dev/null 2>&1 && echo "true" || echo "false")"
+
+        if [[ "$container_exists" == "true" ]]; then
+            log "Starting existing container '$container_name'..."
+            if $DRY_RUN; then
+                printf "  ${MUTED}[dry-run]${NC} podman start %s\n" "$container_name" >&2
+            else
+                podman start "$container_name" || { err "Failed to start container '$container_name'"; return 1; }
+            fi
+        else
+            # Generate a password for the fresh database
+            local db_password
+            db_password="$(openssl rand -hex 16 2>/dev/null || head -c 32 /dev/urandom | xxd -plain | head -c 32)"
+            local db_user="neuralgentics"
+            local db_name="neuralgentics"
+            local db_port=6000
+
+            log "Creating PostgreSQL container '$container_name' on port $db_port..."
+
+            if $DRY_RUN; then
+                printf "  ${MUTED}[dry-run]${NC} podman run -d --name %s -e POSTGRES_USER=%s -e POSTGRES_PASSWORD=*** -e POSTGRES_DB=%s -p %s:5432 docker.io/pgvector/pgvector:pg17\n" \
+                    "$container_name" "$db_user" "$db_name" "$db_port" >&2
+                log "Container '$container_name' created on port $db_port"
+                generate_env_file "127.0.0.1" "$db_port" "$db_user" "$db_password" "$db_name"
+                log "Database configured. Connection details in $NEURALGENTICS_DATA_DIR/.env"
+                return 0
+            fi
+
+            podman run -d \
+                --name "$container_name" \
+                -e POSTGRES_USER="$db_user" \
+                -e POSTGRES_PASSWORD="$db_password" \
+                -e POSTGRES_DB="$db_name" \
+                -p "$db_port:5432" \
+                docker.io/pgvector/pgvector:pg17 \
+            || { err "Failed to create container '$container_name'"; return 1; }
+
+            log "Container '$container_name' created on port $db_port"
+
+            # Wait for PostgreSQL to accept connections
+            local max_attempts=30
+            local attempt=0
+            log "Waiting for PostgreSQL to accept connections..."
+            while [[ $attempt -lt $max_attempts ]]; do
+                if podman exec "$container_name" pg_isready -U "$db_user" -d "$db_name" >/dev/null 2>&1; then
+                    log "PostgreSQL is ready"
+                    break
+                fi
+                attempt=$((attempt + 1))
+                sleep 1
+            done
+            if [[ $attempt -ge $max_attempts ]]; then
+                err "PostgreSQL did not become ready within ${max_attempts}s"
+                return 1
+            fi
+
+            # Write the .env file
+            generate_env_file "127.0.0.1" "$db_port" "$db_user" "$db_password" "$db_name"
+            log "Database configured. Connection details in $NEURALGENTICS_DATA_DIR/.env"
+            return 0
+        fi
+    fi
+
+    # Container was already running or restarted — extract connection info
+    # If we have an .env from a previous install, trust it
+    if [[ -f "$NEURALGENTICS_DATA_DIR/.env" ]]; then
+        log "Database configured. Connection details in $NEURALGENTICS_DATA_DIR/.env"
+        return 0
+    fi
+
+    # No .env yet — we need to create one. Prompt for the password since
+    # we can't recover it from a running container.
+    warn "Container '$container_name' is running but no .env file found."
+    local db_password
+    printf "Enter the PostgreSQL password used when creating '%s': " "$container_name" >&2
+    read -r db_password || db_password=""
+    if [[ -z "$db_password" ]]; then
+        err "Password cannot be empty"
+        return 1
+    fi
+
+    local db_user db_name db_port
+    db_user="$(podman inspect "$container_name" --format '{{.Config.Env}}' 2>/dev/null | grep -oP 'POSTGRES_USER=\K[^ ]+' || echo "neuralgentics")"
+    db_name="$(podman inspect "$container_name" --format '{{.Config.Env}}' 2>/dev/null | grep -oP 'POSTGRES_DB=\K[^ ]+' || echo "neuralgentics")"
+    db_port="$(podman inspect "$container_name" --format '{{.HostConfig.PortBindings}}' 2>/dev/null | grep -oP '5432/tcp:\[\{HostPort:\K[0-9]+' || echo "6000")"
+    [[ -z "$db_user" ]] && db_user="neuralgentics"
+    [[ -z "$db_name" ]] && db_name="neuralgentics"
+    [[ -z "$db_port" ]] && db_port="6000"
+
+    generate_env_file "127.0.0.1" "$db_port" "$db_user" "$db_password" "$db_name"
+    log "Database configured. Connection details in $NEURALGENTICS_DATA_DIR/.env"
+    return 0
+}
+
+_prompt_connection_details() {
+    local db_host db_port db_user db_password db_name
+
+    printf "  Host [127.0.0.1]: " >&2
+    read -r db_host || db_host=""
+    [[ -z "$db_host" ]] && db_host="127.0.0.1"
+
+    printf "  Port [5432]: " >&2
+    read -r db_port || db_port=""
+    [[ -z "$db_port" ]] && db_port="5432"
+
+    printf "  User [postgres]: " >&2
+    read -r db_user || db_user=""
+    [[ -z "$db_user" ]] && db_user="postgres"
+
+    printf "  Password (hidden): " >&2
+    read -rs db_password || db_password=""
+    printf '\n' >&2
+    if [[ -z "$db_password" ]]; then
+        err "Password cannot be empty"
+        return 1
+    fi
+
+    printf "  Database [neuralgentics]: " >&2
+    read -r db_name || db_name=""
+    [[ -z "$db_name" ]] && db_name="neuralgentics"
+
+    # Validate connection with psql if available
+    if command -v psql >/dev/null 2>&1; then
+        local db_url="postgresql://${db_user}:${db_password}@${db_host}:${db_port}/${db_name}?sslmode=prefer"
+        if ! psql "$db_url" -c "SELECT 1" --no-psqlrc -q -t >/dev/null 2>&1; then
+            err "Could not connect to database at $db_host:$db_port/$db_name"
+            err "  Check host, port, and that PostgreSQL is running."
+            err "  Try sslmode=disable or sslmode=require in the connection string."
+            return 1
+        fi
+        printf "  ${GREEN}✓${NC} Database connection verified.\n" >&2
+    else
+        warn "psql not found — skipping connection verification"
+        warn "  Verify manually: psql postgresql://${db_user}:***@${db_host}:${db_port}/${db_name}"
+    fi
+
+    generate_env_file "$db_host" "$db_port" "$db_user" "$db_password" "$db_name"
+    log "Database configured. Connection details in $NEURALGENTICS_DATA_DIR/.env"
+    return 0
+}
+
+_prompt_env_file() {
+    while true; do
+        printf "  Path to .env file: " >&2
+        local env_file_path
+        read -r env_file_path || env_file_path=""
+
+        if [[ -z "$env_file_path" ]]; then
+            err "Path cannot be empty"
+            continue
+        fi
+
+        # Expand ~
+        local real_home
+        real_home="$(detect_real_home)"
+        env_file_path="${env_file_path/#\~/$real_home}"
+
+        if [[ ! -f "$env_file_path" ]]; then
+            err "$env_file_path does not exist"
+            continue
+        fi
+
+        if [[ ! -r "$env_file_path" ]]; then
+            err "$env_file_path is not readable"
+            continue
+        fi
+
+        # Validate: must contain all 5 required keys
+        local required_keys=(POSTGRES_HOST POSTGRES_PORT POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB)
+        local missing_keys=()
+        for key in "${required_keys[@]}"; do
+            if ! grep -q "^${key}=" "$env_file_path" 2>/dev/null; then
+                missing_keys+=("$key")
+            fi
+        done
+
+        if [[ ${#missing_keys[@]} -gt 0 ]]; then
+            err "$env_file_path is missing required keys:"
+            for key in "${missing_keys[@]}"; do
+                err "  - $key"
+            done
+            err "Required: POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB"
+            continue
+        fi
+
+        # All good — copy to the data directory
+        mkdir -p "$NEURALGENTICS_DATA_DIR"
+        cp "$env_file_path" "$NEURALGENTICS_DATA_DIR/.env"
+        chmod 600 "$NEURALGENTICS_DATA_DIR/.env"
+
+        # Extract values for connection validation
+        local db_host db_port db_user db_password db_name
+        db_host="$(grep '^POSTGRES_HOST=' "$env_file_path" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+        db_port="$(grep '^POSTGRES_PORT=' "$env_file_path" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+        db_user="$(grep '^POSTGRES_USER=' "$env_file_path" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+        db_password="$(grep '^POSTGRES_PASSWORD=' "$env_file_path" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+        db_name="$(grep '^POSTGRES_DB=' "$env_file_path" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+
+        if command -v psql >/dev/null 2>&1; then
+            local db_url="postgresql://${db_user}:${db_password}@${db_host}:${db_port}/${db_name}?sslmode=prefer"
+            if psql "$db_url" -c "SELECT 1" --no-psqlrc -q -t >/dev/null 2>&1; then
+                printf "  ${GREEN}✓${NC} Database connection verified.\n" >&2
+            else
+                warn "Could not verify connection to ${db_host}:${db_port}/${db_name}"
+                warn "  Verify manually that the credentials are correct."
+            fi
+        else
+            warn "psql not found — skipping connection verification"
+        fi
+
+        break
+    done
+
+    log "Database configured. Connection details in $NEURALGENTICS_DATA_DIR/.env"
+    return 0
+}
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 main() {
     print_banner
     log "Installing $APP v${VERSION}"
-    log "Prefix:    $PREFIX"
-    log "Bin link:  $BIN_LINK_DIR/$APP"
     $DRY_RUN && log "DRY RUN — no changes will be made"
     $NO_PATH && log "Skipping PATH edit (--no-path)"
     $NO_VERIFY && log "Skipping SHA256 verify (--no-verify)"
+    $NON_INTERACTIVE && log "Non-interactive mode (--yes)"
+
+    # 0. Interactive prompt: install location (after banner, before filesystem writes)
+    prompt_install_location
+
+    # Log final paths after prompt_install_location may have changed them
+    log "Prefix:    $PREFIX"
+    log "Bin link:  $BIN_LINK_DIR/$APP"
 
     # 1. Detect platform
     detect_os_arch
@@ -755,10 +1249,13 @@ main() {
     # 8. PATH setup
     setup_path
 
-    # 9. Verify
+    # 9. Interactive prompt: database (after install, before verification)
+    prompt_database
+
+    # 10. Verify
     verify_install
 
-    # 10. Cleanup
+    # 11. Cleanup
     if ! $DRY_RUN && [[ -d "$tmp_dir" ]]; then
         rm -rf "$tmp_dir"
     fi
@@ -775,15 +1272,20 @@ ${CYAN}  Quick start:${NC}
     neuralgentics status         ${MUTED}# Check component status${NC}
 
 ${MUTED}  Install root:  ${PREFIX}${NC}
+${MUTED}  Data dir:      ${NEURALGENTICS_DATA_DIR}${NC}
 ${MUTED}  Binary link:   ${BIN_LINK_DIR}/neuralgentics${NC}
 EOF
+
+    # Show .env path if database was configured
+    if [[ -f "$NEURALGENTICS_DATA_DIR/.env" ]]; then
+        printf "${MUTED}  DB config:      %s/.env${NC}\n" "$NEURALGENTICS_DATA_DIR" >&2
+    fi
 
     if [[ "${WSL_MODE:-}" == "true" ]]; then
         printf "${MUTED}  WSL note:     Add ~/.local/bin to your WSL shell rc${NC}\n" >&2
     fi
 
     cat <<EOF >&2
-${MUTED}  Dev database:  ./scripts/dev-up.sh${NC}
 ${MUTED}  Docs:          https://github.com/${REPO}${NC}
 ${BRIGHT_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
 EOF
