@@ -524,7 +524,7 @@ export class OpenCodeClient {
           close() {},
           error() {},
         },
-      } as any);
+      } as unknown as Parameters<typeof Bun.connect>[0]);
       conn.end();
       return true; // Connection succeeded → port in use
     } catch {

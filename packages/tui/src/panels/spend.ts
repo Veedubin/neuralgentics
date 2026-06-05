@@ -9,6 +9,7 @@
 import { Box, Text } from "@opentui/core";
 import type { ThemeColors } from "../themes/types.js";
 import type { TokenCounter } from "../observability/token-counter.js";
+import type { TextVNode, BoxVNode } from "../vnode-types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -24,10 +25,8 @@ export class SpendPanel {
   private _colors: ThemeColors;
   private _counter: TokenCounter | null = null;
 
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  private _textRef: any = null;
-  private _boxRef: any = null;
-  /* eslint-enable @typescript-eslint/no-explicit-any */
+  private _textRef: TextVNode | null = null;
+  private _boxRef: BoxVNode | null = null;
 
   constructor(colors: ThemeColors, counter?: TokenCounter) {
     this._colors = colors;
@@ -77,15 +76,15 @@ export class SpendPanel {
       id: "spend-gauge",
       content: this._buildContent(),
       fg: this._colors.textAccent,
-    });
+    }) as unknown as TextVNode;
 
     this._boxRef = Box({
       id: "spend-panel",
       height: 1,
       backgroundColor: this._colors.statusBarBg,
       flexDirection: "row",
-    });
-    this._boxRef.add(this._textRef);
+    }) as unknown as BoxVNode;
+    (this._boxRef as unknown as { add(child: unknown): void }).add(this._textRef);
 
     return { box: this._boxRef, textRef: this._textRef };
   }

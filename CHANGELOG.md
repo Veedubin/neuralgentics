@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-06-05
+
+Patch release: closes the T-067b wrap-up gap from v0.1.1. The T-067b
+coder dispatch reported "no changes needed" but had actually written
+the `any` type cleanup to 5 panel files + `client.ts` + `sidecar.ts`
+locally without committing. v0.1.2 finishes that work and fixes a
+test that broke when v0.1.1 bumped the version.
+
+### Fixed
+
+- **`@neuralgentics/tui setup verification > package.json has correct
+  name and version` was failing** in v0.1.1. The test hardcoded
+  `expect(pkg.version).toBe("0.1.0")` but the package.json was
+  bumped to `0.1.1`. Updated the assertion to `0.1.1`.
+
+### Completed (deferred from v0.1.1 T-067b)
+
+The 5 TUI panel files + 2 socket files had their `any` type
+escapes replaced with the proper `TextVNode`, `BoxVNode`,
+`InputVNode`, `ScrollBoxVNode` types from `packages/tui/src/vnode-types.ts`.
+This was the intended scope of T-067b but was never committed.
+
+Files:
+- `packages/tui/src/panels/chain.ts` — 3 `any` → interface types
+- `packages/tui/src/panels/diff.ts` — 4 `any` → interface types
+- `packages/tui/src/panels/spend.ts` — 2 `any` → interface types
+- `packages/tui/src/panels/status.ts` — 2 `any` → interface types
+- `packages/tui/src/sidecar.ts` — 2 `any` cleanup
+- `packages/tui/src/opencode-client/client.ts` — 1 `any` cleanup
+
+Combined with the T-067/9918798 and T-067a/3dd6867 work, this
+completes the architect's #7 finding: all `any` type escapes
+in TUI production source have been replaced. Only 1 `any` remains
+in production, in a JSDoc comment in `model-registry.ts:259`
+(an example string, not actual type usage).
+
+### Quality gates (v0.1.2 closeout)
+
+- `go vet` — 4/4 Go modules clean
+- `go test -short` — 4/4 Go modules PASS
+- `tsc --noEmit` — TUI + overlay both clean
+- `bun test` — **578 pass / 0 fail**
+
 ## [0.1.1] - 2026-06-05
 
 Patch release: 12 test failures discovered during Session 23's full code
