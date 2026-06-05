@@ -2,6 +2,8 @@
 
 > An open-source agent runtime, built for engineers who ship.
 
+**23 specialist agents, a trust-scored memory engine, and a permissions-based tool broker -- all in a 26 MB Go binary.** No cloud account, no telemetry, no vendor lock-in. You run it on your machine; it remembers what your agents did; it stops them from doing things they shouldn't.
+
 [**Get Started →**](getting-started/installation/)
 
 ---
@@ -54,12 +56,173 @@ Agent prompts are ~200 tokens each. State lives in memory, not in the prompt. Sh
 
 A task enters the orchestrator, gets routed to a specialist, who calls the broker for tools, who checks RBAC, who executes -- and every decision lands in the trust-scored memory store. Full details at [Dispatch Flow](architecture/dispatch-flow/).
 
+## Features in Depth
+
+The rest of this page walks through each major subsystem, with a small mockup showing what the feature looks like in practice. MOCKUPs are Unicode terminal drawings -- they show the real shape of the UI, not real screenshots.
+
+### Memory Engine -- Trust-Scored, Self-Decaying
+
+Every decision an agent makes -- a routing rule, a code pattern, a fix that worked, a fix that didn't -- lands in PostgreSQL with a **trust score** that starts at 0.5 and moves up or down based on outcomes. Successful patterns get promoted; failed approaches decay and fade. Old bad memories are archived automatically. Nothing has to be cleaned up by hand because the system is honest about what worked and what didn't.
+
+The memory store is `pgvector`-backed, so semantic search works the way you'd expect: "show me every dispatch that hit a build failure" returns similar past dispatches, ranked by trust. Trust is a first-class column, not a side table.
+
+```text
+    MEMORY INSPECTOR  ·  query: "broker rbac dispatch"  ·  results: 4
+    ─────────────────────────────────────────────────────────────────
+    ID        TRUST   DECAY/DAY   USED   AGE     CONTENT
+    a1b2c3..  0.91    0.01        17     12d     "Architect designs before
+                                                  coder builds (Rule 1)"
+    e5f6g7..  0.85    0.02        9      3d      "RBAC matrix: 23 roles x
+                                                  7 restricted servers"
+    i9j0k1..  0.62    0.08        2      1d      "MCP broker proxy is shared
+                                                  across servers, do NOT
+                                                  Stop() on deregister"
+    m3n4o5..  0.42    0.05        1      2h      "Tested with fixture db,
+                                                  weak signal, decay fast"
+    ─────────────────────────────────────────────────────────────────
+    Trust:  ● active (>0.5)   ○ fading (<0.5)   ∅ archived (<0.2)
+```
+
+See [Memory System Reference](reference/memory-system/) for the trust engine, decay math, and embedding strategy.
+
+### MCP Broker -- RBAC-Gated Tool Calls
+
+Every tool call goes through a broker that checks the calling agent's role before forwarding. The `coder` role can read files and run tests, but cannot push to GitHub. The `boomerang-git` role is the only one allowed to use the `github-mcp` server. The `playwright` server is restricted to `tester`, `researcher`, and `scraper`. This is enforced in code at [`access/access.go`](https://github.com/Veedubin/neuralgentics/blob/main/packages/broker-go/src/neuralgentics/broker/access/access.go) -- 23 roles, 7 restricted server classes.
+
+The practical effect: agents never see tools they can't use, which cuts the tool list in their prompt and reduces token overhead by up to 95% per dispatch. The broker also routes the actual call, retries on failure, and logs every invocation to the audit log.
+
+```text
+    ROLE x SERVER MATRIX
+    ─────────────────────────────────────────────────────────────────
+    SERVER          architect  coder  tester  git  writer  scraper
+    ─────────────────────────────────────────────────────────────────
+    filesystem          ✓        ✓      ✓      ✓     ✓       ✓
+    postgres            ✓        ✓      ✓      ✓     ✓       ✓
+    shell               ✓        ✓      ✓      ✓     ✓       ✓
+    ─────────────────────────────────────────────────────────────────
+    github-mcp          ✗        ✗      ✗      ✓     ✗       ✗
+    playwright          ✗        ✗      ✓      ✗     ✗       ✓
+    searxng             ✓        ✓      ✗      ✓     ✗       ✓
+    markitdown          ✓        ✗      ✗      ✓     ✓       ✗
+    webfetch/search     ✓        ✓      ✓      ✗     ✗       ✓
+    ─────────────────────────────────────────────────────────────────
+    23 total roles  ·  7 restricted servers  ·  default-deny
+```
+
+See [Permission Model](architecture/permission-model/) for the full matrix and [Broker Flow](architecture/broker-flow/) for the request path.
+
+### Kanban Board -- A Real FSM, Not a TODO List
+
+Tasks are first-class objects with a 7-state finite state machine: `triage → todo → ready ↔ running ↔ blocked → done → archived`. Every transition is a logged event. `failureLimit=2` auto-archives a card that keeps failing. The kanban is the durable source of truth for "what is being worked on" -- agents and humans read the same board, and the orchestrator only dispatches cards in `ready` status.
+
+The board survives session boundaries, so a card you start on Monday is still on the board Friday morning with its full dispatch history attached.
+
+```text
+    KANBAN BOARD  ·  neuralgentics/v0.1.2
+    ─────────────────────────────────────────────────────────────────
+    TRIAGE        TODO          READY         RUNNING       BLOCKED
+    ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────┐
+    │ T-070    │  │ T-068    │  │          │  │ T-069    │  │      │
+    │ review   │  │ doc fix  │  │          │  │ features │  │      │
+    └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────┘
+    DONE                              ARCHIVED
+    ┌────────────────────────────────┐  ┌────────────────────────────┐
+    │ T-067c  mutex fix       12s    │  │ T-066  stubs (not impl.)   │
+    │ T-067b  any cleanup     8s     │  │ T-066b count query         │
+    │ T-067a  vnode types     14s    │  │ T-067  (superseded)        │
+    │ T-065   scan errors     21s    │  └────────────────────────────┘
+    │ T-068   coverage tests  45s    │   auto-archived: failure > 2
+    └────────────────────────────────┘
+```
+
+See [Kanban System](reference/kanban-system/) for the FSM transitions, circuit-breaker rules, and dispatch logic.
+
+### Tiered Context Loading -- L0 / L1 / L2
+
+Memory loads in three tiers by trust and recency. **L0** is a ~100-token project summary built from high-trust memories, injected automatically at session start so a new agent can orient. **L1** is a ~2K-token summary of key decisions (trust ≥ 0.8) used during planning. **L2** is the full memory store, queried on demand when the agent needs a specific past decision.
+
+The result: agents start with the same context humans do after skimming a project wiki. They don't have to read 50,000 tokens of history to know the architecture exists.
+
+```text
+    CONTEXT TIERS  ·  loaded on demand
+    ─────────────────────────────────────────────────────────────────
+    L0  ~100 tokens   project summary
+        ↳ "Neuralgentics: 23-role MCP broker + pgvector memory.
+            Architect designs, coder implements, tester gates.
+            Trust-scored, L0/L1/L2 loading. MIT license."
+        always-injected at session start (trust ≥ 0.5)
+
+    L1  ~2,000 tokens   key decisions
+        ↳ routing matrix, RBAC table, FSM transitions,
+          decay formula, release pipeline, zero-error rule
+        loaded during planning (trust ≥ 0.8)
+
+    L2  unbounded   full memory store
+        ↳ every decision, every dispatch, every wrap-up
+        queried semantically per task
+    ─────────────────────────────────────────────────────────────────
+    Prompt budget: 200 tokens for the agent + 100 L0 + 2K L1 on demand
+```
+
+See [Memory System Reference](reference/memory-system/) for the tier promotion logic and trust thresholds.
+
+### Multi-Agent Routing -- 23 Specialists, One Routing Matrix
+
+The orchestrator owns a single routing matrix that maps task type to specialist agent. "Design a new feature" goes to architect. "Implement this card" goes to coder. "Run the test suite" goes to tester. "Open a PR" goes to git. "Write the release notes" goes to writer. The matrix is enforced at the code level, not by convention -- an agent cannot accidentally call a tool its role doesn't authorize.
+
+Eight concrete agent roles ship in the project: architect, coder, explorer, git, orchestrator, reviewer, tester, writer. The 23 in the broker matrix extend these with finer-grained permission scopes.
+
+```text
+    ROUTING MATRIX  ·  intent → agent
+    ─────────────────────────────────────────────────────────────────
+    INTENT              PRIMARY AGENT     CONTEXT     GATES
+    ─────────────────────────────────────────────────────────────────
+    design / spec       architect         L0 + L1    --
+    implement / fix     coder             L0         lint+tsc+test
+    find / locate       explorer          L0         --
+    commit / push       git               L1         diff+lint
+    test / cover        tester            L0         test only
+    review / audit      tester            L1         read-only
+    document / write    writer            L0         markdownlint
+    web / scrape        scraper           L0         --
+    orchestrate         orchestrator      L0 + L1    all gates
+    ─────────────────────────────────────────────────────────────────
+    Unknown intent → orchestrator self-routes after L1 planning
+```
+
+See [Dispatch Flow](architecture/dispatch-flow/) for the full routing logic and the rule that architect always designs before coder builds.
+
+### Stateless Agent Protocol -- 200-Token Prompts, Durable State
+
+Agents don't receive large inline context packages. They receive a ~200-token seed prompt that says `Task: <verb> the <noun>. Memory ID: <id>. Action: fetch context from memory and execute.` The agent fetches its context from memory, does the work, stores its wrap-up back to memory, and returns a `{memory_id, description}` handle to the orchestrator.
+
+This decoupling means agents can be swapped, scaled, or restarted without losing state. The memory is the source of truth, the prompt is just a delivery envelope. Token overhead per dispatch drops to a few hundred tokens, and a fresh agent picks up exactly where the last one left off.
+
+```text
+    ─── ORCHESTRATOR ──→ MEMORY (store context) ──→ AGENT (seed prompt)
+    Task: Fix the broken count query in store/queries.go.
+    Memory ID: mem-7c3a-4f2e
+    Action: Fetch context from memini-core, fix the bug, store wrap-up.
+
+    ─── AGENT ──→ MEMORY (fetch context) ──→ [executes] ──→ wrap-up
+    → Reads L0 summary, L1 routing rules, L2 prior count-query bug
+    → Edits store/queries.go, simplifies COUNT(*), adds regression test
+    → Stores wrap-up: "Fixed CountMemories. Replaces mem-9b1a."
+
+    ─── AGENT ──→ ORCHESTRATOR (return handle)
+    { memory_id: "mem-a8f3", description: "count query simplified" }
+```
+
+See [Session Lifecycle](reference/session-lifecycle/) for the full 8-step protocol and the wrap-up trust signal.
+
+---
+
 ## Why It's Different
 
-- **Persistent, trust-scored memory** -- PostgreSQL + pgvector with trust engine and decay. Source: [`packages/memini-core/`](https://github.com/Veedubin/neuralgentics/tree/main/packages/memini-core)
-- **23 permission roles, 7 restricted server classes** -- every tool call passes through the broker. Source: [`access/access.go`](https://github.com/Veedubin/neuralgentics/blob/main/packages/broker-go/src/neuralgentics/broker/access/access.go)
-- **Context that survives sessions** -- L0/L1/L2 tiered loading. See [Memory System Reference](reference/memory-system/)
-- **Stateless agents, durable state** -- prompts are ~200 tokens; context lives in memory, not in the prompt
+- **Memory is a product, not a side effect** -- trust scoring and decay make the system honest about what worked. Source: [`packages/memini-core/`](https://github.com/Veedubin/neuralgentics/tree/main/packages/memini-core)
+- **Permissions are the broker, not a config file** -- 23 roles x 7 restricted server classes, enforced in code. Source: [`access/access.go`](https://github.com/Veedubin/neuralgentics/blob/main/packages/broker-go/src/neuralgentics/broker/access/access.go)
+- **State lives in memory, not in prompts** -- ~200-token seed prompts, full context fetched on demand, wrap-ups stored back. See [Session Lifecycle](reference/session-lifecycle/)
+- **A real kanban FSM, not a TODO list** -- 7 states, circuit breaker, audit trail. See [Kanban System](reference/kanban-system/)
 
 ## Comparison Table
 
