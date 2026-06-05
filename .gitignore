@@ -43,3 +43,20 @@ certs/
 .env.local
 .env.*.local
 !.env.example
+
+# ─── Internal session artifacts (local-only, NOT for the public repo) ────────
+# Session handoff + active task list (orchestrator working state, not docs)
+HANDOFF.md
+CONTEXT.md
+TASKS.md
+
+# Internal design notes, roadmaps, debug investigations (kept locally for
+# reference; not user-facing documentation, not in mkdocs nav)
+docs/AGENT_REGISTRATION_RESEARCH.md
+docs/ARCHITECTURE_PLAN_V5.md
+docs/BGE_GPU_OOM_INVESTIGATION.md
+docs/DESIGN_*.md
+docs/GO_MEMORY_PLAN.md
+docs/NEURALGENTICS_PATCHES.md
+docs/design/session-22-*.md
+docs/roadmap-v0.1.0*.md
