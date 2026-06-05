@@ -299,7 +299,7 @@ describe('routing adapter', () => {
     it('should have permissions in agent configs', () => {
       const config = getAgentConfig('coder');
       expect(Object.keys(config.permissions).length).toBeGreaterThan(0);
-      expect(config.permissions['memini-ai-dev_add_memory']).toBe('allow');
+      expect(config.permissions['memoryManager_add_memory']).toBe('allow');
     });
 
     it('should return default for unknown role', () => {

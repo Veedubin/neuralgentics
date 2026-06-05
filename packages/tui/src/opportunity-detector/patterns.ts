@@ -339,7 +339,7 @@ export function detectReReadingSameFiles(
           `Each read cost ~${Math.round(totalTokens / calls.length)} tokens. Total: ${totalTokens.toLocaleString()} tokens.`,
         suggestedFix:
           `Create a project-context-cache skill that stores frequently-read files ` +
-          `in memini-ai with type "file_cache". Subsequent reads query memory (~0 tokens) ` +
+          `in memoryManager with type "file_cache". Subsequent reads query memory (~0 tokens) ` +
           `instead of re-reading the file.`,
         estimatedTokenSavings: Math.round(totalTokens * 0.7), // Save ~70% by caching
         frequency: calls.length,

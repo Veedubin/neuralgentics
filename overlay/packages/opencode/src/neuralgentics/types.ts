@@ -32,7 +32,7 @@ export interface RoutingRule {
 /** A self-contained context package passed to a stateless agent.
  *  Contains a memory reference so the agent can fetch full context at runtime. */
 export interface ContextPackage {
-  /** ID of the stored memory record in memini-core. */
+  /** ID of the stored memory record in memoryManager. */
   memoryId: string;
   /** Seed prompt that bootstraps the agent with enough context to start. */
   seedPrompt: string;
@@ -42,7 +42,7 @@ export interface ContextPackage {
   agent: string;
 }
 
-/** A record returned from the memini-core memory server. */
+/** A record returned from the memoryManager server. */
 export interface MemoryRecord {
   /** Unique memory identifier. */
   id: string;
@@ -54,7 +54,7 @@ export interface MemoryRecord {
 
 /** An entry in the MCP broker's server catalog. */
 export interface ServerCatalogEntry {
-  /** Server name (e.g. "github", "memini-ai"). */
+  /** Server name (e.g. "github", "memoryManager"). */
   name: string;
   /** Human-readable description of the server. */
   description: string;
