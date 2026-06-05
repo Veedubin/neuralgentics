@@ -174,7 +174,7 @@ func TestFromIntentToolMatch(t *testing.T) {
 		t.Parallel()
 		match := &intent.ToolMatch{
 			Tool: types.ToolSummary{
-				Server:      "memini-ai",
+				Server:      "memoryManager",
 				Name:        "query_memories",
 				Description: "Search memories with semantic query",
 			},
@@ -184,8 +184,8 @@ func TestFromIntentToolMatch(t *testing.T) {
 
 		got := FromIntentToolMatch(match)
 
-		if got.Tool.Server != "memini-ai" {
-			t.Errorf("Server: got %q, want %q", got.Tool.Server, "memini-ai")
+		if got.Tool.Server != "memoryManager" {
+			t.Errorf("Server: got %q, want %q", got.Tool.Server, "memoryManager")
 		}
 		if got.Tool.Name != "query_memories" {
 			t.Errorf("Name: got %q, want %q", got.Tool.Name, "query_memories")
@@ -309,7 +309,7 @@ func TestJSONToolMatch_Marshal(t *testing.T) {
 		t.Parallel()
 		m := JSONToolMatch{
 			Tool: JSONToolSummary{
-				Server:      "memini-ai",
+				Server:      "memoryManager",
 				Name:        "add_memory",
 				Description: "Store a new memory entry",
 			},
@@ -326,8 +326,8 @@ func TestJSONToolMatch_Marshal(t *testing.T) {
 		if err := json.Unmarshal(data, &got); err != nil {
 			t.Fatalf("Unmarshal failed: %v", err)
 		}
-		if got.Tool.Server != "memini-ai" {
-			t.Errorf("Server: got %q, want %q", got.Tool.Server, "memini-ai")
+		if got.Tool.Server != "memoryManager" {
+			t.Errorf("Server: got %q, want %q", got.Tool.Server, "memoryManager")
 		}
 		if got.Tool.Name != "add_memory" {
 			t.Errorf("Name: got %q, want %q", got.Tool.Name, "add_memory")

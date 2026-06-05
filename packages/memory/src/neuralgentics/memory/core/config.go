@@ -10,7 +10,7 @@ import (
 var ErrMissingDatabaseURL = errors.New("MEMINI_DB_URL environment variable is required")
 
 // EmbeddingMode defines which embedding pipeline to use for memory operations.
-// Mirrors Python memini-ai-dev v0.7.0 EMBEDDING_MODE.
+// Mirrors Python memoryManager v0.7.0 EMBEDDING_MODE.
 type EmbeddingMode string
 
 const (
@@ -20,7 +20,7 @@ const (
 )
 
 // Config holds all configuration for the Go memory module.
-// It maps 1:1 to the Python memini-ai-dev environment variables.
+// It maps 1:1 to the Python memoryManager environment variables.
 type Config struct {
 	// Core
 	DatabaseURL   string `envconfig:"MEMINI_DB_URL" required:"true"`

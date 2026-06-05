@@ -31,7 +31,7 @@ func NewProfileManager(store ProfileStore) *ProfileManager {
 
 // GetProfile retrieves a user profile for the given peer ID.
 // If no profile exists, it returns a default profile rather than an error,
-// matching the Python memini-ai behavior (which creates a default on first access).
+// matching the Python memoryManager behavior (which creates a default on first access).
 // The includeDialecticNotes flag controls whether dialectic_notes are included
 // in the response (if false, the field is omitted from the returned notes).
 func (pm *ProfileManager) GetProfile(ctx context.Context, peerID string, includeDialecticNotes bool) (*core.UserProfile, error) {
