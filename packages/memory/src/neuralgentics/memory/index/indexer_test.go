@@ -21,6 +21,13 @@ type mockIndexerStore struct {
 	byPath   map[string][]string          // filePath → []chunkID
 	nextID   int
 	embedErr error // optional: inject embed error
+
+	// blockAddChunk and unblockAddChunk are used by concurrent-indexing tests
+	// to signal when AddProjectChunk is entered and to unblock it.
+	// When blockAddChunk is non-nil, AddProjectChunk sends a value on it
+	// (signaling it has been called) then waits on unblockAddChunk before returning.
+	blockAddChunk   chan struct{}
+	unblockAddChunk chan struct{}
 }
 
 func newMockIndexerStore() *mockIndexerStore {
@@ -31,6 +38,11 @@ func newMockIndexerStore() *mockIndexerStore {
 }
 
 func (m *mockIndexerStore) AddProjectChunk(_ context.Context, chunk *core.ChunkResult) (string, error) {
+	// Signal entry and wait for unblock if configured (for concurrent test synchronization).
+	if m.blockAddChunk != nil {
+		m.blockAddChunk <- struct{}{}
+		<-m.unblockAddChunk
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.nextID++
@@ -103,7 +115,7 @@ func (m *mockIndexerStore) GetMemory(_ context.Context, _ string, _ bool) (*core
 }
 func (m *mockIndexerStore) UpdateMemory(_ context.Context, _ *core.MemoryEntry) error { return nil }
 func (m *mockIndexerStore) DeleteMemory(_ context.Context, _ string) error            { return nil }
-func (m *mockIndexerStore) CountMemories(_ context.Context) (int64, error) { return 0, nil }
+func (m *mockIndexerStore) CountMemories(_ context.Context) (int64, error)            { return 0, nil }
 func (m *mockIndexerStore) ListMemories(_ context.Context, _ *core.SearchFilter, _ int) ([]*core.MemoryEntry, error) {
 	return nil, nil
 }
@@ -522,16 +534,28 @@ func TestProjectIndexer_Index_ConcurrentIndexing(t *testing.T) {
 	embedder := newMockEmbedder()
 	pi := NewProjectIndexer(store, embedder)
 
-	// Start first indexing in background
-	done := make(chan error, 1)
+	// Block the mock store's AddProjectChunk so the first Index() call
+	// stays in progress long enough for the second call to detect it.
+	store.blockAddChunk = make(chan struct{})
+	store.unblockAddChunk = make(chan struct{})
+
+	// Start first indexing in a goroutine.
+	firstDone := make(chan error, 1)
 	go func() {
-		done <- pi.Index(context.Background(), tmpDir, &core.IndexOptions{Force: true})
+		err := pi.Index(context.Background(), tmpDir, &core.IndexOptions{Force: true})
+		firstDone <- err
 	}()
 
-	// Wait for indexing to start
-	time.Sleep(50 * time.Millisecond)
+	// Wait until the first Index() call is inside AddProjectChunk.
+	// Signal that we're ready for the concurrent call.
+	select {
+	case <-store.blockAddChunk:
+		// First call is now inside AddProjectChunk and blocked.
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for first Index() to start")
+	}
 
-	// Try to start second indexing — should fail
+	// Try to start second indexing — should fail with "indexing already in progress".
 	err := pi.Index(context.Background(), tmpDir, &core.IndexOptions{Force: true})
 	if err == nil {
 		t.Error("expected error for concurrent indexing, got nil")
@@ -539,8 +563,13 @@ func TestProjectIndexer_Index_ConcurrentIndexing(t *testing.T) {
 		t.Errorf("expected 'indexing already in progress' error, got: %v", err)
 	}
 
-	// Wait for first indexing to complete
-	<-done
+	// Unblock the first Index() call so it can complete.
+	close(store.unblockAddChunk)
+
+	// Wait for first indexing to complete.
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first Index() returned error: %v", err)
+	}
 }
 
 func TestProjectIndexer_Search(t *testing.T) {
