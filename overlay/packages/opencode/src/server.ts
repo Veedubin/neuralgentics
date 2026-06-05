@@ -238,7 +238,7 @@ async function server(input: PluginInput): Promise<Hooks> {
     ),
 
     // --- Memory manager (lazy tool exposure) --------------------------------
-    // Phase 3 of the memini-ai → neuralgentics port. This is the entry point for
+    // Phase 3 of the memoryManager port. This is the entry point for
     // agents to request additional tools on demand. Agents start with only the
     // tools listed in the default initial set, and can request more via this
     // tool. Once a tool has been used 5+ times, the broker allows the agent to
