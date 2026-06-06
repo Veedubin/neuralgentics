@@ -290,7 +290,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: "Neuralgentics ${{ github.ref_name }}"
-          body_path: CHANGELOG.md
+          body_path: docs/changelog.md
           files: staging/*
           generate_release_notes: true
           fail_on_unmatched_files: true
