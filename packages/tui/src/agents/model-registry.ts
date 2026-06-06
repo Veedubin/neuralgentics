@@ -1,9 +1,14 @@
 /**
- * @neuralgentics/tui — Task-Scoped Model Selection (T-025)
+ * @neuralgentics/tui — Task-Scoped Model Selection (T-025) + Model Preference Persistence (T-082)
  *
  * Routes tasks to big/small/fast models based on task type, with a
  * configurable registry. Reads defaults from `config/default.json`,
  * validates against the provider models in `.opencode/opencode.json`.
+ *
+ * T-082 adds session model preference persistence:
+ * - setActiveModel / getActiveModel for runtime model switching
+ * - saveModelPref / getModelPref for persisting preference as memory
+ * - restoreModelPref for restoring preference on session resume
  *
  * Usage:
  *   import { getModelForTask } from "./agents/model-registry.js";
@@ -362,4 +367,225 @@ export function getModelRegistry(): Record<ModelCategory, ModelEntry> {
 export function getRoutingTable(): Record<string, ModelCategory> {
   const config = loadConfig();
   return { ...config.routing };
+}
+
+// ─── Model Preference Persistence (T-082) ──────────────────────────────────────
+
+/** Shape of a persisted model preference. */
+export interface ModelPref {
+  /** The model ID that was active when the preference was saved. */
+  modelName: string;
+  /** ISO timestamp of when this preference was saved. */
+  updatedAt: string;
+}
+
+/** Default model when no preference is stored (task-based routing). */
+const DEFAULT_MODEL = "kimi-k2.6";
+
+/** In-memory cache for the active model preference. Undefined = not yet resolved. */
+let activeModelCache: string | undefined;
+
+/** NeuralgenticsClient-like interface for memory persistence. */
+export interface ModelPrefClient {
+  call: (method: string, params: Record<string, unknown>) => Promise<unknown>;
+}
+
+/**
+ * Get the currently active model ID.
+ *
+ * Returns the cached model preference if set, or the default model
+ * (kimi-k2.6) if no preference has been established.
+ */
+export function getActiveModel(): string {
+  return activeModelCache ?? DEFAULT_MODEL;
+}
+
+/**
+ * Set the active model and persist it to memory.
+ *
+ * Updates the in-memory cache immediately, then persists the preference
+ * via the Neuralgentics client. If the client call fails, the in-memory
+ * cache is still updated (graceful degradation).
+ *
+ * @param modelName - The model ID to set as active (e.g. "deepseek-v4-pro").
+ * @param client - NeuralgenticsClient for persisting the preference.
+ * @returns The model ID that was set.
+ */
+export async function setActiveModel(
+  modelName: string,
+  client: ModelPrefClient,
+): Promise<string> {
+  activeModelCache = modelName;
+
+  try {
+    await saveModelPref(modelName, client);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[model-registry] Failed to persist model preference: ${msg}`);
+  }
+
+  return modelName;
+}
+
+/**
+ * Save the model preference as a Neuralgentics memory entry.
+ *
+ * Uses sourceType "session_model_pref" to distinguish from other memories.
+ *
+ * @param modelName - The model ID to save.
+ * @param client - NeuralgenticsClient for memory storage.
+ * @returns The memory ID of the saved preference.
+ */
+export async function saveModelPref(
+  modelName: string,
+  client: ModelPrefClient,
+): Promise<string> {
+  const pref: ModelPref = {
+    modelName,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const result = await client.call("memory.add", {
+    content: JSON.stringify(pref),
+    sourceType: "session_model_pref",
+    metadata: {
+      type: "session_model_pref",
+      modelName,
+      updatedAt: pref.updatedAt,
+    },
+  }) as { id: string };
+
+  console.log(`[model-registry] Model preference saved: ${modelName} (id=${result.id})`);
+  return result.id;
+}
+
+/**
+ * Retrieve the most recent model preference from Neuralgentics memory.
+ *
+ * Queries for memories with sourceType "session_model_pref" and returns
+ * the most recent one. Returns null if no preference exists or if
+ * the backend is unavailable.
+ *
+ * @param client - NeuralgenticsClient for memory retrieval.
+ * @returns The model name from the most recent preference, or null.
+ */
+export async function getModelPref(
+  client: ModelPrefClient,
+): Promise<string | null> {
+  try {
+    const results = await client.call("memory.queryBySourceType", {
+      sourceType: "session_model_pref",
+      limit: 1,
+      sortBy: "createdAt",
+      sortOrder: "DESC",
+    }) as Array<Record<string, unknown>>;
+
+    if (!Array.isArray(results) || results.length === 0) {
+      return null;
+    }
+
+    const entry = results[0];
+    const content = typeof entry.content === "string"
+      ? entry.content
+      : JSON.stringify(entry.content ?? entry);
+
+    try {
+      const parsed = JSON.parse(content) as ModelPref;
+      if (typeof parsed.modelName === "string" && parsed.modelName.length > 0) {
+        return parsed.modelName;
+      }
+    } catch {
+      // Try to extract modelName from metadata if content is not valid JSON
+      const metadata = entry.metadata as Record<string, unknown> | undefined;
+      if (metadata && typeof metadata.modelName === "string") {
+        return metadata.modelName;
+      }
+    }
+
+    return null;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[model-registry] Failed to load model preference: ${msg}`);
+    return null;
+  }
+}
+
+/**
+ * Restore the model preference from Neuralgentics memory.
+ *
+ * Queries for the most recent "session_model_pref" memory and updates
+ * the in-memory cache. If no preference exists, the default model
+ * (kimi-k2.6) remains active.
+ *
+ * @param client - NeuralgenticsClient for memory retrieval.
+ * @returns The restored model name, or the default if none exists.
+ */
+export async function restoreModelPref(
+  client: ModelPrefClient,
+): Promise<string> {
+  const modelName = await getModelPref(client);
+
+  if (modelName !== null) {
+    activeModelCache = modelName;
+    console.log(`[model-registry] Restored model preference: ${modelName}`);
+    return modelName;
+  }
+
+  // No stored preference — use default (task-based routing)
+  activeModelCache = DEFAULT_MODEL;
+  console.log(`[model-registry] No model preference found, using default: ${DEFAULT_MODEL}`);
+  return DEFAULT_MODEL;
+}
+
+/**
+ * Reset the active model preference to the default.
+ *
+ * Clears the in-memory cache and persists a new preference with the
+ * default model name. This is triggered by `/model reset`.
+ *
+ * @param client - NeuralgenticsClient for memory persistence.
+ * @returns The default model name.
+ */
+export async function resetModelPref(
+  client: ModelPrefClient,
+): Promise<string> {
+  return setActiveModel(DEFAULT_MODEL, client);
+}
+
+/**
+ * Validate that a model name exists in the provider registry.
+ *
+ * @param modelName - The model ID to validate.
+ * @param opencodeConfigPath - Optional path to the opencode config.
+ * @returns True if the model is registered, false otherwise.
+ */
+export function isValidModelName(modelName: string, opencodeConfigPath?: string): boolean {
+  const registered = getRegisteredModels(opencodeConfigPath);
+  // If we couldn't load the registry, be lenient (accept any name)
+  if (registered.size === 0) return true;
+  return registered.has(modelName);
+}
+
+/**
+ * Get a list of all available model names from the registry.
+ *
+ * Useful for the `/model` command to display available models.
+ *
+ * @returns An array of model ID strings.
+ */
+export function getAvailableModels(): string[] {
+  const registered = getRegisteredModels();
+  if (registered.size > 0) {
+    return Array.from(registered).sort();
+  }
+  // Fallback: return models from the config
+  const config = loadConfig();
+  return Object.values(config.models).map((entry) => entry.modelId);
+}
+
+/**
+ * Reset the active model cache (for testing only).
+ */
+export function resetActiveModelCache(): void {
+  activeModelCache = undefined;
 }

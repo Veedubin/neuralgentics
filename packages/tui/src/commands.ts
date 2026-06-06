@@ -32,6 +32,15 @@ import { CircuitBreaker } from "./kanban/circuit-breaker.js";
 import type { KanbanBoard, KanbanStatus } from "./kanban/types.js";
 import { KANBAN_STATUSES } from "./kanban/types.js";
 import type { NeuralgenticsClient } from "./neuralgentics-client/client.js";
+import type { ModelPrefClient } from "./agents/model-registry.js";
+import {
+  getActiveModel,
+  setActiveModel,
+  resetModelPref,
+  isValidModelName,
+  getAvailableModels,
+  getRoutingTable,
+} from "./agents/model-registry.js";
 
 // ─── CommandResult ──────────────────────────────────────────────────────────────
 
@@ -52,6 +61,8 @@ export interface CommandResult {
   switchTheme?: "dark" | "light";
   /** Content to copy to clipboard (for /scaffold). */
   clipboardContent?: string;
+  /** Whether this command changes the active model (T-082). */
+  modelChanged?: boolean;
 }
 
 /** All supported slash commands. */
@@ -68,12 +79,13 @@ const COMMANDS = [
   "scaffold",
   "opportunities",
   "theme",
+  "model",
 ] as const;
 
 export type CommandName = (typeof COMMANDS)[number];
 
 /** Available commands string for `/help` display. */
-const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume <card-id>, /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light]`;
+const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume <card-id>, /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light], /model [name|reset]`;
 
 // ─── Dependency injection container ──────────────────────────────────────────────
 
@@ -240,6 +252,25 @@ export function handleSlashCommand(
       const candidates = deps.opportunityDetector.scanAndRank();
       const sub = _args[0]?.toLowerCase() ?? "";
       return handleOpportunitiesCommand(candidates, sub);
+    }
+
+    case "model": {
+      // `/model` — view/set/reset model preference (T-082)
+      // /model (no args) → show current + available
+      // /model <name> → set active model
+      // /model reset → revert to default
+      const modelArg = _args[0]?.toLowerCase() ?? "";
+
+      if (!modelArg) {
+        // Show current + available models
+        return handleModelCommand("list", deps);
+      }
+
+      if (modelArg === "reset") {
+        return handleModelCommand("reset", deps);
+      }
+
+      return handleModelCommand(modelArg, deps);
     }
 
     default:
@@ -560,6 +591,140 @@ function handleScaffoldCommand(args: string[]): CommandResult {
     refreshKanban: false,
     clipboardContent: cardTemplate,
   };
+}
+
+// ─── /model Command (T-082) ─────────────────────────────────────────────────────
+
+/**
+ * Handle the `/model` command for viewing, setting, and resetting model preference.
+ *
+ * This is the synchronous version that returns display-only results.
+ * For actions that persist model changes, use handleModelCommandAsync().
+ *
+ * Sub-commands:
+ * - "list" (no args) → show current model + list of available models
+ * - "reset" → clear preference, revert to default (kimi-k2.6)
+ * - "<model_name>" → set active model to the given name
+ *
+ * @param action - The action: "list", "reset", or a model name.
+ * @param _deps - Command dependencies (unused in sync handler, kept for signature consistency).
+ */
+export function handleModelCommand(
+  action: string,
+  _deps?: CommandDependencies,
+): CommandResult {
+  const currentModel = getActiveModel();
+  const availableModels = getAvailableModels();
+
+  if (action === "list" || action === "") {
+    // Show current model + available models
+    const routing = getRoutingTable();
+    const lines: string[] = [
+      "═══ Model Preference ═══",
+      "",
+      `Current: ${currentModel}`,
+      "",
+      "Available models:",
+    ];
+
+    for (const model of availableModels) {
+      const marker = model === currentModel ? " ← active" : "";
+      lines.push(`  • ${model}${marker}`);
+    }
+
+    // Show routing table
+    lines.push("");
+    lines.push("Task routing:");
+    for (const [task, category] of Object.entries(routing)) {
+      lines.push(`  ${task} → ${category}`);
+    }
+
+    lines.push("");
+    lines.push("Commands: /model <name> to switch, /model reset to restore default");
+    lines.push("════════════════════════════");
+
+    return {
+      command: "model",
+      message: lines.join("\n"),
+      refreshKanban: false,
+    };
+  }
+
+  if (action === "reset") {
+    // Reset to default — the async handler or caller should call resetModelPref()
+    return {
+      command: "model",
+      message: `Resetting model preference to default: kimi-k2.6`,
+      refreshKanban: false,
+      modelChanged: true,
+    };
+  }
+
+  // Set model — validate first
+  const modelName = action; // case-sensitive model ID
+
+  if (!isValidModelName(modelName)) {
+    const available = availableModels.length > 0
+      ? availableModels.join(", ")
+      : "(none found in provider registry)";
+    return {
+      command: "model",
+      message: `⚠ Model '${modelName}' not found in provider registry. Falling back to default.\nAvailable: ${available}`,
+      refreshKanban: false,
+    };
+  }
+
+  // Valid model — signal that the caller should call setActiveModel()
+  return {
+    command: "model",
+    message: `Switching model to: ${modelName}`,
+    refreshKanban: false,
+    modelChanged: true,
+  };
+}
+
+/**
+ * Async handler for `/model` commands that require persistence.
+ *
+ * Should be called by the TUI input handler when the sync handler returns
+ * `modelChanged: true`. Persists model changes via the NeuralgenticsClient.
+ *
+ * @param action - "reset" or a model name to set.
+ * @param client - NeuralgenticsClient for persistence.
+ */
+export async function handleModelCommandAsync(
+  action: string,
+  client: NeuralgenticsClient,
+): Promise<CommandResult> {
+  // Cast to ModelPrefClient — NeuralgenticsClient's call is generic-typed
+  // but ModelPrefClient uses a looser string-based signature
+  const prefClient = client as unknown as ModelPrefClient;
+
+  try {
+    if (action === "reset") {
+      const model = await resetModelPref(prefClient);
+      return {
+        command: "model",
+        message: `✓ Model reset to default: ${model}`,
+        refreshKanban: false,
+      };
+    }
+
+    // Set model
+    const model = await setActiveModel(action, prefClient);
+    return {
+      command: "model",
+      message: `✓ Active model set to: ${model}`,
+      refreshKanban: false,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      command: "model",
+      message: `/model failed: ${msg}`,
+      refreshKanban: false,
+    };
+  }
 }
 
 // ─── /memory Command (Async) ─────────────────────────────────────────────────────

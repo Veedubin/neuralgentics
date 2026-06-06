@@ -24,6 +24,8 @@ import type {
   PromptOptions,
 } from "./types.js";
 import type { CompactionCheckpoint } from "../compaction/types.js";
+import { restoreModelPref } from "../agents/model-registry.js";
+import type { ModelPrefClient } from "../agents/model-registry.js";
 
 // ─── Seed Prompt Template ──────────────────────────────────────────────────────
 
@@ -503,6 +505,15 @@ export class SessionManager {
 
     // Mark session as active after checkpoint restore
     this.setStatus("active");
+
+    // Restore model preference from memory (T-082)
+    try {
+      const prefClient = this.neuralgentics as unknown as ModelPrefClient;
+      await restoreModelPref(prefClient);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[session] Failed to restore model preference: ${msg}`);
+    }
   }
 
   // ─── Private Helpers ───────────────────────────────────────────────────
