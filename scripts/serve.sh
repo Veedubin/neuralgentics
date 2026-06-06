@@ -95,41 +95,6 @@ start_memini_core() {
   log "memini-core ready on port 8900"
 }
 
-start_broker() {
-  # Check if broker config exists
-  if [[ ! -d "$PROJECT_ROOT/packages/broker/src" ]]; then
-    warn "Broker package not found — skipping."
-    return 0
-  fi
-
-  log "Starting MCP broker on port 8901..."
-  cd "$PROJECT_ROOT/packages/broker"
-  if [[ -f "package.json" ]]; then
-    bun run src/index.ts &
-  elif [[ -f "pyproject.toml" ]]; then
-    uv run python -m broker &
-  else
-    warn "Broker has no recognizable entry point — skipping."
-    cd "$PROJECT_ROOT"
-    return 0
-  fi
-  PIDS+=($!)
-  cd "$PROJECT_ROOT"
-  verbose "broker PID: ${PIDS[-1]}"
-
-  # Wait for broker
-  local retries=0
-  while ! curl -sf http://localhost:8901/health &>/dev/null; do
-    if [[ $retries -ge 15 ]]; then
-      warn "Broker not responding after 15s — continuing anyway."
-      break
-    fi
-    retries=$((retries + 1))
-    sleep 1
-  done
-  log "MCP broker ready on port 8901"
-}
-
 # --- llama-server (Qwen3-0.6B on CPU) ---
 start_llama_server() {
   if ! command -v llama-server &>/dev/null; then
@@ -179,14 +144,12 @@ main() {
 
   start_memini_core
   start_sidecar
-  start_broker
   start_llama_server
 
   log ""
   log "Neuralgentics is running."
   log "  memini-core:       http://localhost:8900"
   log "  sidecar:           unix:///tmp/neuralgentics-embed.sock"
-  log "  MCP broker:        http://localhost:8901"
   log "  llama-server:      http://localhost:8903"
   log ""
   log "Press Ctrl+C to stop."
