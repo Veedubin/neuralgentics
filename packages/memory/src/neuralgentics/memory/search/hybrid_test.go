@@ -1,6 +1,7 @@
 package search
 
 import (
+	"fmt"
 	"testing"
 
 	"neuralgentics/src/neuralgentics/memory/core"
@@ -144,6 +145,151 @@ func TestRRFMergeDeduplication(t *testing.T) {
 	if diff < -0.001 || diff > 0.001 {
 		t.Errorf("shared memory RRF score = %f, want ~%f", *merged[0].Score, expectedScore)
 	}
+}
+
+// ─── Additional RRF fusion tests ────────────────────────────────────────────
+
+func TestRRFMerge_KParameter(t *testing.T) {
+	// Lower k gives higher weight to top ranks; higher k flattens scores.
+	vectorResults := []*core.MemoryEntry{
+		{ID: "top", Content: "top result", Score: floatPtr(0.95)},
+		{ID: "mid", Content: "mid result", Score: floatPtr(0.8)},
+	}
+
+	hsK1 := &HybridSearcher{k: 1}
+	mergedK1 := hsK1.rrfMerge(vectorResults, nil)
+	scoresK1 := scoreMap(mergedK1)
+
+	hsK100 := &HybridSearcher{k: 100}
+	mergedK100 := hsK100.rrfMerge(vectorResults, nil)
+	scoresK100 := scoreMap(mergedK100)
+
+	// With k=1: top (rank 0) gets 1/(1+0+1)=0.5, mid (rank 1) gets 1/(1+1+1)=0.333
+	// With k=100: top (rank 0) gets 1/(100+0+1)≈0.0099, mid (rank 1) gets 1/(100+1+1)≈0.0098
+	// The gap between top and mid should be larger with k=1
+	gapK1 := scoresK1["top"] - scoresK1["mid"]
+	gapK100 := scoresK100["top"] - scoresK100["mid"]
+
+	if gapK1 <= gapK100 {
+		t.Errorf("lower k should produce larger rank gaps: gapK1=%f, gapK100=%f", gapK1, gapK100)
+	}
+}
+
+func TestRRFMerge_AllIdentical(t *testing.T) {
+	hs := &HybridSearcher{k: 60}
+
+	// Same items in both lists, same order — every item gets double contribution
+	items := []*core.MemoryEntry{
+		{ID: "a", Content: "alpha", Score: floatPtr(0.9)},
+		{ID: "b", Content: "beta", Score: floatPtr(0.8)},
+	}
+
+	merged := hs.rrfMerge(items, items)
+
+	if len(merged) != 2 {
+		t.Fatalf("expected 2 deduped results, got %d", len(merged))
+	}
+
+	scores := scoreMap(merged)
+	// a at rank 0 in both: 2 * 1/(60+0+1) = 2/61
+	// b at rank 1 in both: 2 * 1/(60+1+1) = 2/62
+	scoreA := scores["a"]
+	scoreB := scores["b"]
+
+	expectedA := 2.0 / 61.0
+	if diff := scoreA - expectedA; diff < -0.001 || diff > 0.001 {
+		t.Errorf("score(a) = %f, want ~%f", scoreA, expectedA)
+	}
+	if scoreA <= scoreB {
+		t.Errorf("rank-0 item should score higher than rank-1: a=%f, b=%f", scoreA, scoreB)
+	}
+}
+
+func TestRRFMerge_LargeList(t *testing.T) {
+	hs := &HybridSearcher{k: 60}
+
+	// Create a large list of 100 items to verify O(n) performance doesn't error
+	vectorResults := make([]*core.MemoryEntry, 100)
+	for i := 0; i < 100; i++ {
+		vectorResults[i] = &core.MemoryEntry{
+			ID:      fmt.Sprintf("mem-%03d", i),
+			Content: "test content",
+			Score:   floatPtr(1.0 - float64(i)*0.01),
+		}
+	}
+
+	merged := hs.rrfMerge(vectorResults, nil)
+	if len(merged) != 100 {
+		t.Errorf("expected 100 results, got %d", len(merged))
+	}
+	// Each item should have RRF score = 1/(60+rank+1).
+	// The first item in input order is "mem-000" at rank 0 → 1/(60+0+1) = 1/61.
+	scores := scoreMap(merged)
+	firstID := "mem-000"
+	first, ok := scores[firstID]
+	if !ok {
+		t.Fatalf("expected to find %q in merged results", firstID)
+	}
+	expected := 1.0 / 61.0
+	if diff := first - expected; diff < -0.001 || diff > 0.001 {
+		t.Errorf("large list rank-0 score = %f, want ~%f", first, expected)
+	}
+}
+
+func TestRRFMerge_OnlyTextResults(t *testing.T) {
+	hs := &HybridSearcher{k: 60}
+
+	textResults := []*core.MemoryEntry{
+		{ID: "t1", Content: "text result 1", Score: floatPtr(0.8)},
+		{ID: "t2", Content: "text result 2", Score: floatPtr(0.6)},
+	}
+
+	// When vector results are nil, text results should still get scored correctly
+	merged := hs.rrfMerge(nil, textResults)
+	if len(merged) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(merged))
+	}
+
+	scores := scoreMap(merged)
+	// t1 at rank 0: 1/(60+0+1) = 1/61
+	// t2 at rank 1: 1/(60+1+1) = 1/62
+	if scores["t1"] <= scores["t2"] {
+		t.Errorf("rank-0 should score higher than rank-1: t1=%f, t2=%f", scores["t1"], scores["t2"])
+	}
+}
+
+func TestRRFMerge_ScoreOverridesOriginal(t *testing.T) {
+	hs := &HybridSearcher{k: 60}
+
+	// Original scores (from vector/text search) should be replaced by RRF scores
+	vectorResults := []*core.MemoryEntry{
+		{ID: "v1", Content: "v content", Score: floatPtr(0.99)},
+	}
+
+	merged := hs.rrfMerge(vectorResults, nil)
+	if len(merged) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(merged))
+	}
+
+	// RRF score should NOT be 0.99 — it should be 1/(60+0+1) ≈ 0.01639
+	if merged[0].Score == nil {
+		t.Fatal("expected score to be set")
+	}
+	rrfScore := *merged[0].Score
+	if rrfScore > 0.02 {
+		t.Errorf("RRF should override original score: got %f, want ~0.0164", rrfScore)
+	}
+}
+
+// scoreMap extracts a map of ID → Score from merged results.
+func scoreMap(entries []*core.MemoryEntry) map[string]float64 {
+	m := make(map[string]float64, len(entries))
+	for _, e := range entries {
+		if e.Score != nil {
+			m[e.ID] = *e.Score
+		}
+	}
+	return m
 }
 
 func floatPtr(f float64) *float64 {
