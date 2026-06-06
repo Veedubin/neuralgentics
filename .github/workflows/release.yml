@@ -344,8 +344,8 @@ jobs:
           file: docker/postgres.Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/neuralgentics-postgres:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/neuralgentics-postgres:latest
+            ghcr.io/veedubin/neuralgentics-postgres:${{ github.ref_name }}
+            ghcr.io/veedubin/neuralgentics-postgres:latest
 
       - name: Build & Push embedding sidecar
         uses: docker/build-push-action@v6
@@ -354,8 +354,8 @@ jobs:
           file: docker/sidecar.Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/neuralgentics-sidecar:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/neuralgentics-sidecar:latest
+            ghcr.io/veedubin/neuralgentics-sidecar:${{ github.ref_name }}
+            ghcr.io/veedubin/neuralgentics-sidecar:latest
 
       - name: Build & Push Go backend
         uses: docker/build-push-action@v6
@@ -366,8 +366,8 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/neuralgentics-backend:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/neuralgentics-backend:latest
+            ghcr.io/veedubin/neuralgentics-backend:${{ github.ref_name }}
+            ghcr.io/veedubin/neuralgentics-backend:latest
 
       - name: Build & Push TUI
         uses: docker/build-push-action@v6
@@ -378,5 +378,5 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/neuralgentics-tui:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/neuralgentics-tui:latest
+            ghcr.io/veedubin/neuralgentics-tui:${{ github.ref_name }}
+            ghcr.io/veedubin/neuralgentics-tui:latest
