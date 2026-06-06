@@ -229,8 +229,9 @@ Use the **skill-self-audit** sub-skill when:
 4. **Delegate ALL work** via Task tool — You CANNOT write code, edit files, run bash, or do implementation work. Your only purpose is to delegate to sub-agents.
 5. **Git check** — Before any code changes, verify git status
 6. **Quality gates** — After sub-agents complete code changes, run quality checks
-7. **Update Docs & Todos** — Update documentation as needed
-8. **Save to memory** — After everything is complete, save a summary to memoryManager
+7. **IMPROVE** — Extract patterns, bump trust, update shared knowledge (see IMPROVE phase below)
+8. **Update Docs & Todos** — Update documentation as needed
+9. **Save to memory** — After everything is complete, save a summary to memoryManager
 
 ### Sequential Thinking Enforcement
 
@@ -301,7 +302,29 @@ As orchestrator, use `memoryManager_add_memory` for:
 - Major architectural decisions made during planning
 - Complex dependency graphs or task analysis results
 
-## Context Isolation for Subagents
+### IMPROVE phase
+
+After quality gates pass and before documentation is updated, the orchestrator runs the IMPROVE phase. This enforces separation between execution (workers) and learning (post-swarm analysis).
+
+The IMPROVE phase performs four actions:
+
+1. **Analyze outcomes** — Review the completed work: what patterns emerged, what failures occurred, what decisions were made during the dispatch cycle.
+2. **Extract signals** — Categorize findings:
+   - Successful approaches are stored as **patterns** (reusable techniques).
+   - Failures are stored as **anti-patterns** (approaches to avoid).
+   - Key architectural choices are stored as **architecture decision records**.
+3. **Write to memory** — Use the following tools to populate shared knowledge:
+   - `memory.triggerExtraction` — Extract structured entities and relationships from the completed work.
+   - `memory.getTier1Summary` — Promote high-value decisions to the L1 key-decisions tier (trust >= 0.8).
+   - `memory.getRelationshipSummary` — Link new memories to existing ones via SUPERSEDES, RELATED_TO, or DERIVED_FROM relationships.
+4. **Bump trust** — Call `memory.adjustTrust` on relevant memories:
+   - `agent_used` (+0.05) for memories that proved correct during execution.
+   - `user_corrected` (-0.10) for memories that needed fixing.
+   - `user_confirmed` (+0.10) for architectural decisions verified by outcomes.
+
+This ensures shared knowledge contains verified outcomes, not speculative predictions made before quality gates pass. Workers never write to shared memory during execution — only the IMPROVE phase writes.
+
+### Context Isolation for Subagents
 
 ### Problem: Context Bloat
 

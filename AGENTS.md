@@ -56,15 +56,27 @@ False success reports (e.g. wrap-up claims "all gates pass" while the dispatch l
 *(Added 2026-06-04 Session 20 after T-029 wrap-up falsely claimed "all 4 Go modules build clean" while the dispatch log contained go build errors. Verified clean on re-run; rule added to prevent recurrence.)*
 
 ## Protocol
-All tasks must follow the 8-step Boomerang Protocol, enforced by the orchestrator:
+All tasks must follow the 9-step Boomerang Protocol, enforced by the orchestrator:
 1. Memory Query
 2. Thought Chain
 3. Planning
 4. Delegation
 5. Git Check
 6. Quality Gates
-7. Doc Update
-8. Memory Save (Wrap-up storage in `memini-core`)
+7. IMPROVE (Extract patterns, bump trust, update shared knowledge)
+8. Doc Update
+9. Memory Save (Wrap-up storage in `memini-core`)
+
+### Why IMPROVE
+
+The IMPROVE step enforces separation between execution and learning. Workers (dispatched sub-agents) never write to shared memory during execution; only the IMPROVE phase writes. After quality gates pass, the orchestrator (or a designated sub-agent) analyzes the outcomes of the completed work:
+
+1. **Analyzes outcomes** — patterns that emerged, failures that occurred, decisions that were made.
+2. **Extracts signals** — successful approaches stored as patterns, failures stored as anti-patterns, key decisions stored with architecture decision records.
+3. **Writes to memory** — uses `memory.triggerExtraction`, `memory.getTier1Summary`, and `memory.getRelationshipSummary` to populate shared knowledge.
+4. **Bumps trust** — calls `memory.adjustTrust` with `agent_used` for memories that proved correct, `user_corrected` for memories that needed fixing.
+
+This ensures shared knowledge reflects verified outcomes, not speculative predictions made before quality gates pass.
 
 
 ## Agent Roster
