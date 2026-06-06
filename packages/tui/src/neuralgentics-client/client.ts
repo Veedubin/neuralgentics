@@ -16,7 +16,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { EventEmitter } from "node:events";
 import { resolveBackendPath, resolveDbUrl } from "./resolver.js";
-import type { MethodName, MethodParams, MethodResult, SwitchContextResult, Tier0SummaryParams, Tier1SummaryParams, TierSummaryResult, TriggerExtractionParams, TriggerExtractionResult, PrecompressExtractionParams, PrecompressExtractionResult } from "./types.js";
+import type { MethodName, MethodParams, MethodResult, SwitchContextResult, Tier0SummaryParams, Tier1SummaryParams, TierSummaryResult, TriggerExtractionParams, TriggerExtractionResult, PrecompressExtractionParams, PrecompressExtractionResult, GetRelationshipSummaryParams, GetRelationshipSummaryResult } from "./types.js";
 
 /** Online/offline status for the health-check layer (T-081a). */
 export type ClientStatus = "online" | "offline";
@@ -288,6 +288,20 @@ export class NeuralgenticsClient {
       params.contextContent = contextContent;
     }
     return (await this.call("memory.precompressExtraction", params)) as PrecompressExtractionResult;
+  }
+
+  // ─── Relationship Summary (T-EXPOSE-001d) ─────────────────────────────────────
+
+  /**
+   * Get a summary of all relationships for a memory, including counts by type
+   * and the individual relationship entries (id, type, confidence).
+   *
+   * @param memoryId - The memory ID to get the relationship summary for.
+   * @returns The relationship summary with total count, type breakdown, and related items.
+   */
+  async getRelationshipSummary(memoryId: string): Promise<GetRelationshipSummaryResult> {
+    const params: GetRelationshipSummaryParams = { memoryId };
+    return (await this.call("memory.getRelationshipSummary", params)) as GetRelationshipSummaryResult;
   }
 
   // ─── Offline Detection (T-081a) ──────────────────────────────────────────

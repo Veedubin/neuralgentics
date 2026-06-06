@@ -31,5 +31,8 @@ export type {
   TriggerExtractionResult,
   PrecompressExtractionParams,
   PrecompressExtractionResult,
+  GetRelationshipSummaryParams,
+  GetRelationshipSummaryResult,
+  RelationshipSummaryItem,
 } from "./types.js";
 export { resolveBackendPath, resolveDbUrl, DEFAULT_DB_URL } from "./resolver.js";

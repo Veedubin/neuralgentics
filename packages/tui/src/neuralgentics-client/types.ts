@@ -137,6 +137,26 @@ export interface PrecompressExtractionResult {
   capturedAt: string; // RFC3339 timestamp
 }
 
+/** memory.getRelationshipSummary params */
+export interface GetRelationshipSummaryParams {
+  memoryId: string;
+}
+
+/** Single related memory in a relationship summary */
+export interface RelationshipSummaryItem {
+  id: string;
+  relationshipType: string;
+  confidence: number;
+}
+
+/** memory.getRelationshipSummary response */
+export interface GetRelationshipSummaryResult {
+  memoryId: string;
+  totalRelationships: number;
+  byType: Record<string, number>;
+  related: RelationshipSummaryItem[];
+}
+
 // ─── Method Registry ──────────────────────────────────────────────────────────
 // Maps each JSON-RPC method name to its param and result types.
 // Core 6 are fully typed; the rest use generic types for now.
@@ -189,6 +209,7 @@ export interface MethodRegistry {
   "memory.createEntityRelationship": { params: Record<string, unknown>; result: { id: string } };
   "memory.getEntityGraph": { params: Record<string, unknown>; result: Record<string, unknown> };
   "memory.renderGraphHTML": { params: Record<string, unknown>; result: { html: string } };
+  "memory.getRelationshipSummary": { params: GetRelationshipSummaryParams; result: GetRelationshipSummaryResult };
 
   // Memory Thought Chains
   "memory.startThoughtChain": { params: Record<string, unknown>; result: { id: string } };

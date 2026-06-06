@@ -321,6 +321,10 @@ type memoryRenderGraphHTMLParams struct {
 	Depth    *int   `json:"depth,omitempty"`
 }
 
+type memoryGetRelationshipSummaryParams struct {
+	MemoryID string `json:"memoryId"`
+}
+
 // ─── Thought Chain Request Structs ─────────────────────────────────────────────
 
 type memoryStartThoughtChainParams struct {
@@ -707,6 +711,8 @@ func handleRequest(
 		return handleMemoryGetEntityGraph(ctx, req, memSys)
 	case "memory.renderGraphHTML":
 		return handleMemoryRenderGraphHTML(ctx, req, memSys)
+	case "memory.getRelationshipSummary":
+		return handleMemoryGetRelationshipSummary(ctx, req, memSys)
 
 	// Memory — Thought Chains
 	case "memory.startThoughtChain":
@@ -1782,6 +1788,28 @@ func handleMemoryRenderGraphHTML(ctx context.Context, req jsonrpcRequest, memSys
 	}
 
 	return successResponse(req.ID, map[string]string{"html": html})
+}
+
+func handleMemoryGetRelationshipSummary(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem) jsonrpcResponse {
+	var params memoryGetRelationshipSummaryParams
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	if params.MemoryID == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: memoryId is required")
+	}
+
+	if memSys == nil {
+		return errorResponse(req.ID, -32603, "Internal error: memory system not available")
+	}
+
+	result, err := memSys.GetRelationshipSummary(ctx, params.MemoryID)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	return successResponse(req.ID, result)
 }
 
 // ─── Thought Chain Handlers ────────────────────────────────────────────────────
