@@ -51,7 +51,7 @@ A sub-agent **MUST NOT** mark a card `done` while any quality gate is failing �
 1. **Fix inline** — the agent has the file context, edit and re-run the gate until it passes.
 2. **Block the card** — set `Status: blocked` in the kanban entry, document which gate failed, the exact error, and a one-line remediation. The orchestrator will dispatch a follow-up card.
 
-False success reports (e.g. wrap-up claims "all gates pass" while the dispatch log shows errors) are a session-ending violation. The orchestrator re-runs every gate on return; sub-agents that lie lose trust and get the `--max-steps` budget reduced.
+False success reports (e.g. wrap-up claims "all gates pass" while the dispatch log shows errors) are a session-ending violation. The orchestrator re-runs every gate on return; sub-agents that lie lose trust.
 
 *(Added 2026-06-04 Session 20 after T-029 wrap-up falsely claimed "all 4 Go modules build clean" while the dispatch log contained go build errors. Verified clean on re-run; rule added to prevent recurrence.)*
 
