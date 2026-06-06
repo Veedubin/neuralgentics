@@ -1,6 +1,9 @@
 # Installation
 
+You're installing the **harness** for AI agents - a 26 MB Go binary that brokers tool calls, scores memory, and persists context across sessions.
+
 Neuralgentics provides three primary installation paths depending on your environment and trust level.
+
 
 ## 🛠️ Installation Flow
 

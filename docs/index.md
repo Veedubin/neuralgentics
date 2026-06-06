@@ -2,7 +2,13 @@
 
 > An open-source agent runtime, built for engineers who ship.
 
+Neuralgentics is the **harness** for AI agents - the execution environment, permission broker, and persistent memory that turns a language model into a reliable, debuggable, and trustworthy agent.
+
+**What is a harness?**
+A harness wraps a model with prompts, tools, context, memory, and permissions. A better harness creates a more capable agent, independent of the underlying model's raw power. Neuralgentics IS this harness.
+
 **23 specialist agents, a trust-scored memory engine, and a permissions-based tool broker -- all in a 26 MB Go binary.** No cloud account, no telemetry, no vendor lock-in. You run it on your machine; it remembers what your agents did; it stops them from doing things they shouldn't.
+
 
 [**Get Started →**](getting-started/installation.md)
 
@@ -62,7 +68,9 @@ The rest of this page walks through each major subsystem, with a small mockup sh
 
 ### Memory Engine -- Trust-Scored, Self-Decaying
 
-Every decision an agent makes -- a routing rule, a code pattern, a fix that worked, a fix that didn't -- lands in PostgreSQL with a **trust score** that starts at 0.5 and moves up or down based on outcomes. Successful patterns get promoted; failed approaches decay and fade. Old bad memories are archived automatically. Nothing has to be cleaned up by hand because the system is honest about what worked and what didn't.
+- **Harness-grade reliability** - every tool call goes through the broker; every memory write is trust-scored; every permission is enforced at the code layer, not in the prompt.
+- **Memory Engine** - Every decision an agent makes lands in PostgreSQL + pgvector with a **trust score** (default 0.5). Successful patterns get promoted; failed approaches decay and fade. The system is honest about what worked.
+
 
 The memory store is `pgvector`-backed, so semantic search works the way you'd expect: "show me every dispatch that hit a build failure" returns similar past dispatches, ranked by trust. Trust is a first-class column, not a side table.
 

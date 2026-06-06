@@ -2,7 +2,12 @@
 
 > An open-source agent runtime, built for engineers who ship.
 
-**23 specialist agents, a trust-scored memory engine, and a permissions-based tool broker — all in a 26 MB Go binary.** No cloud account, no telemetry, no vendor lock-in. You run it on your machine; it remembers what your agents did; it stops them from doing things they shouldn't.
+Neuralgentics is the **harness** for AI agents - the execution environment, permission broker, and persistent memory that turns a language model into a reliable, debuggable, and trustworthy agent.
+
+A harness provides the structural scaffolding that a raw model lacks. It wraps the LLM with specific prompts, tools, context, and strict permissions, ensuring the agent operates within defined boundaries and maintains continuity across sessions.
+
+**23 specialist agents, a trust-scored memory engine, and a permissions-based tool broker - all in a 26 MB Go binary.** No cloud account, no telemetry, no vendor lock-in. You run it on your machine; it remembers what your agents did; it stops them from doing things they shouldn't.
+
 
 📖 **Full documentation: <https://veedubin.github.io/neuralgentics/>**
 
