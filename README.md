@@ -81,6 +81,8 @@ A task enters the orchestrator, gets routed to a specialist, who calls the broke
 | `packages/plugin/` | TypeScript | OpenCode integration plugin. Wires the runtime into the OpenCode IDE via the OpenCode plugin API. Depends on SDK. |
 | `packages/tui/` | TypeScript | Terminal UI (OpenTUI-based, mockups in docs) |
 | `overlay/packages/opencode/` | TypeScript | Plugin that wires the runtime into OpenCode |
+| `docker-compose.yml` | - | Docker Compose configuration for full-stack deployment |
+| `podman-compose.yml` | - | Podman Compose configuration with SELinux and user namespace tweaks |
 
 **SDK vs Plugin boundary**: `packages/sdk/` is a framework-agnostic typed client (no OpenCode imports). `packages/plugin/` is the OpenCode-specific integration (MCP tools, lifecycle hooks, stateless agent protocol). Plugin MAY use SDK; SDK MUST NOT use Plugin.
 
@@ -97,6 +99,7 @@ Neuralgentics is a coding-agent runtime that:
 3. **Mediates all external tool access through an MCP broker** that enforces role-based permissions and reduces tool-catalog tokens by 95%
 4. **Speaks MCP to the world** — 42 JSON-RPC methods, stdio transport, broker-gated
 5. **Installs in one command** (`./scripts/install.sh`) or one `podman-compose up`
+6. **Container support** — 4 images on `pgvector/pgvector:pg18` multi-stage builds: PostgreSQL 18 + pgvector, Python gRPC embedding sidecar, Go JSON-RPC backend (distroless), and TUI (distroless)
 
 Agent prompts are ~200 tokens each. State lives in memory, not in the prompt. Open-source under the [MIT License](https://github.com/Veedubin/neuralgentics/blob/main/LICENSE).
 

@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-06-06
+
+Minor release: first-class container support + complete store/ coverage push.
+
+### Added
+
+- **Container support (T-FOLLOWUP-CONTAINERS-ENABLE)** — 4 images on `pgvector/pgvector:pg18` multi-stage builds. `docker-compose up` and `podman-compose up` both work end-to-end.
+  - `ghcr.io/veedubin/neuralgentics-postgres:v0.2.0` — PostgreSQL 18 + pgvector, schema baked in
+  - `ghcr.io/veedubin/neuralgentics-sidecar:v0.2.0` — Python gRPC embedding service
+  - `ghcr.io/veedubin/neuralgentics-backend:v0.2.0` — Go JSON-RPC backend, distroless
+  - `ghcr.io/veedubin/neuralgentics-tui:v0.2.0` — TUI binary, distroless
+- **NEW `podman-compose.yml`** — Podman-specific tweaks (SELinux `:Z` labels, `userns_mode: keep-id`, `pids_limit`).
+- **NEW `compose.example.env`** — Template `.env` for compose-based installs.
+
+### Changed
+
+- **`packages/memory/src/neuralgentics/memory/store/memories.go` reduced from 1,773 to 213 lines** (T-COV-001..012). Now pure CRUD on the `memories` table. Coverage in `store/` lifted from 5.5% to ≥80%.
+
+### Cleanup
+
+- **Deleted `packages/core/`** (Python) — vestigial code, zero imports. Backup at `/tmp/opencode/neuralgentics-core-backup-*.`
+- **Deleted `packages/broker/`** (Python) — vestigial code, zero imports. Backup at `/tmp/opencode/neuralgentics-broker-python-backup-*.`
+- **Documented SDK + Plugin boundary** — `packages/sdk/README.md` and `packages/plugin/README.md` clarify which is which.
+
+### Quality gates (v0.2.0)
+
+- `go vet` — 4/4 Go modules clean
+- `go test -short` — 4/4 Go modules PASS
+- `tsc --noEmit` — TUI + overlay both clean
+- `bun test` — TUI pass / 0 fail + SDK pass / 0 fail
+- `mkdocs build --strict` — 0 warnings
+- `podman build` — all 4 images build cleanly on pg18 base
+
 ## [0.1.3] - 2026-06-06
 
 Patch release: closes the 4 deferred items from v0.1.2 plus 6 follow-up fixes from Session 27.
