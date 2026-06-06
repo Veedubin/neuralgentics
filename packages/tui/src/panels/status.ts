@@ -14,6 +14,13 @@ import type { TextVNode, BoxVNode } from "../vnode-types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
+export interface OfflineState {
+  /** OpenCode client online/offline status. */
+  opencode: "online" | "offline";
+  /** Neuralgentics (Go backend) client online/offline status. */
+  neuralgentics: "online" | "offline";
+}
+
 export interface StatusBarData {
   sessionId: string;
   tokenUsed: number;
@@ -22,6 +29,8 @@ export interface StatusBarData {
   compactionCount: number;
   opencodeStatus: OpenCodeStatus;
   sessionStatus: SessionManagerStatus;
+  /** Offline state for each client (T-081b). */
+  offlineState?: OfflineState;
 }
 
 // ─── StatusBar ──────────────────────────────────────────────────────────────────
@@ -87,7 +96,7 @@ export class StatusBar {
   }
 
   private _buildContent(): string {
-    const { sessionId, tokenUsed, tokenLimit, agentRoster, compactionCount, opencodeStatus, sessionStatus } = this._data;
+    const { sessionId, tokenUsed, tokenLimit, agentRoster, compactionCount, opencodeStatus, sessionStatus, offlineState } = this._data;
 
     const tokenPct = tokenLimit === 0 ? "0" : ((tokenUsed / tokenLimit) * 100).toFixed(1);
     const tokenStr = `${tokenUsed.toLocaleString()} / ${tokenLimit.toLocaleString()} (${tokenPct}%)`;
@@ -108,6 +117,14 @@ export class StatusBar {
         ? "streaming"
         : sessionStatus;
 
-    return ` Session: ${sessionId} │ ${ocStatus} │ Sess:${sessStatus} │ Tokens: ${tokenStr} │ Agents: ${roster} │ Compactions: ${compactionCount}`;
+    // Build offline indicator for status bar (T-081b)
+    const offlineParts: string[] = [];
+    if (offlineState) {
+      if (offlineState.opencode === "offline") offlineParts.push("LLM:offline");
+      if (offlineState.neuralgentics === "offline") offlineParts.push("Backend:offline");
+    }
+    const offlineLabel = offlineParts.length > 0 ? ` │ ${offlineParts.join(" ")}` : "";
+
+    return ` Session: ${sessionId} │ ${ocStatus} │ Sess:${sessStatus} │ Tokens: ${tokenStr} │ Agents: ${roster} │ Compactions: ${compactionCount}${offlineLabel}`;
   }
 }
