@@ -92,6 +92,7 @@ nav:
       - Memory System: reference/memory-system.md
       - Kanban System: reference/kanban-system.md
       - Session Lifecycle: reference/session-lifecycle.md
+      - Changelog: changelog.md
   - Troubleshooting: troubleshooting.md
   - Development: development.md
   - Archive:
