@@ -16,7 +16,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { EventEmitter } from "node:events";
 import { resolveBackendPath, resolveDbUrl } from "./resolver.js";
-import type { MethodName, MethodParams, MethodResult, SwitchContextResult, Tier0SummaryParams, Tier1SummaryParams, TierSummaryResult } from "./types.js";
+import type { MethodName, MethodParams, MethodResult, SwitchContextResult, Tier0SummaryParams, Tier1SummaryParams, TierSummaryResult, TriggerExtractionParams, TriggerExtractionResult, PrecompressExtractionParams, PrecompressExtractionResult } from "./types.js";
 
 /** Online/offline status for the health-check layer (T-081a). */
 export type ClientStatus = "online" | "offline";
@@ -256,6 +256,38 @@ export class NeuralgenticsClient {
    */
   async getTier1Summary(forceRefresh = false): Promise<TierSummaryResult> {
     return (await this.call("memory.getTier1Summary", { forceRefresh })) as TierSummaryResult;
+  }
+
+  // ─── Extraction (T-EXPOSE-001c) ─────────────────────────────────────────────
+
+  /**
+   * Trigger memory extraction from a conversation string.
+   * If no conversation is provided, uses the server's buffered conversation.
+   *
+   * @param conversation - Optional conversation text to extract memories from.
+   * @returns The extraction result with count, memory IDs, and timestamp.
+   */
+  async triggerExtraction(conversation?: string): Promise<TriggerExtractionResult> {
+    const params: TriggerExtractionParams = {};
+    if (conversation !== undefined) {
+      params.conversation = conversation;
+    }
+    return (await this.call("memory.triggerExtraction", params)) as TriggerExtractionResult;
+  }
+
+  /**
+   * Capture context before compaction squeeze and extract memories.
+   * If no context content is provided, captures the current context.
+   *
+   * @param contextContent - Optional context content to capture.
+   * @returns The precompress result with captured status, context size, and timestamp.
+   */
+  async precompressExtraction(contextContent?: string): Promise<PrecompressExtractionResult> {
+    const params: PrecompressExtractionParams = {};
+    if (contextContent !== undefined) {
+      params.contextContent = contextContent;
+    }
+    return (await this.call("memory.precompressExtraction", params)) as PrecompressExtractionResult;
   }
 
   // ─── Offline Detection (T-081a) ──────────────────────────────────────────
