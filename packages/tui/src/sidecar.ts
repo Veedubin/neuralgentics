@@ -356,6 +356,25 @@ export function shutdownSidecar(): void {
 }
 
 /**
+ * Check the health of the OpenCode and Neuralgentics client connections.
+ * Returns a snapshot of both clients' online/offline status.
+ *
+ * This is the diagnostic function that /offline calls under the hood.
+ * It does NOT trigger recovery — it just reads the current state.
+ *
+ * (T-081c — Offline Mode Recovery)
+ */
+export function checkSidecarHealth(
+  opencodeClient: { onlineStatus: "online" | "offline" },
+  neuralgenticsClient: { onlineStatus: "online" | "offline" },
+): { opencode: "online" | "offline"; neuralgentics: "online" | "offline" } {
+  return {
+    opencode: opencodeClient.onlineStatus,
+    neuralgentics: neuralgenticsClient.onlineStatus,
+  };
+}
+
+/**
  * Register process exit handlers to clean up sidecar on TUI exit.
  * Only kills sidecar if TUI spawned it.
  */
