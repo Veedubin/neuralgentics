@@ -4,7 +4,7 @@
 
 **23 specialist agents, a trust-scored memory engine, and a permissions-based tool broker -- all in a 26 MB Go binary.** No cloud account, no telemetry, no vendor lock-in. You run it on your machine; it remembers what your agents did; it stops them from doing things they shouldn't.
 
-[**Get Started →**](getting-started/installation/)
+[**Get Started →**](getting-started/installation.md)
 
 ---
 
@@ -54,7 +54,7 @@ Agent prompts are ~200 tokens each. State lives in memory, not in the prompt. Sh
     [ SPECIALIST AGENT ]
 ```
 
-A task enters the orchestrator, gets routed to a specialist, who calls the broker for tools, who checks RBAC, who executes -- and every decision lands in the trust-scored memory store. Full details at [Dispatch Flow](architecture/dispatch-flow/).
+A task enters the orchestrator, gets routed to a specialist, who calls the broker for tools, who checks RBAC, who executes -- and every decision lands in the trust-scored memory store. Full details at [Dispatch Flow](architecture/dispatch-flow.md).
 
 ## Features in Depth
 
@@ -83,7 +83,7 @@ The memory store is `pgvector`-backed, so semantic search works the way you'd ex
     Trust:  ● active (>0.5)   ○ fading (<0.5)   ∅ archived (<0.2)
 ```
 
-See [Memory System Reference](reference/memory-system/) for the trust engine, decay math, and embedding strategy.
+See [Memory System Reference](reference/memory-system.md) for the trust engine, decay math, and embedding strategy.
 
 ### MCP Broker -- RBAC-Gated Tool Calls
 
@@ -109,7 +109,7 @@ The practical effect: agents never see tools they can't use, which cuts the tool
     23 total roles  ·  7 restricted servers  ·  default-deny
 ```
 
-See [Permission Model](architecture/permission-model/) for the full matrix and [Broker Flow](architecture/broker-flow/) for the request path.
+See [Permission Model](architecture/permission-model.md) for the full matrix and [Broker Flow](architecture/broker-flow.md) for the request path.
 
 ### Kanban Board -- A Real FSM, Not a TODO List
 
@@ -135,7 +135,7 @@ The board survives session boundaries, so a card you start on Monday is still on
     └────────────────────────────────┘
 ```
 
-See [Kanban System](reference/kanban-system/) for the FSM transitions, circuit-breaker rules, and dispatch logic.
+See [Kanban System](reference/kanban-system.md) for the FSM transitions, circuit-breaker rules, and dispatch logic.
 
 ### Tiered Context Loading -- L0 / L1 / L2
 
@@ -164,7 +164,7 @@ The result: agents start with the same context humans do after skimming a projec
     Prompt budget: 200 tokens for the agent + 100 L0 + 2K L1 on demand
 ```
 
-See [Memory System Reference](reference/memory-system/) for the tier promotion logic and trust thresholds.
+See [Memory System Reference](reference/memory-system.md) for the tier promotion logic and trust thresholds.
 
 ### Multi-Agent Routing -- 23 Specialists, One Routing Matrix
 
@@ -190,7 +190,7 @@ Eight concrete agent roles ship in the project: architect, coder, explorer, git,
     Unknown intent → orchestrator self-routes after L1 planning
 ```
 
-See [Dispatch Flow](architecture/dispatch-flow/) for the full routing logic and the rule that architect always designs before coder builds.
+See [Dispatch Flow](architecture/dispatch-flow.md) for the full routing logic and the rule that architect always designs before coder builds.
 
 ### Stateless Agent Protocol -- 200-Token Prompts, Durable State
 
@@ -213,7 +213,7 @@ This decoupling means agents can be swapped, scaled, or restarted without losing
     { memory_id: "mem-a8f3", description: "count query simplified" }
 ```
 
-See [Session Lifecycle](reference/session-lifecycle/) for the full 8-step protocol and the wrap-up trust signal.
+See [Session Lifecycle](reference/session-lifecycle.md) for the full 8-step protocol and the wrap-up trust signal.
 
 ---
 
@@ -221,8 +221,8 @@ See [Session Lifecycle](reference/session-lifecycle/) for the full 8-step protoc
 
 - **Memory is a product, not a side effect** -- trust scoring and decay make the system honest about what worked. Source: [`packages/memini-core/`](https://github.com/Veedubin/neuralgentics/tree/main/packages/memini-core)
 - **Permissions are the broker, not a config file** -- 23 roles x 7 restricted server classes, enforced in code. Source: [`access/access.go`](https://github.com/Veedubin/neuralgentics/blob/main/packages/broker-go/src/neuralgentics/broker/access/access.go)
-- **State lives in memory, not in prompts** -- ~200-token seed prompts, full context fetched on demand, wrap-ups stored back. See [Session Lifecycle](reference/session-lifecycle/)
-- **A real kanban FSM, not a TODO list** -- 7 states, circuit breaker, audit trail. See [Kanban System](reference/kanban-system/)
+- **State lives in memory, not in prompts** -- ~200-token seed prompts, full context fetched on demand, wrap-ups stored back. See [Session Lifecycle](reference/session-lifecycle.md)
+- **A real kanban FSM, not a TODO list** -- 7 states, circuit breaker, audit trail. See [Kanban System](reference/kanban-system.md)
 
 ## Comparison Table
 
@@ -323,17 +323,17 @@ MOCKUP -- not a real screenshot. Trust scores and decay rates are illustrative.
 
 | If you want to... | Go here → |
 | :--- | :--- |
-| **Get it running** | [Installation Guide](getting-started/installation/) |
-| **Ship your first feature** | [Quickstart Guide](getting-started/quickstart/) |
-| **Understand the architecture** | [System Overview](architecture/overview/) |
-| **See how dispatch works** | [Dispatch Flow](architecture/dispatch-flow/) |
-| **Dive into the memory engine** | [Memory System Reference](reference/memory-system/) |
-| **Review the session lifecycle** | [Session Lifecycle](reference/session-lifecycle/) |
-| **Configure the runtime** | [Environment Variables](reference/env-vars/) |
-| **Fix something that's broken** | [Troubleshooting](troubleshooting/) |
+| **Get it running** | [Installation Guide](getting-started/installation.md) |
+| **Ship your first feature** | [Quickstart Guide](getting-started/quickstart.md) |
+| **Understand the architecture** | [System Overview](architecture/overview.md) |
+| **See how dispatch works** | [Dispatch Flow](architecture/dispatch-flow.md) |
+| **Dive into the memory engine** | [Memory System Reference](reference/memory-system.md) |
+| **Review the session lifecycle** | [Session Lifecycle](reference/session-lifecycle.md) |
+| **Configure the runtime** | [Environment Variables](reference/env-vars.md) |
+| **Fix something that's broken** | [Troubleshooting](troubleshooting.md) |
 
 ---
 
-[**Get Started →**](getting-started/installation/)
+[**Get Started →**](getting-started/installation.md)
 
 *Built by humans who got tired of agents that forget.*
