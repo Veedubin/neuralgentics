@@ -21,7 +21,7 @@
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { CompactionOrchestrator, CompactionResult } from "./compaction/index.js";
-import { handleSpendCommand } from "./observability/token-counter.js";
+import { handleSpendCommand, handleSpendHistoryCommand } from "./observability/token-counter.js";
 import type { TokenCounter } from "./observability/token-counter.js";
 import {
   OpportunityDetector,
@@ -212,6 +212,15 @@ export function handleSlashCommand(
         return {
           command: "spend",
           message: "/spend — token accounting not available (no TokenCounter)",
+          refreshKanban: false,
+        };
+      }
+      // /spend history requires async — signal to caller to use handleSpendHistoryCommand
+      const spendParts = trimmed.split(/\s+/);
+      if (spendParts[1]?.toLowerCase() === "history") {
+        return {
+          command: "spend",
+          message: "_spend_history_", // Signal to caller that async handler is needed
           refreshKanban: false,
         };
       }

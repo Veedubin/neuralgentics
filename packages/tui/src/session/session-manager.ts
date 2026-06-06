@@ -26,6 +26,7 @@ import type {
 import type { CompactionCheckpoint } from "../compaction/types.js";
 import { restoreModelPref } from "../agents/model-registry.js";
 import type { ModelPrefClient } from "../agents/model-registry.js";
+import type { TokenCounter } from "../observability/token-counter.js";
 
 // ─── Seed Prompt Template ──────────────────────────────────────────────────────
 
@@ -75,6 +76,7 @@ export class SessionManager {
 
   private readonly opencode: OpenCodeClient;
   private readonly neuralgentics: NeuralgenticsClient;
+  private readonly tokenCounter: TokenCounter | undefined;
 
   // ─── Configuration ─────────────────────────────────────────────────────
 
@@ -100,10 +102,12 @@ export class SessionManager {
     options: {
       opencode: OpenCodeClient;
       neuralgentics: NeuralgenticsClient;
+      tokenCounter?: TokenCounter;
     } & Partial<SessionManagerOptions>,
   ) {
     this.opencode = options.opencode;
     this.neuralgentics = options.neuralgentics;
+    this.tokenCounter = options.tokenCounter;
     this.autoCreateSession = options.autoCreateSession ?? true;
     this.memoryEnabled = options.memoryEnabled ?? true;
     this.trustSignalsEnabled = options.trustSignalsEnabled ?? true;
@@ -514,9 +518,42 @@ export class SessionManager {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[session] Failed to restore model preference: ${msg}`);
     }
+
+    // Restore token counter batch from memory (T-084)
+    if (this.tokenCounter) {
+      try {
+        const restored = await this.tokenCounter.restoreBatch();
+        if (restored) {
+          console.log("[session] Restored token counter batch from previous session");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[session] Failed to restore token counter batch: ${msg}`);
+      }
+    }
   }
 
   // ─── Private Helpers ───────────────────────────────────────────────────
+
+  /**
+   * Gracefully shut down the session manager.
+   * Persists current session state (token batch) before exit (T-084).
+   */
+  async shutdown(): Promise<void> {
+    console.log("[session] Shutting down session manager...");
+    try {
+      if (this.tokenCounter) {
+        const batchId = await this.tokenCounter.saveBatch();
+        if (batchId) {
+          console.log(`[session] Token batch saved: ${batchId}`);
+        }
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[session] Failed to save token batch on shutdown: ${msg}`);
+    }
+    this.setStatus("idle");
+  }
 
   /**
    * Send a prompt to a specific session with streaming and memory storage.
