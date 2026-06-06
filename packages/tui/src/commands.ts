@@ -36,6 +36,7 @@ import { CircuitBreaker } from "./kanban/circuit-breaker.js";
 import type { KanbanBoard, KanbanStatus } from "./kanban/types.js";
 import { KANBAN_STATUSES } from "./kanban/types.js";
 import type { NeuralgenticsClient } from "./neuralgentics-client/client.js";
+import type { OfflineState } from "./panels/status.js";
 import type { ModelPrefClient } from "./agents/model-registry.js";
 import type { ResumeResult, ResumeStatus } from "./session/types.js";
 import {
@@ -72,6 +73,8 @@ export interface CommandResult {
   opportunitiesCached?: boolean;
   /** Whether this command should report session resume status (T-080). */
   resumeStatus?: ResumeStatus | null;
+  /** Offline status diagnostic from /offline command (T-081b). */
+  offlineStatus?: { opencode: "online" | "offline"; neuralgentics: "online" | "offline"; lastCheck: string; writeCommandsBlocked: boolean };
 }
 
 /** All supported slash commands. */
@@ -89,12 +92,23 @@ const COMMANDS = [
   "opportunities",
   "theme",
   "model",
+  "offline",
 ] as const;
 
 export type CommandName = (typeof COMMANDS)[number];
 
 /** Available commands string for `/help` display. */
-const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume [card-id], /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light], /model [name|reset]`;
+const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume [card-id], /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light], /model [name|reset], /offline`;
+
+/** Write commands that should be blocked when offline (T-081b). */
+const WRITE_COMMANDS: ReadonlySet<string> = new Set([
+  "compact",
+  "scaffold",
+  "resume",
+  "memory",
+  "chain",
+  "model",
+]);
 
 // ─── Dependency injection container ──────────────────────────────────────────────
 
@@ -301,6 +315,16 @@ export function handleSlashCommand(
       }
 
       return handleModelCommand(modelArg, deps);
+    }
+
+    case "offline": {
+      // `/offline` — show offline status diagnostics (T-081b)
+      // This returns a placeholder; the TUI will fill in actual client status
+      return {
+        command: "offline",
+        message: "_offline_", // Signal to caller that async handler is needed
+        refreshKanban: false,
+      };
     }
 
     default:
@@ -1080,4 +1104,96 @@ export async function handleCompactCommand(
       refreshKanban: false,
     };
   }
+}
+
+// ─── Offline Command & Write Gating (T-081b) ─────────────────────────────────
+
+/**
+ * Check if a slash command is a write command that should be blocked when offline.
+ *
+ * Write commands require a live backend connection. Read commands (help, board,
+ * review, theme, spend, diff, opportunities, offline, status) are always allowed.
+ *
+ * @param cmd - The command name (without the `/` prefix).
+ * @returns True if the command requires write access to the backend.
+ */
+export function isWriteCommand(cmd: string): boolean {
+  return WRITE_COMMANDS.has(cmd);
+}
+
+/**
+ * Check whether write commands should be blocked based on offline state.
+ *
+ * If either client is offline, write commands are blocked.
+ *
+ * @param offlineState - The current offline state for both clients.
+ * @returns True if write commands should be blocked.
+ */
+export function isWriteBlocked(offlineState: OfflineState | undefined): boolean {
+  if (!offlineState) return false;
+  return offlineState.opencode === "offline" || offlineState.neuralgentics === "offline";
+}
+
+/**
+ * Async handler for `/offline` — shows diagnostic information about
+ * the current offline state of both clients.
+ *
+ * @param opencodeStatus - The OpenCode client's online status.
+ * @param neuralgenticsStatus - The Neuralgentics (Go backend) client's online status.
+ * @returns A CommandResult with offline diagnostics.
+ */
+export async function handleOfflineCommand(
+  opencodeStatus: "online" | "offline",
+  neuralgenticsStatus: "online" | "offline",
+): Promise<CommandResult> {
+  const offlineState: OfflineState = {
+    opencode: opencodeStatus,
+    neuralgentics: neuralgenticsStatus,
+  };
+
+  const writeBlocked = isWriteBlocked(offlineState);
+  const bothOffline = opencodeStatus === "offline" && neuralgenticsStatus === "offline";
+
+  const lines: string[] = [
+    "═══ Offline Diagnostics ═══",
+    "",
+    `OpenCode (LLM):  ${opencodeStatus === "online" ? "✓ online" : "✗ OFFLINE"}`,
+    `Go Backend:       ${neuralgenticsStatus === "online" ? "✓ online" : "✗ OFFLINE"}`,
+    "",
+    `Write commands:   ${writeBlocked ? "✗ BLOCKED" : "✓ available"}`,
+    `Read commands:    ✓ always available`,
+    "",
+  ];
+
+  if (bothOffline) {
+    lines.push("🟧 Both services OFFLINE — local operations only.");
+    lines.push("  Available: /help, /board, /review, /diff, /theme, /spend, /offline");
+    lines.push("  Blocked: /compact, /scaffold, /resume, /memory, /chain, /model");
+  } else if (writeBlocked) {
+    if (opencodeStatus === "offline") {
+      lines.push("⚠ LLM (OpenCode) offline — agent loop unavailable.");
+      lines.push("  Memory ops and Go backend features still available.");
+    }
+    if (neuralgenticsStatus === "offline") {
+      lines.push("⚠ Go backend offline — memory ops unavailable.");
+      lines.push("  LLM features may still be available.");
+    }
+  } else {
+    lines.push("All services operational. No offline issues detected.");
+  }
+
+  lines.push("");
+  lines.push("════════════════════════════");
+
+  return {
+    command: "offline",
+    message: lines.join("\n"),
+    refreshKanban: false,
+    offlineStatus: {
+      opencode: opencodeStatus,
+      neuralgentics: neuralgenticsStatus,
+      lastCheck: new Date().toISOString(),
+      writeCommandsBlocked: writeBlocked,
+    },
+  };
 }

@@ -25,10 +25,10 @@ import {
 } from "@opentui/core";
 
 import { parseKanbanBoard, formatKanbanForPanel, type KanbanBoard } from "./kanban/index.js";
-import { handleSlashCommand, handleMemoryCommand, handleChainCommand, handleCachedOpportunitiesCommand, handleResumeSessionCommand, type CommandDependencies } from "./commands.js";
+import { handleSlashCommand, handleMemoryCommand, handleChainCommand, handleCachedOpportunitiesCommand, handleResumeSessionCommand, handleOfflineCommand, isWriteCommand, isWriteBlocked, type CommandDependencies } from "./commands.js";
 import { initSidecar, checkDatabase, registerSidecarShutdown } from "./sidecar.js";
-import { OpenCodeClient, type OpenCodeStatus } from "./opencode-client/index.js";
-import { NeuralgenticsClient } from "./neuralgentics-client/client.js";
+import { OpenCodeClient, type OpenCodeStatus, type ClientStatus as OpenCodeClientStatus } from "./opencode-client/index.js";
+import { NeuralgenticsClient, type ClientStatus as NeuralgenticsClientStatus } from "./neuralgentics-client/client.js";
 import { SessionManager, type SessionManagerStatus } from "./session/index.js";
 import { DiffPanel } from "./panels/diff.js";
 import { ThemeManager } from "./themes/index.js";
@@ -36,6 +36,7 @@ import type { ThemeColors } from "./themes/types.js";
 import { FocusManager, initPanelAriaLabels, toggleHighContrast, type PanelName } from "./a11y/index.js";
 import { TokenCounter } from "./observability/token-counter.js";
 import type { TextVNode, BoxVNode, InputVNode } from "./vnode-types.js";
+import type { OfflineState } from "./panels/status.js";
 
 // ─── Theme Manager (T-032) ────────────────────────────────────────────────────
 
@@ -58,6 +59,8 @@ interface AppState {
   chainThoughts: string[];
   opencodeStatus: OpenCodeStatus;
   sessionStatus: SessionManagerStatus;
+  /** Offline state for both clients (T-081b). */
+  offlineState: OfflineState;
 }
 
 const state: AppState = {
@@ -76,6 +79,7 @@ const state: AppState = {
   chainThoughts: ["Chain: no active thought chains"],
   opencodeStatus: "offline" as OpenCodeStatus,
   sessionStatus: "idle" as SessionManagerStatus,
+  offlineState: { opencode: "online", neuralgentics: "online" },
 };
 
 // ─── ProxiedVNode references (delegated property access after mount) ───────────
@@ -95,6 +99,8 @@ let chatText!: TextVNode;
 let chainText!: TextVNode;
 let statusText!: TextVNode;
 let inputVNode!: InputVNode;
+/** Offline banner text reference (T-081b). */
+let offlineBannerText!: TextVNode;
 
 /** OpenCode SDK client — initialized in main(), used by input handler. */
 let opencodeClient: OpenCodeClient | null = null;
@@ -136,12 +142,54 @@ function buildStatusBarText(): string {
       ? "LLM:offline"
       : `LLM:${state.opencodeStatus}`;
 
-  return ` Session: ${state.sessionId} │ ${ocStatus} │ Tokens: ${tokenStr} │ Agents: ${roster} │ Compactions: ${state.compactionCount}`;
+  // Build offline indicator for status bar (T-081b)
+  const offlineParts: string[] = [];
+  if (state.offlineState.opencode === "offline") offlineParts.push("LLM:offline");
+  if (state.offlineState.neuralgentics === "offline") offlineParts.push("Backend:offline");
+
+  const offlineLabel = offlineParts.length > 0 ? ` │ ${offlineParts.join(" ")}` : "";
+
+  return ` Session: ${state.sessionId} │ ${ocStatus} │ Tokens: ${tokenStr} │ Agents: ${roster} │ Compactions: ${state.compactionCount}${offlineLabel}`;
 }
 
 function buildKanbanContent(): string {
   if (!state.kanbanBoard) return "Kanban: loading...";
   return formatKanbanForPanel(state.kanbanBoard, 38).join("\n");
+}
+
+// ─── Offline Banner (T-081b) ─────────────────────────────────────────────────
+
+/**
+ * Build the offline banner content based on current offline state.
+ * Shows "🟧 OFFLINE" when both clients are offline,
+ * "Backend:offline" when only neuralgentics is offline,
+ * "LLM:offline" when only opencode is offline,
+ * or an empty string when both are online.
+ */
+function buildOfflineBannerContent(): string {
+  const { opencode, neuralgentics } = state.offlineState;
+  if (opencode === "offline" && neuralgentics === "offline") {
+    return "🟧 OFFLINE — Backend + LLM unavailable. Local operations only.";
+  }
+  if (neuralgentics === "offline") {
+    return "⚠ Backend:offline — Go backend unreachable. Memory ops disabled.";
+  }
+  if (opencode === "offline") {
+    return "⚠ LLM:offline — OpenCode server unreachable. Agent loop disabled.";
+  }
+  return ""; // Both online — no banner
+}
+
+/**
+ * Update the offline banner VNode based on current state.
+ * Called when offline state changes.
+ */
+function updateOfflineBanner(): void {
+  if (!offlineBannerText) return;
+  const content = buildOfflineBannerContent();
+  offlineBannerText.content = content;
+  // Also update the status bar to show offline labels
+  statusText.content = buildStatusBarText();
 }
 
 // ─── Build TUI Layout ──────────────────────────────────────────────────────────
@@ -282,6 +330,13 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
         // Determine if this is an async command
         const cmd = value.trim().slice(1).split(/\s+/)[0]?.toLowerCase() ?? "";
 
+        // T-081b: Write command gating — block write commands when offline
+        if (isWriteCommand(cmd) && isWriteBlocked(state.offlineState)) {
+          state.chatMessages.push(`⚠ Cannot execute /${cmd} while offline. Use /offline to check status.`);
+          chatText.content = state.chatMessages.join("\n");
+          return;
+        }
+
         // Async commands: /memory, /chain, /compact
         if (cmd === "memory" && neuralgenticsClient) {
           const asyncResult = await handleMemoryCommand(neuralgenticsClient, value);
@@ -312,6 +367,16 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
               // Kanban refresh is non-critical
             }
           }
+          return;
+        }
+
+        // T-081b: /offline → async handler that shows both clients' status
+        if (cmd === "offline") {
+          const ocStatus: "online" | "offline" = opencodeClient?.onlineStatus ?? "offline";
+          const ngStatus: "online" | "offline" = neuralgenticsClient?.onlineStatus ?? "offline";
+          const asyncResult = await handleOfflineCommand(ocStatus, ngStatus);
+          state.chatMessages.push(`/${asyncResult.command}: ${asyncResult.message}`);
+          chatText.content = state.chatMessages.join("\n");
           return;
         }
 
@@ -691,6 +756,17 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
     }
   });
 
+  // ── Offline banner (T-081b) ─────────────────────────────────────────────────
+  // Shows "🟧 OFFLINE" banner when both clients are offline, or partial status
+  // when only one is offline. Hidden when both are online.
+
+  const offlineBannerContent = buildOfflineBannerContent();
+  offlineBannerText = Text({
+    id: "offline-banner",
+    content: offlineBannerContent,
+    fg: "#FF8C00", // Dark orange for visibility
+  }) as unknown as TextVNode;
+
   // ── Assemble root ───────────────────────────────────────────────────────────
 
   const rootColumn = Box({
@@ -703,6 +779,27 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
 
   rootColumn.add(mainRow);
   rootColumn.add(statusBarBox);
+  // Offline banner slot — content is dynamically toggled via updateOfflineBanner()
+  rootColumn.add(offlineBannerText.content.length > 0 ? (() => {
+    const bannerBox = Box({
+      id: "offline-banner-box",
+      height: 1,
+      backgroundColor: "#5C3A1E", // Warm brown background for visibility
+      flexDirection: "row",
+      padding: 0,
+    });
+    (bannerBox as unknown as { add(child: unknown): void }).add(offlineBannerText);
+    return bannerBox;
+  })() : (() => {
+    // Empty placeholder — always in the DOM but invisible
+    const bannerBox = Box({
+      id: "offline-banner-box",
+      height: 0,
+      flexDirection: "row",
+    });
+    (bannerBox as unknown as { add(child: unknown): void }).add(offlineBannerText);
+    return bannerBox;
+  })());
   rootColumn.add(inputBar);
 
   root.add(rootColumn);
@@ -800,6 +897,35 @@ async function main(): Promise<void> {
     console.error(`[neuralgentics] Go backend failed: ${msg}`);
     state.chatMessages.push(`⚠ Go backend offline: ${msg}`);
     neuralgenticsClient = null;
+  }
+
+  // ── Offline Detection Event Listeners (T-081b) ───────────────────────────────
+  // Subscribe to both clients' offline events to update banner and status bar.
+
+  if (opencodeClient) {
+    opencodeClient.onOfflineEvent("offline", () => {
+      state.offlineState = { ...state.offlineState, opencode: "offline" };
+      console.log("[offline] OpenCode client went offline");
+      updateOfflineBanner();
+    });
+    opencodeClient.onOfflineEvent("online", () => {
+      state.offlineState = { ...state.offlineState, opencode: "online" };
+      console.log("[offline] OpenCode client recovered — online");
+      updateOfflineBanner();
+    });
+  }
+
+  if (neuralgenticsClient) {
+    neuralgenticsClient.on("offline", () => {
+      state.offlineState = { ...state.offlineState, neuralgentics: "offline" };
+      console.log("[offline] Neuralgentics client went offline");
+      updateOfflineBanner();
+    });
+    neuralgenticsClient.on("online", () => {
+      state.offlineState = { ...state.offlineState, neuralgentics: "online" };
+      console.log("[offline] Neuralgentics client recovered — online");
+      updateOfflineBanner();
+    });
   }
 
   // ── Token Counter (T-033) ──────────────────────────────────────────────────
