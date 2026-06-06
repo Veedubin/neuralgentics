@@ -77,8 +77,12 @@ A task enters the orchestrator, gets routed to a specialist, who calls the broke
 | `packages/memini-core/` | Python | pgvector memory + trust engine + decay scheduler |
 | `packages/broker-go/` | Go | RBAC enforcement + tool call routing + audit log |
 | `packages/orchestrator-go/` | Go | Routing matrix + card lifecycle + dispatch |
+| `packages/sdk/` | TypeScript | Typed client library for sub-agents and external consumers. Framework-agnostic — does not depend on OpenCode. Used by `.opencode/agents/neuralgentics-*.md` agent prompts. |
+| `packages/plugin/` | TypeScript | OpenCode integration plugin. Wires the runtime into the OpenCode IDE via the OpenCode plugin API. Depends on SDK. |
 | `packages/tui/` | TypeScript | Terminal UI (OpenTUI-based, mockups in docs) |
 | `overlay/packages/opencode/` | TypeScript | Plugin that wires the runtime into OpenCode |
+
+**SDK vs Plugin boundary**: `packages/sdk/` is a framework-agnostic typed client (no OpenCode imports). `packages/plugin/` is the OpenCode-specific integration (MCP tools, lifecycle hooks, stateless agent protocol). Plugin MAY use SDK; SDK MUST NOT use Plugin.
 
 Eight concrete agent roles ship in the project: **architect, coder, explorer, git, orchestrator, reviewer, tester, writer**. The 23 in the broker matrix extend these with finer-grained permission scopes.
 
@@ -109,7 +113,7 @@ Neuralgentics uses [`uv`](https://docs.astral.sh/uv/) to manage Python dependenc
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 2. Install each Python package in editable mode (creates .venv automatically)
-uv pip install --system -e packages/memini-core -e packages/broker
+uv pip install --system -e packages/memini-core
 uv pip install --system -e packages/memory/cmd/embedding-sidecar
 
 # 3. Install the TypeScript overlay
