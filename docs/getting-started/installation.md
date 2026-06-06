@@ -66,15 +66,33 @@ You can customize the installation root using the `--prefix` flag:
 
 Ideal for isolated development or CI environments.
 
+### Steps
+
 1. **Ensure Podman or Docker is installed.**
-2. **Spin up the stack:**
+2. **Clone the repo (or download compose files from the latest release):**
    ```bash
+   git clone https://github.com/Veedubin/neuralgentics.git
+   cd neuralgentics
+   ```
+3. **Copy the example env file:**
+   ```bash
+   cp compose.example.env .env
+   $EDITOR .env  # set NEURALGENTICS_DB_PASSWORD
+   ```
+4. **Spin up the stack:**
+   ```bash
+   docker compose up -d
+   # or
    podman-compose up -d
    ```
-3. **Enter the environment:**
+5. **Verify the stack is up:**
    ```bash
-   podman exec -it neuralgentics-backend /bin/sh
+   docker compose ps
    ```
+
+This brings up PostgreSQL 18 + pgvector, the embedding sidecar, the Go backend, and the TUI (commented out by default; uncomment in `docker-compose.yml` to enable).
+
+Images are published to `ghcr.io/veedubin/neuralgentics-{postgres,sidecar,backend,tui}:vX.Y.Z`.
 
 ---
 

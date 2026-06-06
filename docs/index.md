@@ -18,7 +18,7 @@ Neuralgentics replaces one "do-it-all" bot with structured, role-based orchestra
 
 Every decision lands in PostgreSQL + pgvector with **trust scoring**. Successful patterns get promoted; failed approaches decay and fade. The MCP broker gates every tool call against the agent's role, cutting token overhead by up to 95%. Context survives sessions through L0/L1/L2 tiered loading -- a new agent picks up where the last one left off.
 
-Agent prompts are ~200 tokens each. State lives in memory, not in the prompt. Ships as a Go binary (26 MB) + podman PostgreSQL + Python gRPC sidecar. Open-source under the [MIT License](https://github.com/Veedubin/neuralgentics/blob/main/LICENSE).
+Agent prompts are ~200 tokens each. State lives in memory, not in the prompt. Ships as a Go binary (26 MB) + podman PostgreSQL + Python gRPC sidecar + 4 container images. Open-source under the [MIT License](https://github.com/Veedubin/neuralgentics/blob/main/LICENSE).
 
 ## How It Works
 
@@ -90,6 +90,19 @@ See [Memory System Reference](reference/memory-system.md) for the trust engine, 
 Every tool call goes through a broker that checks the calling agent's role before forwarding. The `coder` role can read files and run tests, but cannot push to GitHub. The `boomerang-git` role is the only one allowed to use the `github-mcp` server. The `playwright` server is restricted to `tester`, `researcher`, and `scraper`. This is enforced in code at [`access/access.go`](https://github.com/Veedubin/neuralgentics/blob/main/packages/broker-go/src/neuralgentics/broker/access/access.go) -- 23 roles, 7 restricted server classes.
 
 The practical effect: agents never see tools they can't use, which cuts the tool list in their prompt and reduces token overhead by up to 95% per dispatch. The broker also routes the actual call, retries on failure, and logs every invocation to the audit log.
+
+### Container Support -- First-Class Deployment Option
+
+Neuralgentics ships with four container images on `pgvector/pgvector:pg18` multi-stage builds:
+
+- `ghcr.io/veedubin/neuralgentics-postgres:v0.2.0` — PostgreSQL 18 + pgvector, schema baked in
+- `ghcr.io/veedubin/neuralgentics-sidecar:v0.2.0` — Python gRPC embedding service
+- `ghcr.io/veedubin/neuralgentics-backend:v0.2.0` — Go JSON-RPC backend, distroless
+- `ghcr.io/veedubin/neuralgentics-tui:v0.2.0` — TUI binary, distroless
+
+Bring up the full stack with `docker-compose up` or `podman-compose up`. The `podman-compose.yml` includes Podman-specific tweaks (SELinux `:Z` labels, `userns_mode: keep-id`, `pids_limit`).
+
+See [Installation Guide](getting-started/installation.md) for the container quickstart.
 
 ```text
     ROLE x SERVER MATRIX
