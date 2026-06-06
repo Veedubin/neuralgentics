@@ -131,8 +131,8 @@ export interface DispatchLog {
 
 // ─── Output Types ─────────────────────────────────────────────────────────────
 
-/** A detected opportunity candidate (output of a pattern detector). */
-export interface Candidate {
+/** Core candidate fields (without timestamp/sessionId — stamped by runAllPatternDetectors). */
+export interface CandidateBase {
   /** Which pattern detected this. */
   patternType: PatternType;
   /** Human-readable description of what was detected. */
@@ -151,6 +151,32 @@ export interface Candidate {
   scopeAllProjects: boolean;
   /** Supporting evidence (turn numbers, tool names, token counts). */
   evidence: CandidateEvidence;
+}
+
+/** A detected opportunity candidate (output of a pattern detector). */
+export interface Candidate extends CandidateBase {
+  /** ISO 8601 timestamp when this candidate was detected. (T-085) */
+  timestamp: string;
+  /** Session ID that produced this candidate. (T-085) */
+  sessionId: string;
+}
+
+/** A cached candidate retrieved from the opportunity cache. (T-085) */
+export interface CachedCandidate extends Candidate {
+  /** ISO 8601 timestamp when this candidate was cached. */
+  cachedAt: string;
+  /** Whether this entry is stale (>7 days old). */
+  stale: boolean;
+}
+
+/** Result of getCachedCandidates — includes metadata about the cache state. (T-085) */
+export interface CachedCandidatesResult {
+  /** The cached candidates, filtered by max age. */
+  candidates: CachedCandidate[];
+  /** Total entries found (before age filter). */
+  totalEntries: number;
+  /** Whether the cache is empty (no entries at all). */
+  cacheEmpty: boolean;
 }
 
 /** Evidence supporting a candidate. */

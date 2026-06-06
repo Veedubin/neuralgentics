@@ -1,9 +1,10 @@
 /**
  * Opportunity Detector — barrel export.
  * T-034 (P1-c, Addendum 1).
+ * T-085: Added opportunity cache persistence exports.
  */
 
-export { OpportunityDetector } from "./detector.js";
+export { OpportunityDetector, saveCache, restoreCache, getCachedCandidates, isOffline, setOffline } from "./detector.js";
 export {
   runAllPatternDetectors,
   detectSequentialToolChains,
@@ -21,6 +22,8 @@ export {
   formatDetailedBreakdown,
   draftCard,
   handleOpportunitiesCommand,
+  formatCachedOpportunities,
+  handleCachedOpportunitiesCommand,
   type OpportunityAction,
   type PromptResult,
   type OpportunitiesCommandResult,
@@ -34,9 +37,12 @@ export {
   type CardAttemptHistory,
   type CardAttempt,
   type DispatchLog,
+  type CandidateBase,
   type Candidate,
   type CandidateEvidence,
   type RankedCandidate,
+  type CachedCandidate,
+  type CachedCandidatesResult,
   type TriggerConditions,
   type SilencedPattern,
   type ConsideredCandidate,

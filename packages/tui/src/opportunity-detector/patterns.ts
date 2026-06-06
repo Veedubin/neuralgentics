@@ -15,6 +15,7 @@ import type {
   CardAttemptHistory,
   DispatchLog,
   Candidate,
+  CandidateBase,
   CandidateEvidence,
 } from "./types.js";
 
@@ -28,7 +29,7 @@ export interface PatternDetector {
   /** The pattern type this detector handles. */
   readonly patternType: PatternType;
   /** Run detection against session data. */
-  detect(): Candidate[];
+  detect(): CandidateBase[];
 }
 
 // ─── Pattern 1: Sequential Tool Chains ────────────────────────────────────────
@@ -42,7 +43,7 @@ export interface PatternDetector {
 export function detectSequentialToolChains(
   toolCalls: ToolCallLog[],
   tokenEntries: TokenLedgerEntry[],
-): Candidate[] {
+): CandidateBase[] {
   if (toolCalls.length < 15) return []; // Need at least 5 repetitions × 3 tools
 
   // Group tool calls by turn number
@@ -93,7 +94,7 @@ export function detectSequentialToolChains(
     }
   }
 
-  const candidates: Candidate[] = [];
+  const candidates: CandidateBase[] = [];
 
   for (const [_key, data] of chainHashCounts) {
     if (data.count >= 5) {
@@ -135,7 +136,7 @@ export function detectSequentialToolChains(
  */
 export function detectRepeatedIdenticalCalls(
   toolCalls: ToolCallLog[],
-): Candidate[] {
+): CandidateBase[] {
   // Group by tool name
   const byTool = new Map<string, ToolCallLog[]>();
   for (const tc of toolCalls) {
@@ -144,7 +145,7 @@ export function detectRepeatedIdenticalCalls(
     byTool.set(tc.toolName, arr);
   }
 
-  const candidates: Candidate[] = [];
+  const candidates: CandidateBase[] = [];
 
   for (const [toolName, calls] of byTool) {
     if (calls.length >= 10) {
@@ -188,9 +189,9 @@ export function detectRepeatedIdenticalCalls(
  */
 export function detectHighCostTurns(
   tokenEntries: TokenLedgerEntry[],
-): Candidate[] {
+): CandidateBase[] {
   const HIGH_COST_THRESHOLD = 10_000;
-  const candidates: Candidate[] = [];
+  const candidates: CandidateBase[] = [];
 
   for (const entry of tokenEntries) {
     if (entry.total >= HIGH_COST_THRESHOLD) {
@@ -252,8 +253,8 @@ export function detectHighCostTurns(
  */
 export function detectLongCardRetries(
   cardHistories: CardAttemptHistory[],
-): Candidate[] {
-  const candidates: Candidate[] = [];
+): CandidateBase[] {
+  const candidates: CandidateBase[] = [];
 
   for (const card of cardHistories) {
     if (card.attemptCount >= 3) {
@@ -309,7 +310,7 @@ export function detectLongCardRetries(
  */
 export function detectReReadingSameFiles(
   toolCalls: ToolCallLog[],
-): Candidate[] {
+): CandidateBase[] {
   // Find all "read" tool calls with filePath
   const readCalls = toolCalls.filter(
     (tc) => tc.toolName === "read" && tc.filePath != null && tc.filePath !== "",
@@ -324,7 +325,7 @@ export function detectReReadingSameFiles(
     byPath.set(tc.filePath, arr);
   }
 
-  const candidates: Candidate[] = [];
+  const candidates: CandidateBase[] = [];
 
   for (const [filePath, calls] of byPath) {
     if (calls.length >= 3) {
@@ -366,7 +367,7 @@ export function detectReReadingSameFiles(
  */
 export function detectMissedParallelOpportunities(
   toolCalls: ToolCallLog[],
-): Candidate[] {
+): CandidateBase[] {
   if (toolCalls.length < 2) return [];
 
   // Group by turn
@@ -378,7 +379,7 @@ export function detectMissedParallelOpportunities(
     byTurn.set(turn, arr);
   }
 
-  const candidates: Candidate[] = [];
+  const candidates: CandidateBase[] = [];
   let totalMissedOpportunities = 0;
   let totalTokens = 0;
 
@@ -439,7 +440,7 @@ export function detectMissedParallelOpportunities(
 export function detectManualAggregation(
   dispatchLogs: DispatchLog[],
   tokenEntries: TokenLedgerEntry[],
-): Candidate[] {
+): CandidateBase[] {
   if (dispatchLogs.length < 3) return [];
 
   // Group dispatches by taskId
@@ -450,7 +451,7 @@ export function detectManualAggregation(
     byTask.set(dl.taskId, arr);
   }
 
-  const candidates: Candidate[] = [];
+  const candidates: CandidateBase[] = [];
 
   for (const [taskId, dispatches] of byTask) {
     if (dispatches.length < 3) continue;
@@ -507,7 +508,7 @@ export function detectManualAggregation(
  */
 export function detectErrorRetryLoops(
   toolCalls: ToolCallLog[],
-): Candidate[] {
+): CandidateBase[] {
   // Group error calls by tool name
   const errorsByTool = new Map<string, ToolCallLog[]>();
   for (const tc of toolCalls) {
@@ -518,7 +519,7 @@ export function detectErrorRetryLoops(
     }
   }
 
-  const candidates: Candidate[] = [];
+  const candidates: CandidateBase[] = [];
 
   for (const [toolName, errors] of errorsByTool) {
     if (errors.length < 3) continue;
@@ -598,14 +599,27 @@ export interface PatternDetectorInput {
   tokenEntries: TokenLedgerEntry[];
   cardHistories: CardAttemptHistory[];
   dispatchLogs: DispatchLog[];
+  /** Session ID for stamping candidates. (T-085) */
+  sessionId?: string;
+}
+
+/** Stamp candidate bases with timestamp and sessionId. (T-085) */
+function stampCandidate(c: CandidateBase, sessionId: string): Candidate {
+  return {
+    ...c,
+    timestamp: new Date().toISOString(),
+    sessionId,
+  };
 }
 
 /**
  * Run all 8 pattern detectors in sequence and collect results.
  * Each detector is independent and produces zero or more candidates.
+ * Candidates are stamped with timestamp and sessionId. (T-085)
  */
 export function runAllPatternDetectors(input: PatternDetectorInput): Candidate[] {
-  const allCandidates: Candidate[] = [
+  const sessionId = input.sessionId ?? "unknown";
+  const rawCandidates: CandidateBase[] = [
     ...detectSequentialToolChains(input.toolCalls, input.tokenEntries),
     ...detectRepeatedIdenticalCalls(input.toolCalls),
     ...detectHighCostTurns(input.tokenEntries),
@@ -615,6 +629,9 @@ export function runAllPatternDetectors(input: PatternDetectorInput): Candidate[]
     ...detectManualAggregation(input.dispatchLogs, input.tokenEntries),
     ...detectErrorRetryLoops(input.toolCalls),
   ];
+
+  // Stamp each candidate with timestamp + sessionId (T-085)
+  const allCandidates: Candidate[] = rawCandidates.map((c) => stampCandidate(c, sessionId));
 
   return allCandidates;
 }

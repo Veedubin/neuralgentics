@@ -7,7 +7,7 @@
  * to present to the user.
  */
 
-import type { RankedCandidate, PatternType } from "./types.js";
+import type { RankedCandidate, CachedCandidate, PatternType } from "./types.js";
 import { PATTERN_LABELS } from "./types.js";
 
 // ─── Dialog Formatting ─────────────────────────────────────────────────────────
@@ -183,6 +183,7 @@ export interface OpportunitiesCommandResult {
  * Sub-commands:
  * - `/opportunities` — show top 3 candidates
  * - `/opportunities list` — show all candidates
+ * - `/opportunities cached` — show cached opportunities from previous sessions (T-085)
  * - `/opportunities --refresh` — force re-scan
  */
 export function handleOpportunitiesCommand(
@@ -190,6 +191,16 @@ export function handleOpportunitiesCommand(
   subCommand?: string,
 ): OpportunitiesCommandResult {
   const sub = (subCommand ?? "").toLowerCase().trim();
+
+  // T-085: /opportunities cached is async — signal caller to use handleCachedOpportunitiesCommand
+  if (sub === "cached") {
+    return {
+      command: "opportunities",
+      message: "_cached_", // Signal to caller that async handler is needed
+      refreshKanban: false,
+      candidates: [],
+    };
+  }
 
   if (sub === "list") {
     // Show all candidates
@@ -253,4 +264,87 @@ function extractSkillName(suggestedFix: string): string {
   // Fallback: use first meaningful phrase
   const words = suggestedFix.split(/\s+/).slice(0, 3);
   return words.join(" ");
+}
+
+// ─── Cached Opportunities (T-085) ────────────────────────────────────────────────
+
+/**
+ * Format cached opportunities for display.
+ *
+ * Shows candidates from previous sessions with staleness indicators.
+ * Stale entries (>7 days old) get a ⚠️ Stale label.
+ */
+export function formatCachedOpportunities(candidates: CachedCandidate[]): string {
+  if (candidates.length === 0) {
+    return "No cached opportunities";
+  }
+
+  const lines: string[] = [
+    `📂 Cached Opportunities (${candidates.length} from previous sessions)`,
+    "",
+  ];
+
+  for (const c of candidates) {
+    const staleLabel = c.stale ? " ⚠️ Stale" : "";
+    const ageDays = Math.round((Date.now() - new Date(c.cachedAt).getTime()) / (24 * 60 * 60 * 1000));
+    lines.push(`  ${PATTERN_LABELS[c.patternType]}: ${c.description.slice(0, 80)}${staleLabel}`);
+    lines.push(`    Session: ${c.sessionId.slice(0, 8)}... | Age: ${ageDays}d | Savings: ~${c.estimatedTokenSavings.toLocaleString()} tokens`);
+    lines.push("");
+  }
+
+  lines.push("═══════════════════════════════════════");
+  return lines.join("\n");
+}
+
+/**
+ * Async handler for `/opportunities cached` command (T-085).
+ *
+ * Fetches cached opportunities from memory store and formats them.
+ * Uses getCachedCandidates for staleness tracking.
+ *
+ * @param client - NeuralgenticsClient for memory persistence.
+ * @returns CommandResult with formatted cached opportunities message.
+ */
+export async function handleCachedOpportunitiesCommand(
+  client: { call: (method: string, params: Record<string, unknown>) => Promise<unknown> },
+): Promise<OpportunitiesCommandResult> {
+  // Dynamic import to avoid circular deps
+  const { getCachedCandidates } = await import("./detector.js");
+
+  try {
+    const result = await getCachedCandidates(client);
+
+    if (result.cacheEmpty) {
+      return {
+        command: "opportunities",
+        message: "No cached opportunities",
+        refreshKanban: false,
+        candidates: [],
+      };
+    }
+
+    // Convert CachedCandidates to RankedCandidates for display (add rank + score)
+    const ranked: RankedCandidate[] = result.candidates.map((c, i) => ({
+      ...c,
+      score: c.estimatedTokenSavings * c.frequency * (c.scopeAllProjects ? 1.5 : 1.0),
+      rank: i + 1,
+    }));
+
+    const message = formatCachedOpportunities(result.candidates);
+
+    return {
+      command: "opportunities",
+      message,
+      refreshKanban: false,
+      candidates: ranked,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      command: "opportunities",
+      message: `/opportunities cached failed: ${msg}`,
+      refreshKanban: false,
+      candidates: [],
+    };
+  }
 }

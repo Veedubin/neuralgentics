@@ -453,9 +453,9 @@ describe("OpportunityDetector", () => {
     });
 
     const candidates: Candidate[] = [
-      { patternType: "error_retry_loops", description: "test", suggestedFix: "fix", estimatedTokenSavings: 1000, frequency: 2, buildEffort: "0.25 day", priority: "P1", scopeAllProjects: true, evidence: {} },
-      { patternType: "re_reading_same_files", description: "test2", suggestedFix: "fix2", estimatedTokenSavings: 5000, frequency: 1, buildEffort: "0.25 day", priority: "P2", scopeAllProjects: false, evidence: {} },
-      { patternType: "repeated_identical_calls", description: "test3", suggestedFix: "fix3", estimatedTokenSavings: 10000, frequency: 3, buildEffort: "0.25 day", priority: "P1", scopeAllProjects: true, evidence: {} },
+      { patternType: "error_retry_loops", description: "test", suggestedFix: "fix", estimatedTokenSavings: 1000, frequency: 2, buildEffort: "0.25 day", priority: "P1", scopeAllProjects: true, evidence: {}, timestamp: "2026-06-06T12:00:00.000Z", sessionId: "test-session" },
+      { patternType: "re_reading_same_files", description: "test2", suggestedFix: "fix2", estimatedTokenSavings: 5000, frequency: 1, buildEffort: "0.25 day", priority: "P2", scopeAllProjects: false, evidence: {}, timestamp: "2026-06-06T12:00:00.000Z", sessionId: "test-session" },
+      { patternType: "repeated_identical_calls", description: "test3", suggestedFix: "fix3", estimatedTokenSavings: 10000, frequency: 3, buildEffort: "0.25 day", priority: "P1", scopeAllProjects: true, evidence: {}, timestamp: "2026-06-06T12:00:00.000Z", sessionId: "test-session" },
     ];
 
     const ranked = detector.rankCandidates(candidates);
@@ -539,8 +539,8 @@ describe("OpportunityDetector", () => {
 
 describe("OpportunityPrompter", () => {
   const mockCandidates: Candidate[] = [
-    { patternType: "repeated_identical_calls", description: "`github-mcp_get_file_contents` called 15 times", suggestedFix: "Create `repo-file-batch-read`", estimatedTokenSavings: 16200, frequency: 15, buildEffort: "0.25 day", priority: "P1", scopeAllProjects: true, evidence: { totalCalls: 15 } },
-    { patternType: "error_retry_loops", description: "`searxng_web_search` errored 4 times", suggestedFix: "Create `retry-with-backoff`", estimatedTokenSavings: 1500, frequency: 4, buildEffort: "0.25 day", priority: "P1", scopeAllProjects: true, evidence: { totalCalls: 4 } },
+    { patternType: "repeated_identical_calls", description: "`github-mcp_get_file_contents` called 15 times", suggestedFix: "Create `repo-file-batch-read`", estimatedTokenSavings: 16200, frequency: 15, buildEffort: "0.25 day", priority: "P1", scopeAllProjects: true, evidence: { totalCalls: 15 }, timestamp: "2026-06-06T12:00:00.000Z", sessionId: "test-session" },
+    { patternType: "error_retry_loops", description: "`searxng_web_search` errored 4 times", suggestedFix: "Create `retry-with-backoff`", estimatedTokenSavings: 1500, frequency: 4, buildEffort: "0.25 day", priority: "P1", scopeAllProjects: true, evidence: { totalCalls: 4 }, timestamp: "2026-06-06T12:00:00.000Z", sessionId: "test-session" },
   ];
 
   const mockRanked: ReturnType<typeof OpportunityDetector.prototype.rankCandidates> = mockCandidates.map((c, i) => ({
@@ -594,7 +594,7 @@ describe("OpportunityPrompter", () => {
 describe("/opportunities command handler", () => {
   it("should show top candidates for bare /opportunities", () => {
     const candidates: Candidate[] = [
-      { patternType: "error_retry_loops", description: "test", suggestedFix: "fix", estimatedTokenSavings: 5000, frequency: 3, buildEffort: "0.25 day", priority: "P1", scopeAllProjects: true, evidence: {} },
+      { patternType: "error_retry_loops", description: "test", suggestedFix: "fix", estimatedTokenSavings: 5000, frequency: 3, buildEffort: "0.25 day", priority: "P1", scopeAllProjects: true, evidence: {}, timestamp: "2026-06-06T12:00:00.000Z", sessionId: "test-session" },
     ];
 
     // Simulate ranked
@@ -611,8 +611,8 @@ describe("/opportunities command handler", () => {
 
   it("should show all candidates for /opportunities list", () => {
     const ranked = [
-      { patternType: "error_retry_loops" as const, description: "err", suggestedFix: "fix1", estimatedTokenSavings: 5000, frequency: 3, buildEffort: "0.25 day", priority: "P1" as const, scopeAllProjects: true, evidence: {}, score: 22500, rank: 1 },
-      { patternType: "re_reading_same_files" as const, description: "rer", suggestedFix: "fix2", estimatedTokenSavings: 3000, frequency: 5, buildEffort: "0.25 day", priority: "P2" as const, scopeAllProjects: false, evidence: {}, score: 15000, rank: 2 },
+      { patternType: "error_retry_loops" as const, description: "err", suggestedFix: "fix1", estimatedTokenSavings: 5000, frequency: 3, buildEffort: "0.25 day", priority: "P1" as const, scopeAllProjects: true, evidence: {}, score: 22500, rank: 1, timestamp: "2026-06-06T12:00:00.000Z", sessionId: "test-session" },
+      { patternType: "re_reading_same_files" as const, description: "rer", suggestedFix: "fix2", estimatedTokenSavings: 3000, frequency: 5, buildEffort: "0.25 day", priority: "P2" as const, scopeAllProjects: false, evidence: {}, score: 15000, rank: 2, timestamp: "2026-06-06T12:00:00.000Z", sessionId: "test-session" },
     ];
 
     const result = handleOpportunitiesCommand(ranked, "list");
@@ -651,6 +651,8 @@ describe("Ranking Formula", () => {
       priority: "P2",
       scopeAllProjects: false,
       evidence: {},
+      timestamp: "2026-06-06T12:00:00.000Z",
+      sessionId: "test-session",
     };
 
     const global: Candidate = {
@@ -663,6 +665,8 @@ describe("Ranking Formula", () => {
       priority: "P1",
       scopeAllProjects: true,
       evidence: {},
+      timestamp: "2026-06-06T12:00:00.000Z",
+      sessionId: "test-session",
     };
 
     const ranked = detector.rankCandidates([local, global]);
@@ -680,8 +684,8 @@ describe("Ranking Formula", () => {
     });
 
     const candidates: Candidate[] = [
-      { patternType: "error_retry_loops", description: "low", suggestedFix: "f", estimatedTokenSavings: 100, frequency: 1, buildEffort: "0.25 day", priority: "P2", scopeAllProjects: false, evidence: {} },
-      { patternType: "repeated_identical_calls", description: "high", suggestedFix: "f", estimatedTokenSavings: 5000, frequency: 10, buildEffort: "0.25 day", priority: "P1", scopeAllProjects: true, evidence: {} },
+      { patternType: "error_retry_loops", description: "low", suggestedFix: "f", estimatedTokenSavings: 100, frequency: 1, buildEffort: "0.25 day", priority: "P2", scopeAllProjects: false, evidence: {}, timestamp: "2026-06-06T12:00:00.000Z", sessionId: "test-session" },
+      { patternType: "repeated_identical_calls", description: "high", suggestedFix: "f", estimatedTokenSavings: 5000, frequency: 10, buildEffort: "0.25 day", priority: "P1", scopeAllProjects: true, evidence: {}, timestamp: "2026-06-06T12:00:00.000Z", sessionId: "test-session" },
     ];
 
     const ranked = detector.rankCandidates(candidates);

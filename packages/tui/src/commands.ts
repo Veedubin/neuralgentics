@@ -26,7 +26,11 @@ import type { TokenCounter } from "./observability/token-counter.js";
 import {
   OpportunityDetector,
   handleOpportunitiesCommand,
+  handleCachedOpportunitiesCommand,
 } from "./opportunity-detector/index.js";
+
+// Re-export async handlers for TUI input wiring (T-085)
+export { handleCachedOpportunitiesCommand } from "./opportunity-detector/index.js";
 import type { RankedCandidate } from "./opportunity-detector/types.js";
 import { CircuitBreaker } from "./kanban/circuit-breaker.js";
 import type { KanbanBoard, KanbanStatus } from "./kanban/types.js";
@@ -63,6 +67,8 @@ export interface CommandResult {
   clipboardContent?: string;
   /** Whether this command changes the active model (T-082). */
   modelChanged?: boolean;
+  /** Whether this command requires async handling for /opportunities cached (T-085). */
+  opportunitiesCached?: boolean;
 }
 
 /** All supported slash commands. */
@@ -250,6 +256,7 @@ export function handleSlashCommand(
 
     case "opportunities": {
       // `/opportunities` — show detected skill/script opportunities (T-034)
+      // `/opportunities cached` — show cached opportunities from previous sessions (T-085)
       if (!deps?.opportunityDetector) {
         return {
           command: "opportunities",
@@ -257,9 +264,20 @@ export function handleSlashCommand(
           refreshKanban: false,
         };
       }
+      const sub = _args[0]?.toLowerCase() ?? "";
+
+      // T-085: /opportunities cached is async — signal caller to use handleCachedOpportunitiesCommand
+      if (sub === "cached") {
+        return {
+          command: "opportunities",
+          message: "Loading cached opportunities...",
+          refreshKanban: false,
+          opportunitiesCached: true,
+        };
+      }
+
       // Run a scan and get candidates
       const candidates = deps.opportunityDetector.scanAndRank();
-      const sub = _args[0]?.toLowerCase() ?? "";
       return handleOpportunitiesCommand(candidates, sub);
     }
 

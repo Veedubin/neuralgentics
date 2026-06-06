@@ -27,6 +27,8 @@ import type { CompactionCheckpoint } from "../compaction/types.js";
 import { restoreModelPref } from "../agents/model-registry.js";
 import type { ModelPrefClient } from "../agents/model-registry.js";
 import type { TokenCounter } from "../observability/token-counter.js";
+import { restoreCache, saveCache } from "../opportunity-detector/detector.js";
+import type { Candidate } from "../opportunity-detector/types.js";
 
 // ─── Seed Prompt Template ──────────────────────────────────────────────────────
 
@@ -90,6 +92,9 @@ export class SessionManager {
   private _sessionId: string | null = null;
   private _messageCount = 0;
 
+  /** Current opportunity candidates (populated by OpportunityDetector.scanAndRank, saved on shutdown T-085). */
+  private _currentCandidates: Candidate[] = [];
+
   // ─── Event listeners ────────────────────────────────────────────────────
 
   private statusListeners: StatusListener[] = [];
@@ -140,6 +145,11 @@ export class SessionManager {
   /** Number of messages in the current session. */
   get messageCount(): number {
     return this._messageCount;
+  }
+
+  /** Set the current opportunity candidates for cache persistence (T-085). */
+  setCurrentCandidates(candidates: Candidate[]): void {
+    this._currentCandidates = candidates;
   }
 
   /** Whether the session manager is ready for prompt operations. */
@@ -531,6 +541,15 @@ export class SessionManager {
         console.warn(`[session] Failed to restore token counter batch: ${msg}`);
       }
     }
+
+    // Restore opportunity cache from memory (T-085)
+    try {
+      await restoreCache(this.neuralgentics as unknown as Parameters<typeof restoreCache>[0]);
+      console.log("[session] Restored opportunity cache from memory");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[session] Failed to restore opportunity cache: ${msg}`);
+    }
   }
 
   // ─── Private Helpers ───────────────────────────────────────────────────
@@ -552,6 +571,16 @@ export class SessionManager {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[session] Failed to save token batch on shutdown: ${msg}`);
     }
+
+    // Save opportunity cache to memory (T-085)
+    try {
+      const cacheClient = this.neuralgentics as unknown as Parameters<typeof saveCache>[1];
+      await saveCache(this._currentCandidates, cacheClient);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[session] Failed to save opportunity cache on shutdown: ${msg}`);
+    }
+
     this.setStatus("idle");
   }
 
