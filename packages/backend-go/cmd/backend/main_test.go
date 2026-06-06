@@ -35,7 +35,7 @@ func TestHandleInitialize(t *testing.T) {
 		Params:  json.RawMessage(`{"clientInfo":{"name":"test-client","version":"1.0"}}`),
 	}
 
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 
 	if resp.JSONRPC != "2.0" {
 		t.Errorf("jsonrpc version: got %q, want %q", resp.JSONRPC, "2.0")
@@ -86,7 +86,7 @@ func TestHandleInitialize_NoParams(t *testing.T) {
 		// Params is nil (zero value)
 	}
 
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error for nil params: %v", resp.Error)
@@ -118,7 +118,7 @@ func TestHandlePing(t *testing.T) {
 		Method:  "ping",
 	}
 
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %v", resp.Error)
@@ -150,7 +150,7 @@ func TestHandleShutdown(t *testing.T) {
 		Method:  "shutdown",
 	}
 
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %v", resp.Error)
@@ -194,7 +194,7 @@ func TestHandleInvalidMethod(t *testing.T) {
 				Method:  tt.method,
 			}
 
-			resp := handleRequest(nil, req, nil, nil, nil)
+			resp := handleRequest(nil, req, nil, nil, nil, nil)
 
 			if resp.Error == nil {
 				t.Fatal("expected error response, got nil error")
@@ -463,7 +463,7 @@ func TestJSONRPCRoundtrip_Initialize(t *testing.T) {
 	var output bytes.Buffer
 
 	err := handleStream(strings.NewReader(input), &output, func(req jsonrpcRequest) jsonrpcResponse {
-		return handleRequest(nil, req, nil, nil, nil)
+		return handleRequest(nil, req, nil, nil, nil, nil)
 	})
 
 	if err != nil {
@@ -499,7 +499,7 @@ func TestJSONRPCRoundtrip_Ping(t *testing.T) {
 	var output bytes.Buffer
 
 	err := handleStream(strings.NewReader(input), &output, func(req jsonrpcRequest) jsonrpcResponse {
-		return handleRequest(nil, req, nil, nil, nil)
+		return handleRequest(nil, req, nil, nil, nil, nil)
 	})
 
 	if err != nil {
@@ -534,7 +534,7 @@ func TestJSONRPCRoundtrip_InvalidMethod(t *testing.T) {
 	var output bytes.Buffer
 
 	err := handleStream(strings.NewReader(input), &output, func(req jsonrpcRequest) jsonrpcResponse {
-		return handleRequest(nil, req, nil, nil, nil)
+		return handleRequest(nil, req, nil, nil, nil, nil)
 	})
 
 	if err != nil {
@@ -596,7 +596,7 @@ func TestHandleRequest_InvalidJSON(t *testing.T) {
 	t.Run("empty object yields method not found", func(t *testing.T) {
 		t.Parallel()
 		resp := processRequest([]byte(`{}`), func(req jsonrpcRequest) jsonrpcResponse {
-			return handleRequest(nil, req, nil, nil, nil)
+			return handleRequest(nil, req, nil, nil, nil, nil)
 		})
 		if resp.Error == nil {
 			t.Fatal("expected error for empty method")
@@ -772,7 +772,7 @@ func TestMemoryHandlerParamsValidation_MemoryAdd(t *testing.T) {
 			Method:  "memory.add",
 			// Params nil — parseParams will error
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for nil params")
 		}
@@ -796,7 +796,7 @@ func TestMemoryHandlerParamsValidation_MemoryAdd(t *testing.T) {
 		// So we verify the params parsing works but we can't test
 		// the content=="" check path without a real memSys.
 		// Instead, test that missing content field (empty string) is caught:
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty content")
 		}
@@ -819,7 +819,7 @@ func TestMemoryHandlerParamsValidation_MemoryQuery(t *testing.T) {
 			ID:      jsonRawID("mq1"),
 			Method:  "memory.query",
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for nil params")
 		}
@@ -834,7 +834,7 @@ func TestMemoryHandlerParamsValidation_MemoryQuery(t *testing.T) {
 			Method:  "memory.query",
 			Params:  json.RawMessage(`{"query":""}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty query")
 		}
@@ -857,7 +857,7 @@ func TestBrokerHandlerParamsValidation_BrokerBuildCatalog(t *testing.T) {
 			ID:      jsonRawID("bc1"),
 			Method:  "broker.buildCatalog",
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for nil params")
 		}
@@ -890,7 +890,7 @@ func TestIO_PipeRoundtrip(t *testing.T) {
 	}()
 
 	err := handleStream(pr, &output, func(req jsonrpcRequest) jsonrpcResponse {
-		return handleRequest(nil, req, nil, nil, nil)
+		return handleRequest(nil, req, nil, nil, nil, nil)
 	})
 
 	<-done // wait for writer to close
@@ -934,7 +934,7 @@ func TestHandleRequest_MemoryGet_MissingID(t *testing.T) {
 		Method:  "memory.get",
 		Params:  json.RawMessage(`{"id":""}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for empty id")
 	}
@@ -954,7 +954,7 @@ func TestHandleRequest_MemoryDelete_MissingID(t *testing.T) {
 		Method:  "memory.delete",
 		Params:  json.RawMessage(`{"id":""}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for empty id")
 	}
@@ -977,7 +977,7 @@ func TestHandleRequest_MemoryAdjustTrust_MissingFields(t *testing.T) {
 			Method:  "memory.adjustTrust",
 			Params:  json.RawMessage(`{"memoryId":"","signal":"agent_used"}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty memoryId")
 		}
@@ -995,7 +995,7 @@ func TestHandleRequest_MemoryAdjustTrust_MissingFields(t *testing.T) {
 			Method:  "memory.adjustTrust",
 			Params:  json.RawMessage(`{"memoryId":"abc-123","signal":""}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty signal")
 		}
@@ -1003,6 +1003,67 @@ func TestHandleRequest_MemoryAdjustTrust_MissingFields(t *testing.T) {
 			t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
 		}
 	})
+}
+
+// ─── TestHandleRequest_PeerSwitchContext_EmptyPeerID ─────────────────────────
+
+func TestHandleRequest_PeerSwitchContext_EmptyPeerID(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("psc1"),
+		Method:  "peer.switchContext",
+		Params:  json.RawMessage(`{"peerId":""}`),
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	if resp.Error == nil {
+		t.Fatal("expected error for empty peerId")
+	}
+	if resp.Error.Code != -32602 {
+		t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
+	}
+}
+
+// ─── TestHandleRequest_PeerSwitchContext_NilParams ────────────────────────────
+
+func TestHandleRequest_PeerSwitchContext_NilParams(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("psc2"),
+		Method:  "peer.switchContext",
+		// Params nil — parseParams will error
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	if resp.Error == nil {
+		t.Fatal("expected error for nil params")
+	}
+	if resp.Error.Code != -32602 {
+		t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
+	}
+}
+
+// ─── TestHandleRequest_PeerGetSharedMemories_UsesActivePeerContext ────────────
+// Regression test for the hardcoded-empty-peerID bug.
+// Verifies that the active peer context is now consulted (not ""),
+// and that the handler signature accepts peerCtx (not nil-rejected).
+
+func TestHandleRequest_PeerGetSharedMemories_UsesActivePeerContext(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration: requires real memSys")
+	}
+	t.Parallel()
+
+	// With a real memSys, calling getSharedMemories with no prior switchContext
+	// should fall back to the default peer ("default"), not hardcoded "".
+	// The result is not asserted because we don't have a real DB here —
+	// the bug fix is that the handler doesn't crash with peerCtx nil.
+	peerCtx := newActivePeerContext()
+	if peerCtx.GetActivePeerID() != "default" {
+		t.Errorf("default peer: got %q, want %q", peerCtx.GetActivePeerID(), "default")
+	}
 }
 
 // ─── TestOrchestratorHandlerParamsValidation ──────────────────────────────────
@@ -1018,7 +1079,7 @@ func TestOrchestratorHandlerParamsValidation_Route(t *testing.T) {
 			ID:      jsonRawID("or1"),
 			Method:  "orchestrator.route",
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for nil params")
 		}

@@ -25,7 +25,7 @@ func TestHandleRequest_LogAuditEvent_MissingParams(t *testing.T) {
 			ID:      jsonRawID("lae1"),
 			Method:  "memory.logAuditEvent",
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for nil params")
 		}
@@ -42,7 +42,7 @@ func TestHandleRequest_LogAuditEvent_MissingParams(t *testing.T) {
 			Method:  "memory.logAuditEvent",
 			Params:  json.RawMessage(`{"description":"test"}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for missing eventType")
 		}
@@ -62,7 +62,7 @@ func TestHandleRequest_GetAuditEvents_Recognized(t *testing.T) {
 		Method:  "memory.getAuditLog",
 		Params:  json.RawMessage(`{invalid}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for invalid params")
 	}
@@ -83,7 +83,7 @@ func TestHandleRequest_GetTrustScore_MissingMemoryID(t *testing.T) {
 			ID:      jsonRawID("gts1"),
 			Method:  "memory.getTrustScore",
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for nil params")
 		}
@@ -100,7 +100,7 @@ func TestHandleRequest_GetTrustScore_MissingMemoryID(t *testing.T) {
 			Method:  "memory.getTrustScore",
 			Params:  json.RawMessage(`{"memoryId":""}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty memoryId")
 		}
@@ -120,7 +120,7 @@ func TestHandleRequest_ListArchived_Recognized(t *testing.T) {
 		Method:  "memory.listArchived",
 		Params:  json.RawMessage(`{invalid}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for invalid params")
 	}
@@ -141,7 +141,7 @@ func TestHandleRequest_GetDecayStatus_Recognized(t *testing.T) {
 		Method:  "memory.getDecayStatus",
 		Params:  json.RawMessage(`{invalid}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for invalid params")
 	}
@@ -160,7 +160,7 @@ func TestHandleRequest_AdjustDecayRate_MissingParams(t *testing.T) {
 			ID:      jsonRawID("adr1"),
 			Method:  "memory.adjustDecayRate",
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for nil params")
 		}
@@ -177,7 +177,7 @@ func TestHandleRequest_AdjustDecayRate_MissingParams(t *testing.T) {
 			Method:  "memory.adjustDecayRate",
 			Params:  json.RawMessage(`{"memoryId":"","rate":1.0}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty memoryId")
 		}
@@ -197,7 +197,7 @@ func TestHandleRequest_TriggerConsolidation_Recognized(t *testing.T) {
 		Method:  "memory.triggerConsolidation",
 		Params:  json.RawMessage(`{invalid}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for invalid params")
 	}
@@ -216,7 +216,7 @@ func TestHandleRequest_ListFadingMemories_Recognized(t *testing.T) {
 		Method:  "memory.listFadingMemories",
 		Params:  json.RawMessage(`{invalid}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for invalid params")
 	}
@@ -237,7 +237,7 @@ func TestHandleRequest_ExtractEntities_MissingParams(t *testing.T) {
 			ID:      jsonRawID("ee1"),
 			Method:  "memory.extractEntities",
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for nil params")
 		}
@@ -254,7 +254,7 @@ func TestHandleRequest_ExtractEntities_MissingParams(t *testing.T) {
 			Method:  "memory.extractEntities",
 			Params:  json.RawMessage(`{"text":""}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty text")
 		}
@@ -273,7 +273,7 @@ func TestHandleRequest_QueryKG_MissingStartEntity(t *testing.T) {
 		Method:  "memory.queryKG",
 		Params:  json.RawMessage(`{"endEntity":"entity2"}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for missing startEntity")
 	}
@@ -292,7 +292,7 @@ func TestHandleRequest_SearchEntities_MissingName(t *testing.T) {
 			ID:      jsonRawID("se1"),
 			Method:  "memory.searchEntities",
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error")
 		}
@@ -306,7 +306,7 @@ func TestHandleRequest_SearchEntities_MissingName(t *testing.T) {
 			Method:  "memory.searchEntities",
 			Params:  json.RawMessage(`{"name":""}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty name")
 		}
@@ -325,7 +325,7 @@ func TestHandleRequest_GetEntitiesByType_MissingType(t *testing.T) {
 		Method:  "memory.getEntitiesByType",
 		Params:  json.RawMessage(`{"entityType":""}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for empty entityType")
 	}
@@ -345,7 +345,7 @@ func TestHandleRequest_CreateEntityRelationship_MissingFields(t *testing.T) {
 			Method:  "memory.createEntityRelationship",
 			Params:  json.RawMessage(`{"targetId":"t1","relType":"RELATED_TO"}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for missing sourceId")
 		}
@@ -362,7 +362,7 @@ func TestHandleRequest_CreateEntityRelationship_MissingFields(t *testing.T) {
 			Method:  "memory.createEntityRelationship",
 			Params:  json.RawMessage(`{"sourceId":"s1","relType":"RELATED_TO"}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for missing targetId")
 		}
@@ -379,7 +379,7 @@ func TestHandleRequest_CreateEntityRelationship_MissingFields(t *testing.T) {
 			Method:  "memory.createEntityRelationship",
 			Params:  json.RawMessage(`{"sourceId":"s1","targetId":"t1"}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for missing relType")
 		}
@@ -398,7 +398,7 @@ func TestHandleRequest_GetEntityGraph_MissingID(t *testing.T) {
 		Method:  "memory.getEntityGraph",
 		Params:  json.RawMessage(`{"entityId":""}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for empty entityId")
 	}
@@ -416,7 +416,7 @@ func TestHandleRequest_RenderGraphHTML_MissingID(t *testing.T) {
 		Method:  "memory.renderGraphHTML",
 		Params:  json.RawMessage(`{"entityId":""}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for empty entityId")
 	}
@@ -437,7 +437,7 @@ func TestHandleRequest_StartThoughtChain_Recognized(t *testing.T) {
 		Method:  "memory.startThoughtChain",
 		Params:  json.RawMessage(`{invalid}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for invalid params")
 	}
@@ -456,7 +456,7 @@ func TestHandleRequest_AddThought_MissingParams(t *testing.T) {
 			ID:      jsonRawID("at1"),
 			Method:  "memory.addThought",
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for nil params")
 		}
@@ -473,7 +473,7 @@ func TestHandleRequest_AddThought_MissingParams(t *testing.T) {
 			Method:  "memory.addThought",
 			Params:  json.RawMessage(`{"chainId":"","thought":"test","thoughtNumber":1,"totalThoughts":3,"nextThoughtNeeded":true}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty chainId")
 		}
@@ -490,7 +490,7 @@ func TestHandleRequest_AddThought_MissingParams(t *testing.T) {
 			Method:  "memory.addThought",
 			Params:  json.RawMessage(`{"chainId":"abc","thought":"","thoughtNumber":1,"totalThoughts":3,"nextThoughtNeeded":true}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty thought")
 		}
@@ -507,7 +507,7 @@ func TestHandleRequest_AddThought_MissingParams(t *testing.T) {
 			Method:  "memory.addThought",
 			Params:  json.RawMessage(`{"chainId":"abc","thought":"hello","thoughtNumber":0,"totalThoughts":3,"nextThoughtNeeded":true}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for zero thoughtNumber")
 		}
@@ -524,7 +524,7 @@ func TestHandleRequest_AddThought_MissingParams(t *testing.T) {
 			Method:  "memory.addThought",
 			Params:  json.RawMessage(`{"chainId":"abc","thought":"hello","thoughtNumber":1,"totalThoughts":0,"nextThoughtNeeded":true}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for zero totalThoughts")
 		}
@@ -543,7 +543,7 @@ func TestHandleRequest_GetThoughtChain_MissingID(t *testing.T) {
 		Method:  "memory.getThoughtChain",
 		Params:  json.RawMessage(`{"chainId":""}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for empty chainId")
 	}
@@ -561,7 +561,7 @@ func TestHandleRequest_GetRelatedThoughtChains_MissingQuery(t *testing.T) {
 		Method:  "memory.getRelatedThoughtChains",
 		Params:  json.RawMessage(`{"query":""}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for empty query")
 	}
@@ -581,7 +581,7 @@ func TestHandleRequest_ReviseThought_MissingFields(t *testing.T) {
 			Method:  "memory.reviseThought",
 			Params:  json.RawMessage(`{"chainId":"","thoughtNumber":1,"revisedThought":"new text"}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty chainId")
 		}
@@ -598,7 +598,7 @@ func TestHandleRequest_ReviseThought_MissingFields(t *testing.T) {
 			Method:  "memory.reviseThought",
 			Params:  json.RawMessage(`{"chainId":"abc","thoughtNumber":0,"revisedThought":"new text"}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for zero thoughtNumber")
 		}
@@ -615,7 +615,7 @@ func TestHandleRequest_ReviseThought_MissingFields(t *testing.T) {
 			Method:  "memory.reviseThought",
 			Params:  json.RawMessage(`{"chainId":"abc","thoughtNumber":1,"revisedThought":""}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty revisedThought")
 		}
@@ -636,7 +636,7 @@ func TestHandleRequest_BranchThought_MissingFields(t *testing.T) {
 			Method:  "memory.branchThought",
 			Params:  json.RawMessage(`{"chainId":"","branchId":"b1","thought":"alt path"}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty chainId")
 		}
@@ -653,7 +653,7 @@ func TestHandleRequest_BranchThought_MissingFields(t *testing.T) {
 			Method:  "memory.branchThought",
 			Params:  json.RawMessage(`{"chainId":"abc","branchId":"","thought":"alt path"}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty branchId")
 		}
@@ -670,7 +670,7 @@ func TestHandleRequest_BranchThought_MissingFields(t *testing.T) {
 			Method:  "memory.branchThought",
 			Params:  json.RawMessage(`{"chainId":"abc","branchId":"b1","thought":""}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty thought")
 		}
@@ -689,7 +689,7 @@ func TestHandleRequest_PauseThoughtChain_MissingID(t *testing.T) {
 		Method:  "memory.pauseThoughtChain",
 		Params:  json.RawMessage(`{"chainId":""}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for empty chainId")
 	}
@@ -707,7 +707,7 @@ func TestHandleRequest_ResumeThoughtChain_MissingID(t *testing.T) {
 		Method:  "memory.resumeThoughtChain",
 		Params:  json.RawMessage(`{"chainId":""}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for empty chainId")
 	}
@@ -725,7 +725,7 @@ func TestHandleRequest_AbandonThoughtChain_MissingID(t *testing.T) {
 		Method:  "memory.abandonThoughtChain",
 		Params:  json.RawMessage(`{"chainId":""}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for empty chainId")
 	}
@@ -746,7 +746,7 @@ func TestHandleRequest_FindContradictions_Recognized(t *testing.T) {
 		Method:  "memory.findContradictions",
 		Params:  json.RawMessage(`{invalid}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for invalid params")
 	}
@@ -764,7 +764,7 @@ func TestHandleRequest_ResolveContradiction_MissingID(t *testing.T) {
 		Method:  "memory.resolveContradiction",
 		Params:  json.RawMessage(`{"contradictionId":""}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for empty contradictionId")
 	}
@@ -784,7 +784,7 @@ func TestHandleRequest_ChallengeMemory_MissingFields(t *testing.T) {
 			Method:  "memory.challengeMemory",
 			Params:  json.RawMessage(`{"memoryId":"","challengeText":"I disagree"}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty memoryId")
 		}
@@ -801,7 +801,7 @@ func TestHandleRequest_ChallengeMemory_MissingFields(t *testing.T) {
 			Method:  "memory.challengeMemory",
 			Params:  json.RawMessage(`{"memoryId":"abc","challengeText":""}`),
 		}
-		resp := handleRequest(nil, req, nil, nil, nil)
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
 			t.Fatal("expected error for empty challengeText")
 		}
@@ -820,7 +820,7 @@ func TestHandleRequest_GetDialecticHistory_MissingID(t *testing.T) {
 		Method:  "memory.getDialecticHistory",
 		Params:  json.RawMessage(`{"memoryId":""}`),
 	}
-	resp := handleRequest(nil, req, nil, nil, nil)
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
 		t.Fatal("expected error for empty memoryId")
 	}
@@ -894,7 +894,7 @@ func TestAllNewMethods_WithRequiredParams_Recognized(t *testing.T) {
 				Method:  tt.method,
 				Params:  params,
 			}
-			resp := handleRequest(nil, req, nil, nil, nil)
+			resp := handleRequest(nil, req, nil, nil, nil, nil)
 			// Must NOT return "method not found" (-32601)
 			if resp.Error == nil {
 				// Some paramless methods might succeed — that's fine
@@ -940,7 +940,7 @@ func TestParamlessMethods_Recognized(t *testing.T) {
 				Method:  method,
 				Params:  json.RawMessage(`{invalid}`),
 			}
-			resp := handleRequest(nil, req, nil, nil, nil)
+			resp := handleRequest(nil, req, nil, nil, nil, nil)
 			// Must NOT return "method not found" (-32601)
 			if resp.Error == nil {
 				t.Errorf("expected error for invalid JSON params, got success")
