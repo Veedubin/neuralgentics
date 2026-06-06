@@ -8,7 +8,7 @@ export { CompactionOrchestrator } from "./orchestrator.js";
 export { TokenMonitor } from "./monitor.js";
 export { filterMessages, estimateMessageTokens } from "./filter.js";
 export { extractFacts, parseExtractionResponse } from "./extractor.js";
-export { writeFactsToMemory, queryExtractedFacts } from "./writer.js";
+export { writeFactsToMemory, queryExtractedFacts, writeCheckpoint, loadLastCheckpoint } from "./writer.js";
 export {
   DEFAULT_COMPACTION_CONFIG,
   EXTRACTION_PROMPT,
@@ -16,6 +16,7 @@ export {
 export type {
   CompactionConfig,
   CompactionResult,
+  CompactionCheckpoint,
   CompactionStatus,
   CompactionEvents,
   CompactionDependencies,

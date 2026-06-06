@@ -23,6 +23,7 @@ import type {
   RevertResult,
   PromptOptions,
 } from "./types.js";
+import type { CompactionCheckpoint } from "../compaction/types.js";
 
 // ─── Seed Prompt Template ──────────────────────────────────────────────────────
 
@@ -409,6 +410,99 @@ export class SessionManager {
     const contextResult = await this.storeContext(context);
     const seedPrompt = this.generateSeedPrompt(contextResult.memoryId, context);
     return { seedPrompt, contextResult };
+  }
+
+  // ─── Checkpoint Persistence (T-079) ─────────────────────────────────────────
+
+  /**
+   * Load the most recent compaction checkpoint from Neuralgentics memory.
+   *
+   * Queries for the latest checkpoint with sourceType "compaction_checkpoint".
+   * Returns null if no checkpoint exists or if the data is corrupted.
+   */
+  async loadLastCheckpoint(): Promise<CompactionCheckpoint | null> {
+    if (!this.memoryEnabled) {
+      return null;
+    }
+
+    try {
+      const results = await this.neuralgentics.call("memory.queryBySourceType", {
+        sourceType: "compaction_checkpoint",
+        limit: 1,
+        sortBy: "createdAt",
+        sortOrder: "DESC",
+      }) as Array<Record<string, unknown>>;
+
+      if (!Array.isArray(results) || results.length === 0) {
+        return null;
+      }
+
+      const entry = results[0];
+      const content = typeof entry.content === "string"
+        ? entry.content
+        : JSON.stringify(entry.content ?? entry);
+
+      try {
+        const parsed = JSON.parse(content) as Record<string, unknown>;
+
+        // Validate required fields for graceful degradation
+        if (
+          typeof parsed.sessionId !== "string" ||
+          typeof parsed.timestamp !== "string" ||
+          typeof parsed.factsExtracted !== "number"
+        ) {
+          console.warn("[session] Checkpoint has missing or invalid required fields — ignoring");
+          return null;
+        }
+
+        return {
+          checkpointId: (entry.id as string) ?? "",
+          sessionId: parsed.sessionId as string,
+          timestamp: parsed.timestamp as string,
+          factsExtracted: parsed.factsExtracted as number,
+          tokensBefore: (parsed.tokensBefore as number) ?? 0,
+          tokensAfter: (parsed.tokensAfter as number) ?? 0,
+          savingsRatio: (parsed.savingsRatio as number) ?? 0,
+          reverted: (parsed.reverted as boolean) ?? false,
+          reseeded: (parsed.reseeded as boolean) ?? false,
+          confidenceScores: (parsed.confidenceScores as Record<string, number>) ?? {},
+          extractedMemoryIds: (parsed.extractedMemoryIds as string[]) ?? [],
+        };
+      } catch (parseErr: unknown) {
+        console.warn("[session] Corrupted checkpoint JSON — ignoring:", parseErr);
+        return null;
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[session] Failed to load checkpoint: ${msg}`);
+      return null;
+    }
+  }
+
+  /**
+   * Restore session state from a compaction checkpoint.
+   *
+   * This repopulates session metadata from the checkpoint data.
+   * It does NOT restore the full TUI state (panels, etc.) — that is T-080.
+   *
+   * @param checkpoint - The checkpoint to restore from.
+   */
+  async restoreFromCheckpoint(checkpoint: CompactionCheckpoint): Promise<void> {
+    console.log(
+      `[session] Restoring from checkpoint ${checkpoint.checkpointId}: ` +
+      `session=${checkpoint.sessionId}, ` +
+      `facts=${checkpoint.factsExtracted}, ` +
+      `tokens=${checkpoint.tokensBefore}→${checkpoint.tokensAfter}, ` +
+      `savings=${checkpoint.savingsRatio.toFixed(1)}:1`,
+    );
+
+    // Restore session metadata — T-080 will extend this to restore panels
+    if (checkpoint.sessionId) {
+      this._sessionId = checkpoint.sessionId;
+    }
+
+    // Mark session as active after checkpoint restore
+    this.setStatus("active");
   }
 
   // ─── Private Helpers ───────────────────────────────────────────────────

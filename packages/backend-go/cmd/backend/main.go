@@ -81,6 +81,13 @@ type memoryAdjustTrustParams struct {
 	Signal   string `json:"signal"`
 }
 
+type memoryQueryBySourceTypeParams struct {
+	SourceType string `json:"sourceType"`
+	Limit      *int   `json:"limit,omitempty"`
+	SortBy     string `json:"sortBy,omitempty"`
+	SortOrder  string `json:"sortOrder,omitempty"`
+}
+
 type orchestratorHandleTaskParams struct {
 	Task backend.JSONTask `json:"task"`
 }
@@ -571,6 +578,8 @@ func handleRequest(
 		return handleMemoryDelete(ctx, req, memSys)
 	case "memory.adjustTrust":
 		return handleMemoryAdjustTrust(ctx, req, memSys)
+	case "memory.queryBySourceType":
+		return handleMemoryQueryBySourceType(ctx, req, memSys)
 
 	// Memory — Status
 	case "memory.status":
@@ -863,6 +872,37 @@ func handleMemoryAdjustTrust(ctx context.Context, req jsonrpcRequest, memSys *me
 		"newScore":         adj.NewScore,
 		"adjustmentAmount": adj.AdjustmentAmount,
 	})
+}
+
+// handleMemoryQueryBySourceType returns memories filtered by sourceType,
+// sorted by created_at DESC by default. This is used by the TUI's
+// checkpoint persistence feature (T-079) to find the most recent
+// compaction checkpoint.
+func handleMemoryQueryBySourceType(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem) jsonrpcResponse {
+	var params memoryQueryBySourceTypeParams
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	if params.SourceType == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: sourceType is required")
+	}
+
+	limit := 10
+	if params.Limit != nil && *params.Limit > 0 {
+		limit = *params.Limit
+	}
+
+	filter := &core.SearchFilter{
+		SourceTypes: []string{params.SourceType},
+	}
+
+	results, err := memSys.ListMemoriesBySourceType(ctx, filter, limit)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	return successResponse(req.ID, results)
 }
 
 // ─── Orchestrator Handlers ──────────────────────────────────────────────────

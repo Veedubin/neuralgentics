@@ -51,6 +51,8 @@ export interface CompactionResult {
   messagesFiltered: number;
   /** Wall-clock duration of the compaction cycle in ms. */
   durationMs: number;
+  /** ID of the persisted checkpoint memory entry (T-079). Null if checkpoint write failed. */
+  checkpointId: string | null;
 }
 
 // ─── Compaction Config ──────────────────────────────────────────────────────────
@@ -135,6 +137,34 @@ export const EXTRACTION_PROMPT = `Extract the most important facts from this con
 /** Raw response from the extraction model. */
 export interface ExtractionResponse {
   facts: ExtractedFact[];
+}
+
+// ─── Compaction Checkpoint (T-079) ──────────────────────────────────────────────
+
+/** A checkpoint persisted after each compaction cycle for session resume. */
+export interface CompactionCheckpoint {
+  /** Unique checkpoint ID (memory ID in neuralgentics). */
+  checkpointId: string;
+  /** Session ID when this checkpoint was created. */
+  sessionId: string;
+  /** ISO timestamp when this checkpoint was created. */
+  timestamp: string;
+  /** Number of facts extracted in this cycle. */
+  factsExtracted: number;
+  /** Token count before compaction. */
+  tokensBefore: number;
+  /** Token count after compaction (reseed). */
+  tokensAfter: number;
+  /** Savings ratio (tokensBefore / max(tokensSpent, 1)). */
+  savingsRatio: number;
+  /** Whether the session was reverted after extraction. */
+  reverted: boolean;
+  /** Whether the reseed was triggered. */
+  reseeded: boolean;
+  /** Confidence scores map: memoryId → confidence (0-1). */
+  confidenceScores: Record<string, number>;
+  /** IDs of the stored memory entries for each extracted fact. */
+  extractedMemoryIds: string[];
 }
 
 // ─── Dependencies ────────────────────────────────────────────────────────────────

@@ -253,6 +253,13 @@ func (m *MemorySystem) CountMemories(ctx context.Context) (int64, error) {
 	return m.store.CountMemories(ctx)
 }
 
+// ListMemoriesBySourceType returns memories filtered by sourceType, sorted by
+// created_at DESC. This is used by the checkpoint persistence feature (T-079)
+// to find the most recent compaction checkpoint.
+func (m *MemorySystem) ListMemoriesBySourceType(ctx context.Context, filter *core.SearchFilter, limit int) ([]*core.MemoryEntry, error) {
+	return m.store.ListMemories(ctx, filter, limit)
+}
+
 // GetStatus returns system health and stats.
 func (m *MemorySystem) GetStatus(ctx context.Context) (*core.StatusResult, error) {
 	return m.store.Stats(ctx)
