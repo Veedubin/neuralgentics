@@ -1,6 +1,10 @@
 # System Overview
 
+## The Harness
+neuralgentics is the harness that turns a language model into a reliable agent. The harness consists of: the broker (tool permission enforcement), the memory engine (trust-scored persistence), the kanban (work decomposition), and the protocol (8-step mandatory lifecycle).
+
 Neuralgentics is not a single application, but a coordinated runtime of three primary layers: the **Interface (OpenCode)**, the **Gatekeeper (Broker)**, and the **Brain (Memini-AI)**.
+
 
 ## 🏗️ High-Level Architecture
 
