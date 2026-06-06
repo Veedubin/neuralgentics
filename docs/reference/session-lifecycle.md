@@ -1,6 +1,6 @@
 # Session Lifecycle
 
-A Neuralgentics session is not a stream of chat messages; it is a strict sequence of states. Every single task MUST follow the **8-Step Mandatory Protocol**.
+A Neuralgentics session is not a stream of chat messages; it is a strict sequence of states. Every single task MUST follow the **9-Step Mandatory Protocol**.
 
 ## ⚙️ The Protocol State Machine
 
@@ -35,14 +35,19 @@ The Protocol Advisor enforces these transitions. Any attempt to skip a step (wit
  ╚══════════════════╝
      │
      ▼
- ╔══════════════════╗
- ║  QUALITY_GATES  ║ ◄── Lint $\rightarrow$ Typecheck $\rightarrow$ Test
- ╚══════════════════╝
-     │
-     ▼
- ╔══════════════════╗
- ║   DOC_UPDATE     ║ ◄── Update TASKS.md / AGENTS.md
- ╚══════════════════╝
+  ╔══════════════════╗
+  ║  QUALITY_GATES  ║ ◄── Lint $\rightarrow$ Typecheck $\rightarrow$ Test
+  ╚══════════════════╝
+      │
+      ▼
+  ╔══════════════════╗
+  ║     IMPROVE      ║ ◄── Extract patterns, bump trust
+  ╚══════════════════╝
+      │
+      ▼
+  ╔══════════════════╗
+  ║   DOC_UPDATE     ║ ◄── Update TASKS.md / AGENTS.md
+  ╚══════════════════╝
      │
      ▼
  ╔══════════════════╗
@@ -52,7 +57,7 @@ The Protocol Advisor enforces these transitions. Any attempt to skip a step (wit
      ▼
    COMPLETE
 ```
-> **Diagram 9 — 8-Step Protocol State Machine.** This state machine is a hard requirement for all agents. It ensures that no code is written before the plan is approved, and no task is marked "done" before documents are updated and memory is saved.
+> **Diagram 9 — 9-Step Protocol State Machine.** This state machine is a hard requirement for all agents. It ensures that no code is written before the plan is approved, no patterns are committed to shared memory before quality gates pass, and no task is marked "done" before documents are updated and memory is saved.
 
 ---
 
@@ -84,6 +89,18 @@ A typical feature implementation unfolds over a coordinated timeline:
 > **Diagram 11 — Session Lifecycle Timeline.** The timeline illustrates the hand-off between specialists. Note how the `writer` is the final agent in the chain, ensuring the documentation is always in sync with the implemented code.
 
 ---
+
+## Why IMPROVE (Step 7)
+
+The IMPROVE step enforces **execution/learning separation**: workers (dispatched sub-agents) never write to shared memory during execution; only the IMPROVE phase writes. After quality gates pass, the orchestrator analyzes the outcomes of the completed work and extracts patterns, anti-patterns, and architecture decisions into shared memory.
+
+This ensures shared knowledge reflects **verified outcomes**, not speculative predictions made before quality gates pass.
+
+The IMPROVE phase uses these tools:
+- `memory.triggerExtraction` — Extract structured entities and relationships from completed work.
+- `memory.getTier1Summary` — Promote high-value decisions to the L1 key-decisions tier.
+- `memory.getRelationshipSummary` — Link new memories to existing ones via relationships.
+- `memory.adjustTrust` — Bump trust for proven memories (`agent_used` +0.05), correct flawed ones (`user_corrected` -0.10).
 
 ## 🔑 Protocol Waivers
 
