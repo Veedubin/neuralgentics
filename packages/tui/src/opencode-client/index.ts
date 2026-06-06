@@ -5,6 +5,7 @@
  */
 
 export { OpenCodeClient } from "./client.js";
+export type { ClientStatus } from "./client.js";
 export type {
   OpenCodeStatus,
   ChatMessage,
