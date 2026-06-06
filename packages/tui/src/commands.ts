@@ -44,6 +44,10 @@ export interface CommandResult {
   refreshKanban: boolean;
   /** Whether this command should show the diff panel (T-030). */
   showDiffPanel?: boolean;
+  /** Whether this command should show the 3-way merge diff panel (T-083). */
+  showDiffThreeWay?: boolean;
+  /** 3-way merge content for the diff panel (T-083). */
+  threeWayData?: { base: string; ours: string; theirs: string };
   /** Whether this command should switch the theme (T-032). */
   switchTheme?: "dark" | "light";
   /** Content to copy to clipboard (for /scaffold). */
@@ -137,14 +141,31 @@ export function handleSlashCommand(
         refreshKanban: true,
       };
 
-    case "diff":
+    case "diff": {
       // `/diff` shows the diff verification panel (T-030)
+      // `/diff --threeway` shows the 3-way merge viewer (T-083)
+      const threewayFlag = _args[0]?.toLowerCase();
+      if (threewayFlag === "--threeway" || threewayFlag === "-3") {
+        // 3-way merge mode — base, ours, theirs provided as arguments
+        // If not enough args, use sample data for demo
+        const base = _args[1] ?? "// base version (original)";
+        const ours = _args[2] ?? "// ours version (local)";
+        const theirs = _args[3] ?? "// theirs version (proposed)";
+        return {
+          command: "diff",
+          message: "Opening 3-way merge viewer... (Tab: cycle pane, 1/2/3: jump, y: accept, n: reject, q: close)",
+          refreshKanban: false,
+          showDiffThreeWay: true,
+          threeWayData: { base, ours, theirs },
+        };
+      }
       return {
         command: "diff",
         message: "Opening diff verification panel... (press y to accept, n to reject, q to close)",
         refreshKanban: false,
         showDiffPanel: true,
       };
+    }
 
     case "theme": {
       // `/theme [dark|light]` — switch theme (T-032)
