@@ -9,7 +9,7 @@ const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
 describe("@neuralgentics/tui setup verification", () => {
   test("package.json has correct name and version", () => {
     expect(pkg.name).toBe("@neuralgentics/tui")
-    expect(pkg.version).toBe("0.1.1")
+    expect(pkg.version).toBe("0.1.3")
   })
 
   test("package.json has no blessed dependency", () => {
