@@ -25,7 +25,7 @@ import {
 } from "@opentui/core";
 
 import { parseKanbanBoard, formatKanbanForPanel, type KanbanBoard } from "./kanban/index.js";
-import { handleSlashCommand, handleMemoryCommand, handleChainCommand, handleCachedOpportunitiesCommand, type CommandDependencies } from "./commands.js";
+import { handleSlashCommand, handleMemoryCommand, handleChainCommand, handleCachedOpportunitiesCommand, handleResumeSessionCommand, type CommandDependencies } from "./commands.js";
 import { initSidecar, checkDatabase, registerSidecarShutdown } from "./sidecar.js";
 import { OpenCodeClient, type OpenCodeStatus } from "./opencode-client/index.js";
 import { NeuralgenticsClient } from "./neuralgentics-client/client.js";
@@ -294,6 +294,24 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
           const asyncResult = await handleChainCommand(neuralgenticsClient, value);
           state.chatMessages.push(`/${asyncResult.command}: ${asyncResult.message}`);
           chatText.content = state.chatMessages.join("\n");
+          return;
+        }
+
+        // T-080: /resume (no args) → async handler that calls sessionManager.resume()
+        if (cmd === "resume" && !value.trim().slice(1).split(/\s+/)[1] && sessionManager) {
+          const asyncResult = await handleResumeSessionCommand(sessionManager);
+          state.chatMessages.push(`/${asyncResult.command}: ${asyncResult.message}`);
+          chatText.content = state.chatMessages.join("\n");
+
+          // Refresh kanban after resume
+          if (asyncResult.refreshKanban) {
+            try {
+              state.kanbanBoard = parseKanbanBoard();
+              kanbanText.content = buildKanbanContent();
+            } catch {
+              // Kanban refresh is non-critical
+            }
+          }
           return;
         }
 
@@ -800,6 +818,7 @@ async function main(): Promise<void> {
     sessionManager = new SessionManager({
       opencode: opencodeClient,
       neuralgentics: neuralgenticsClient,
+      tokenCounter: tokenCounter ?? undefined,
     });
     sessionManager.on("statusChange", (status: unknown) => {
       state.sessionStatus = status as SessionManagerStatus;
@@ -817,6 +836,40 @@ async function main(): Promise<void> {
   }
 
   await buildLayout(renderer);
+
+  // ── T-080: Session Resume at Startup ─────────────────────────────────────
+  // Try to resume from checkpoint. If a checkpoint exists, the TUI banner
+  // shows "Resuming session SESS-xxx at [age]". If not, fresh session.
+  if (sessionManager) {
+    try {
+      const resumeResult = await sessionManager.resume();
+      if (resumeResult.resumed) {
+        state.chatMessages.push(`Resuming session ${resumeResult.checkpointId} at ${resumeResult.age}`);
+        console.log(`[session] Resumed from checkpoint: ${resumeResult.checkpointId} (${resumeResult.age})`);
+
+        // Re-parse kanban to reflect current TASKS.md state
+        try {
+          state.kanbanBoard = parseKanbanBoard();
+          kanbanText.content = buildKanbanContent();
+        } catch {
+          // Kanban parse failure is non-critical on resume
+        }
+      } else if (resumeResult.reason === "no-checkpoint") {
+        state.chatMessages.push("Fresh session — no checkpoint found.");
+        console.log("[session] No checkpoint found, starting fresh session.");
+      } else if (resumeResult.reason === "offline") {
+        state.chatMessages.push("⚠ OpenCode client offline — resume skipped. Use /resume after reconnecting.");
+        console.log("[session] Resume skipped: OpenCode client offline.");
+      } else if (resumeResult.reason === "already-resumed") {
+        console.log("[session] Resume skipped: already resumed.");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[session] Resume attempt failed: ${msg}`);
+      // Non-fatal — TUI continues with fresh session
+    }
+    chatText.content = state.chatMessages.join("\n");
+  }
 
   // ── Diff panel (T-030) ───────────────────────────────────────────────────────
   // Instantiated after layout so the modal overlay can attach to the root.

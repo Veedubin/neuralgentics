@@ -113,3 +113,31 @@ export interface SessionManagerOptions {
   /** Whether to apply agent_used trust signal on sub-agent completion (default: true). */
   trustSignalsEnabled?: boolean;
 }
+
+// ─── Resume Result (T-080) ───────────────────────────────────────────────────────
+
+/** Result of a session resume operation. */
+export interface ResumeResult {
+  /** Whether the session was successfully resumed from a checkpoint. */
+  resumed: boolean;
+  /** The checkpoint ID if resumed. */
+  checkpointId?: string;
+  /** Human-readable age string (e.g. "2.3 hours ago"). */
+  age?: string;
+  /** Reason for not resuming, if resumed is false. */
+  reason?: "no-checkpoint" | "offline" | "already-resumed" | "error";
+}
+
+/** Detailed status reported by the /resume command. */
+export interface ResumeStatus {
+  /** The checkpoint ID. */
+  checkpointId: string;
+  /** Human-readable age string. */
+  age: string;
+  /** Total token count at checkpoint time. */
+  tokenCount: number;
+  /** Model name stored in checkpoint. */
+  modelName: string;
+  /** Number of opportunity candidates in cache. */
+  opportunityCount: number;
+}

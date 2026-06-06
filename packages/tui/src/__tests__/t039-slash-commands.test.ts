@@ -178,12 +178,12 @@ describe("/opportunities command (T-034)", () => {
 // ─── 5. /resume Command ────────────────────────────────────────────────────────────
 
 describe("/resume command", () => {
-  test("/resume without card ID shows usage", () => {
+  test("/resume without card ID signals session resume (T-080)", () => {
     const result = handleSlashCommand("/resume");
     expect(result.command).toBe("resume");
-    expect(result.message).toContain("specify a card ID");
-    expect(result.message).toContain("T-036");
+    expect(result.message).toContain("Checking session checkpoint status");
     expect(result.refreshKanban).toBe(false);
+    expect(result.resumeStatus).toBeNull();
   });
 
   test("/resume without circuit breaker shows unavailable", () => {

@@ -14,6 +14,8 @@ export type {
   RevertResult,
   PromptOptions,
   SessionManagerEvents,
+  ResumeResult,
+  ResumeStatus,
 } from "./types.js";
 export {
   generateReseed,
