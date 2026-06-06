@@ -295,9 +295,18 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
 
-      - name: Update latest tag alias
+      - name: Update latest tag alias (best-effort)
+        continue-on-error: true
         run: |
-          # Move the 'latest' mutable tag to point to this release
+          # Move the 'latest' mutable tag to point to this release.
+          # NOTE: The default GITHUB_TOKEN does not have `workflows` permission
+          # to push a tag whose name matches a workflow file path. This step
+          # is best-effort; the maintainer manually updates the `latest` alias
+          # after each release using a personal access token:
+          #   git tag -f latest <sha>
+          #   git push origin latest --force
+          # Alternatively, GitHub's release-marking (`releases/latest`) is
+          # # authoritative for the "Latest" badge on the releases page.
           git tag -f latest ${{ github.sha }}
           git push origin latest --force
         shell: bash
