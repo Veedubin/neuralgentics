@@ -12,6 +12,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import {
   createOpencode,
   createOpencodeServer,
@@ -25,6 +26,11 @@ import type {
   PromptResult,
 } from "./types.js";
 import { PortConflictError, OpenCodeStartError } from "./types.js";
+
+// ─── Offline Detection Types ──────────────────────────────────────────────────
+
+/** Online/offline status for the health-check layer (T-081a). */
+export type ClientStatus = "online" | "offline";
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 
@@ -67,6 +73,12 @@ export class OpenCodeClient {
   private currentSessionId: string | null = null;
   private startPromise: Promise<void> | null = null;
 
+  // ─── Offline Detection State (T-081a) ─────────────────────────────────────
+  private _onlineStatus: ClientStatus = "online";
+  private _consecutiveMisses = 0;
+  private readonly _offlineThreshold = 2;
+  private readonly _offlineEmitter = new EventEmitter();
+
   // ─── Event listeners ─────────────────────────────────────────────────────
   private statusListeners: StatusListener[] = [];
   private messageListeners: MessageListener[] = [];
@@ -107,6 +119,20 @@ export class OpenCodeClient {
   /** Whether the client is ready for prompt operations. */
   get isReady(): boolean {
     return this._status === "ready";
+  }
+
+  /** Online/offline status for health-check detection (T-081a). */
+  get onlineStatus(): ClientStatus {
+    return this._onlineStatus;
+  }
+
+  /**
+   * Register offline detection event listeners.
+   * Supports "offline" and "online" events for the health-check layer.
+   */
+  onOfflineEvent(event: "offline" | "online", listener: (...args: unknown[]) => void): this {
+    this._offlineEmitter.on(event, listener);
+    return this;
   }
 
   // ─── Event Subscription ─────────────────────────────────────────────────
@@ -158,6 +184,7 @@ export class OpenCodeClient {
       this.client = client;
       this.serverClose = server.close.bind(server);
       this.setStatus("ready");
+      this._recordSuccess();
 
       console.log(
         `[opencode] Server ready on ${this.hostname}:${this.port}`,
@@ -168,18 +195,21 @@ export class OpenCodeClient {
       // Port conflict from the SDK's spawn
       if (error instanceof PortConflictError) {
         this.setStatus("degraded");
+        this._recordFailure();
         throw error;
       }
 
       // Check for EADDRINUSE in error message (SDK wraps spawn errors)
       if (error.message?.includes("EADDRINUSE") || error.message?.includes("address already in use")) {
         this.setStatus("degraded");
+        this._recordFailure();
         throw new PortConflictError(this.port, error);
       }
 
       // Any other error — enter degraded mode but don't crash
       console.error(`[opencode] Server failed to start: ${error.message}`);
       this.setStatus("degraded");
+      this._recordFailure();
       throw new OpenCodeStartError(
         `OpenCode server failed to start: ${error.message}. ` +
           `TUI entering degraded mode — memory operations still available, ` +
@@ -210,6 +240,7 @@ export class OpenCodeClient {
     this.client = null;
     this.currentSessionId = null;
     this.setStatus("offline");
+    this._recordFailure(); // Server is down → count as a failure for health tracking
     console.log("[opencode] Server shut down");
   }
 
@@ -478,6 +509,40 @@ export class OpenCodeClient {
       path: { id: sessionId },
       body: body as NonNullable<Parameters<OpencodeClient["session"]["init"]>[0]["body"]>,
     });
+  }
+
+  // ─── Offline Detection Helpers (T-081a) ──────────────────────────────────
+
+  /**
+   * Record a successful health check. Resets consecutive miss count.
+   * If currently offline, transitions back to online and emits "online".
+   */
+  private _recordSuccess(): void {
+    this._consecutiveMisses = 0;
+    if (this._onlineStatus === "offline") {
+      this._onlineStatus = "online";
+      this._offlineEmitter.emit("online");
+      console.log("[opencode] Health check recovered → online");
+    }
+  }
+
+  /**
+   * Record a failed health check. Increments consecutive miss count.
+   * If misses reach the threshold and currently online, transitions to offline
+   * and emits "offline".
+   */
+  private _recordFailure(): void {
+    this._consecutiveMisses++;
+    if (
+      this._consecutiveMisses >= this._offlineThreshold &&
+      this._onlineStatus === "online"
+    ) {
+      this._onlineStatus = "offline";
+      this._offlineEmitter.emit("offline");
+      console.log(
+        `[opencode] ${this._consecutiveMisses} consecutive failures → offline`,
+      );
+    }
   }
 
   // ─── Private Helpers ───────────────────────────────────────────────────

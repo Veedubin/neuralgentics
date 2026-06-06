@@ -5,7 +5,7 @@
  */
 
 export { NeuralgenticsClient } from "./client.js";
-export type { NeuralgenticsClientEvents } from "./client.js";
+export type { ClientStatus, NeuralgenticsClientEvents } from "./client.js";
 export type {
   MethodName,
   MethodParams,

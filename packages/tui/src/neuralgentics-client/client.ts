@@ -14,8 +14,12 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
+import { EventEmitter } from "node:events";
 import { resolveBackendPath, resolveDbUrl } from "./resolver.js";
 import type { MethodName, MethodParams, MethodResult } from "./types.js";
+
+/** Online/offline status for the health-check layer (T-081a). */
+export type ClientStatus = "online" | "offline";
 
 /** Internal bookkeeping for an in-flight JSON-RPC request. */
 interface PendingCall {
@@ -45,6 +49,10 @@ export interface NeuralgenticsClientEvents {
   crash: (error: Error) => void;
   /** Emitted when the backend is ready (received `{"method":"ready"}` notification). */
   ready: () => void;
+  /** Emitted when the health check detects the backend is unreachable (T-081a). */
+  offline: () => void;
+  /** Emitted when the backend recovers from offline (T-081a). */
+  online: () => void;
 }
 
 /**
@@ -71,6 +79,13 @@ export class NeuralgenticsClient {
   private binaryPath: string;
   private crashListeners: Array<(error: Error) => void> = [];
   private readyListeners: Array<() => void> = [];
+
+  // ─── Offline Detection State (T-081a) ─────────────────────────────────────
+  private _onlineStatus: ClientStatus = "online";
+  private _consecutiveMisses = 0;
+  private readonly _offlineThreshold = 2;
+  private readonly _offlineEmitter = new EventEmitter();
+  private _healthCheckInterval: ReturnType<typeof setInterval> | null = null;
 
   /**
    * Create a new client and spawn the backend binary.
@@ -110,13 +125,18 @@ export class NeuralgenticsClient {
 
   /**
    * Register event listeners.
-   * Supports 'crash' (receives Error) and 'ready' (no args) events.
+   * Supports 'crash' (receives Error), 'ready' (no args),
+   * 'offline' (no args), and 'online' (no args) events.
    */
-  on(event: "crash" | "ready", listener: (arg?: Error) => void): this {
+  on(event: "crash" | "ready" | "offline" | "online", listener: (arg?: Error) => void): this {
     if (event === "crash") {
       this.crashListeners.push(listener as (error: Error) => void);
     } else if (event === "ready") {
       this.readyListeners.push(listener as () => void);
+    } else if (event === "offline") {
+      this._offlineEmitter.on("offline", listener as () => void);
+    } else if (event === "online") {
+      this._offlineEmitter.on("online", listener as () => void);
     }
     return this;
   }
@@ -203,6 +223,77 @@ export class NeuralgenticsClient {
     });
   }
 
+  // ─── Offline Detection (T-081a) ──────────────────────────────────────────
+
+  /** Online/offline status for health-check detection. */
+  get onlineStatus(): ClientStatus {
+    return this._onlineStatus;
+  }
+
+  /**
+   * Start a periodic health check that pings the backend.
+   * If the ping fails, calls `_recordFailure()`. If it succeeds, calls `_recordSuccess()`.
+   * Default interval is 5000ms (5 seconds).
+   *
+   * @param intervalMs - How often to ping the backend (default 5000ms).
+   */
+  startHealthCheck(intervalMs: number = 5000): void {
+    this.stopHealthCheck(); // Clear any existing interval
+
+    const healthCheck = async (): Promise<void> => {
+      try {
+        await this.call("ping", {});
+        this._recordSuccess();
+      } catch {
+        this._recordFailure();
+      }
+    };
+
+    // Run immediately, then on interval
+    void healthCheck();
+    this._healthCheckInterval = setInterval(() => void healthCheck(), intervalMs);
+  }
+
+  /** Stop the periodic health check. */
+  stopHealthCheck(): void {
+    if (this._healthCheckInterval !== null) {
+      clearInterval(this._healthCheckInterval);
+      this._healthCheckInterval = null;
+    }
+  }
+
+  /**
+   * Record a successful health check. Resets consecutive miss count.
+   * If currently offline, transitions back to online and emits "online".
+   */
+  private _recordSuccess(): void {
+    this._consecutiveMisses = 0;
+    if (this._onlineStatus === "offline") {
+      this._onlineStatus = "online";
+      this._offlineEmitter.emit("online");
+      console.log("[neuralgentics] Health check recovered → online");
+    }
+  }
+
+  /**
+   * Record a failed health check. Increments consecutive miss count.
+   * If misses reach the threshold and currently online, transitions to offline
+   * and emits "offline".
+   */
+  private _recordFailure(): void {
+    this._consecutiveMisses++;
+    if (
+      this._consecutiveMisses >= this._offlineThreshold &&
+      this._onlineStatus === "online"
+    ) {
+      this._onlineStatus = "offline";
+      this._offlineEmitter.emit("offline");
+      console.log(
+        `[neuralgentics] ${this._consecutiveMisses} consecutive failures → offline`,
+      );
+    }
+  }
+
   /**
    * Shutdown the backend process gracefully.
    * Sends a "shutdown" request first, then kills the process.
@@ -210,6 +301,9 @@ export class NeuralgenticsClient {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+
+    // Stop health check if running (T-081a)
+    this.stopHealthCheck();
 
     try {
       // Try graceful shutdown (best-effort, ignore errors)
