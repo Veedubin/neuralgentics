@@ -5,7 +5,7 @@
  * type: "extracted_fact" metadata and applies agent_used trust signal.
  */
 
-import type { ExtractedFact, CompactionDependencies } from "./types.js";
+import type { ExtractedFact, CompactionCheckpoint, CompactionDependencies } from "./types.js";
 
 // ─── Writer ─────────────────────────────────────────────────────────────────────
 
@@ -101,5 +101,114 @@ export async function queryExtractedFacts(
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[compaction] Failed to query extracted facts: ${msg}`);
     return [];
+  }
+}
+
+/**
+ * Write a compaction checkpoint to Neuralgentics memory (T-079).
+ *
+ * Serializes the checkpoint struct as JSON and stores it with:
+ * - content: JSON-serialized CompactionCheckpoint
+ * - sourceType: "compaction_checkpoint"
+ * - metadata.type: "compaction_checkpoint"
+ * - metadata.sessionId, metadata.timestamp, metadata.factsExtracted, etc.
+ *
+ * The checkpoint references extracted memory IDs by ID,
+ * so it does NOT duplicate the facts themselves.
+ *
+ * @param checkpoint - The checkpoint data to persist.
+ * @param deps - Compaction dependencies (provides the Neuralgentics client).
+ * @returns The memory ID of the stored checkpoint.
+ */
+export async function writeCheckpoint(
+  checkpoint: Omit<CompactionCheckpoint, "checkpointId">,
+  deps: CompactionDependencies,
+): Promise<string> {
+  const content = JSON.stringify(checkpoint);
+
+  const result = await deps.neuralgentics.call("memory.add", {
+    content,
+    sourceType: "compaction_checkpoint",
+    metadata: {
+      type: "compaction_checkpoint",
+      sessionId: checkpoint.sessionId,
+      timestamp: checkpoint.timestamp,
+      factsExtracted: checkpoint.factsExtracted,
+      tokensBefore: checkpoint.tokensBefore,
+      tokensAfter: checkpoint.tokensAfter,
+      savingsRatio: checkpoint.savingsRatio,
+      reverted: checkpoint.reverted,
+      reseeded: checkpoint.reseeded,
+    },
+  }) as { id: string };
+
+  return result.id;
+}
+
+/**
+ * Load the most recent compaction checkpoint from Neuralgentics memory (T-079).
+ *
+ * Queries for memories with sourceType "compaction_checkpoint", sorted by
+ * timestamp DESC, limit 1. Returns null if no checkpoint exists or
+ * if the data is corrupted (graceful degradation).
+ *
+ * @param sessionId - Optional session ID to filter by.
+ * @param deps - Compaction dependencies (provides the Neuralgentics client).
+ * @returns The most recent checkpoint, or null if none exists.
+ */
+export async function loadLastCheckpoint(
+  deps: CompactionDependencies,
+): Promise<CompactionCheckpoint | null> {
+  try {
+    const results = await deps.neuralgentics.call("memory.queryBySourceType", {
+      sourceType: "compaction_checkpoint",
+      limit: 1,
+      sortBy: "createdAt",
+      sortOrder: "DESC",
+    }) as Array<Record<string, unknown>>;
+
+    if (!Array.isArray(results) || results.length === 0) {
+      return null;
+    }
+
+    const entry = results[0];
+    const content = typeof entry.content === "string"
+      ? entry.content
+      : JSON.stringify(entry.content ?? entry);
+
+    try {
+      const parsed = JSON.parse(content) as Record<string, unknown>;
+
+      // Validate required fields for graceful degradation
+      if (
+        typeof parsed.sessionId !== "string" ||
+        typeof parsed.timestamp !== "string" ||
+        typeof parsed.factsExtracted !== "number"
+      ) {
+        console.warn("[compaction] Checkpoint has missing or invalid required fields — treating as no checkpoint");
+        return null;
+      }
+
+      return {
+        checkpointId: (entry.id as string) ?? "",
+        sessionId: parsed.sessionId as string,
+        timestamp: parsed.timestamp as string,
+        factsExtracted: parsed.factsExtracted as number,
+        tokensBefore: (parsed.tokensBefore as number) ?? 0,
+        tokensAfter: (parsed.tokensAfter as number) ?? 0,
+        savingsRatio: (parsed.savingsRatio as number) ?? 0,
+        reverted: (parsed.reverted as boolean) ?? false,
+        reseeded: (parsed.reseeded as boolean) ?? false,
+        confidenceScores: (parsed.confidenceScores as Record<string, number>) ?? {},
+        extractedMemoryIds: (parsed.extractedMemoryIds as string[]) ?? [],
+      };
+    } catch (parseErr: unknown) {
+      console.warn("[compaction] Failed to parse checkpoint JSON — treating as no checkpoint:", parseErr);
+      return null;
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[compaction] Failed to load checkpoint: ${msg}`);
+    return null;
   }
 }

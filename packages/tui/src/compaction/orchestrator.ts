@@ -15,7 +15,7 @@
 
 import { filterMessages, estimateMessageTokens } from "./filter.js";
 import { extractFacts } from "./extractor.js";
-import { writeFactsToMemory, queryExtractedFacts } from "./writer.js";
+import { writeFactsToMemory, queryExtractedFacts, writeCheckpoint } from "./writer.js";
 import { TokenMonitor } from "./monitor.js";
 import {
   DEFAULT_COMPACTION_CONFIG,
@@ -371,7 +371,38 @@ export class CompactionOrchestrator {
           reseeded,
           messagesFiltered: filterResult.filteredOut,
           durationMs: Date.now() - startTime,
+          checkpointId: null,
         };
+
+        // ─── Step 7: Persist checkpoint (T-079) ──────────────────────────────
+        const confidenceScores: Record<string, number> = {};
+        for (let i = 0; i < extractionResult.facts.length; i++) {
+          if (i < memoryIds.length) {
+            confidenceScores[memoryIds[i]] = extractionResult.facts[i].confidence;
+          }
+        }
+
+        try {
+          const checkpointId = await writeCheckpoint({
+            sessionId: this.deps.session.sessionId ?? "",
+            timestamp: new Date().toISOString(),
+            factsExtracted: result.factsExtracted,
+            tokensBefore: result.tokensBefore,
+            tokensAfter: result.tokensAfter,
+            savingsRatio: result.savingsRatio,
+            reverted: result.reverted,
+            reseeded: result.reseeded,
+            confidenceScores,
+            extractedMemoryIds: memoryIds,
+          }, this.deps);
+
+          result.checkpointId = checkpointId;
+          console.log(`[compaction] Checkpoint persisted: ${checkpointId}`);
+        } catch (chkErr: unknown) {
+          // Checkpoint failure is non-critical — log and continue with null
+          const msg = chkErr instanceof Error ? chkErr.message : String(chkErr);
+          console.warn(`[compaction] Failed to persist checkpoint: ${msg}`);
+        }
 
         // ─── Update state ──────────────────────────────────────────────────
         this.compactionCount++;

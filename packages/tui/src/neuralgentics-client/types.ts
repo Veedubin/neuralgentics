@@ -63,6 +63,17 @@ export interface MemoryDeleteResult {
   // Empty object on success
 }
 
+/** memory.queryBySourceType params (T-079 checkpoint persistence) */
+export interface MemoryQueryBySourceTypeParams {
+  sourceType: string;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: string;
+}
+
+/** memory.queryBySourceType response (array of memory entries) */
+export type MemoryQueryBySourceTypeResult = Record<string, unknown>[];
+
 /** memory.adjustTrust params */
 export interface MemoryAdjustTrustParams {
   memoryId: string;
@@ -92,6 +103,7 @@ export interface MethodRegistry {
   "memory.get": { params: MemoryGetParams; result: MemoryGetResult };
   "memory.delete": { params: MemoryDeleteParams; result: MemoryDeleteResult };
   "memory.adjustTrust": { params: MemoryAdjustTrustParams; result: MemoryAdjustTrustResult };
+  "memory.queryBySourceType": { params: MemoryQueryBySourceTypeParams; result: MemoryQueryBySourceTypeResult };
 
   // Memory Status
   "memory.status": { params: Record<string, never>; result: Record<string, unknown> };
