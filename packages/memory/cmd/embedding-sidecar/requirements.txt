@@ -1,0 +1,13 @@
+# Embedding sidecar Python dependencies
+# Pinned to versions known to work with Python 3.11 on slim-bookworm.
+
+# gRPC stack — generated stubs in proto/ depend on grpcio + grpcio-tools.
+grpcio>=1.66,<2.0
+grpcio-health-checking>=1.66,<2.0
+protobuf>=5.27,<6.0
+
+# Embedding model server.
+sentence-transformers>=3.0,<4.0
+torch>=2.2,<3.0
+
+# Standard library is included with the python:3.11-slim-bookworm base image.
