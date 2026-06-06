@@ -25,7 +25,7 @@ import {
 } from "@opentui/core";
 
 import { parseKanbanBoard, formatKanbanForPanel, type KanbanBoard } from "./kanban/index.js";
-import { handleSlashCommand, handleMemoryCommand, handleChainCommand, type CommandDependencies } from "./commands.js";
+import { handleSlashCommand, handleMemoryCommand, handleChainCommand, handleCachedOpportunitiesCommand, type CommandDependencies } from "./commands.js";
 import { initSidecar, checkDatabase, registerSidecarShutdown } from "./sidecar.js";
 import { OpenCodeClient, type OpenCodeStatus } from "./opencode-client/index.js";
 import { NeuralgenticsClient } from "./neuralgentics-client/client.js";
@@ -345,6 +345,22 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
           } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
             state.chatMessages.push(`/${result.command}: ${msg}`);
+            chatText.content = state.chatMessages.join("\n");
+            return;
+          }
+        }
+
+        // If /opportunities cached, fetch from memory (T-085)
+        if (result.opportunitiesCached && neuralgenticsClient) {
+          try {
+            const cacheClient = neuralgenticsClient as unknown as { call: (method: string, params: Record<string, unknown>) => Promise<unknown> };
+            const cachedResult = await handleCachedOpportunitiesCommand(cacheClient);
+            state.chatMessages.push(`/${cachedResult.command}: ${cachedResult.message}`);
+            chatText.content = state.chatMessages.join("\n");
+            return;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            state.chatMessages.push(`/opportunities: Cache lookup failed: ${msg}`);
             chatText.content = state.chatMessages.join("\n");
             return;
           }

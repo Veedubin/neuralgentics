@@ -3,6 +3,9 @@
  *
  * Runs all 8 pattern detectors, ranks candidates, and provides
  * trigger condition checking. NO auto-action — user opt-in only.
+ *
+ * T-085: Extended with saveCache/restoreCache/getCachedCandidates
+ * for offline opportunity cache persistence.
  */
 
 import type { TokenCounter } from "../observability/token-counter.js";
@@ -12,6 +15,7 @@ import {
 } from "./patterns.js";
 import type {
   Candidate,
+  CandidateBase,
   RankedCandidate,
   ToolCallLog,
   CardAttemptHistory,
@@ -19,9 +23,25 @@ import type {
   TriggerConditions,
   SilencedPattern,
   ConsideredCandidate,
+  CachedCandidate,
+  CachedCandidatesResult,
   OpportunityDetectorOptions,
 } from "./types.js";
 import { DEFAULT_TRIGGER_THRESHOLDS } from "./types.js";
+
+// ─── Offline Flag (T-085, stub for T-081) ──────────────────────────────────────
+
+/**
+ * Whether the system is in offline mode.
+ * When true, /opportunities auto-routes to cached results.
+ * T-081 will wire this to the actual offline detection.
+ */
+export let isOffline = false;
+
+/** Set offline mode (for T-081 to wire). */
+export function setOffline(value: boolean): void {
+  isOffline = value;
+}
 
 // ─── OpportunityDetector ────────────────────────────────────────────────────────
 
@@ -278,4 +298,164 @@ export class OpportunityDetector {
   refresh(): void {
     this._cachedCandidates = null;
   }
+}
+
+// ─── Opportunity Cache Persistence (T-085) ──────────────────────────────────────
+
+/**
+ * NeuralgenticsClient-like interface for cache persistence.
+ * Only requires the `call` method for memory operations.
+ */
+interface CacheClient {
+  call(method: string, params: Record<string, unknown>): Promise<unknown>;
+}
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Save current opportunity candidates to the opportunity_cache in memory.
+ *
+ * @param candidates - The candidates to cache (from scanAndRank or runAllPatterns).
+ * @param client - NeuralgenticsClient for memory persistence.
+ * @returns Array of memory IDs for the stored cache entries.
+ */
+export async function saveCache(
+  candidates: Candidate[],
+  client: CacheClient,
+): Promise<string[]> {
+  if (candidates.length === 0) return [];
+
+  const ids: string[] = [];
+
+  for (const candidate of candidates) {
+    try {
+      const result = await client.call("memory.add", {
+        content: JSON.stringify(candidate),
+        sourceType: "opportunity_cache",
+        metadata: {
+          type: "opportunity_cache",
+          patternType: candidate.patternType,
+          sessionId: candidate.sessionId,
+          timestamp: candidate.timestamp,
+          priority: candidate.priority,
+          estimatedTokenSavings: candidate.estimatedTokenSavings,
+          frequency: candidate.frequency,
+        },
+      }) as { id: string };
+
+      ids.push(result.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[opportunity-detector] Failed to save cache entry: ${msg}`);
+    }
+  }
+
+  console.log(`[opportunity-detector] Saved ${ids.length} opportunity cache entries`);
+  return ids;
+}
+
+/**
+ * Restore opportunity candidates from the opportunity_cache in memory.
+ *
+ * @param client - NeuralgenticsClient for memory persistence.
+ * @returns Array of cached candidates (without stale flag).
+ */
+export async function restoreCache(
+  client: CacheClient,
+): Promise<Candidate[]> {
+  try {
+    const results = await client.call("memory.queryBySourceType", {
+      sourceType: "opportunity_cache",
+      limit: 50,
+      sortBy: "createdAt",
+      sortOrder: "DESC",
+    }) as Array<Record<string, unknown>>;
+
+    if (!Array.isArray(results) || results.length === 0) {
+      return [];
+    }
+
+    const candidates: Candidate[] = [];
+
+    for (const entry of results) {
+      const content = typeof entry.content === "string"
+        ? entry.content
+        : JSON.stringify(entry.content ?? entry);
+
+      try {
+        const parsed = JSON.parse(content) as Candidate;
+
+        // Validate required fields
+        if (
+          typeof parsed.patternType === "string" &&
+          typeof parsed.description === "string" &&
+          typeof parsed.timestamp === "string" &&
+          typeof parsed.sessionId === "string"
+        ) {
+          candidates.push(parsed);
+        }
+      } catch {
+        // Skip corrupted entries
+        console.warn(`[opportunity-detector] Skipping corrupted cache entry: ${(entry.id as string ?? "unknown").slice(0, 8)}`);
+      }
+    }
+
+    console.log(`[opportunity-detector] Restored ${candidates.length} opportunity cache entries`);
+    return candidates;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[opportunity-detector] Failed to restore cache: ${msg}`);
+    return [];
+  }
+}
+
+/**
+ * Get cached candidates with staleness information.
+ *
+ * @param client - NeuralgenticsClient for memory persistence.
+ * @param maxAgeDays - Maximum age in days before filtering out (default 7). 0 = no filter.
+ * @returns Cached candidates result with staleness metadata.
+ */
+export async function getCachedCandidates(
+  client: CacheClient,
+  maxAgeDays: number = 7,
+): Promise<CachedCandidatesResult> {
+  const candidates = await restoreCache(client);
+
+  if (candidates.length === 0) {
+    return {
+      candidates: [],
+      totalEntries: 0,
+      cacheEmpty: true,
+    };
+  }
+
+  const maxAgeMs = maxAgeDays > 0 ? maxAgeDays * 24 * 60 * 60 * 1000 : Infinity;
+  const now = Date.now();
+
+  const cached: CachedCandidate[] = candidates
+    .map((c) => {
+      const cachedAt = c.timestamp; // Use candidate timestamp as cache time
+      const timestampMs = new Date(c.timestamp).getTime();
+      const ageMs = now - timestampMs;
+      const stale = ageMs > SEVEN_DAYS_MS;
+
+      // Filter by max age if specified
+      if (maxAgeDays > 0 && ageMs > maxAgeMs) {
+        return null; // Too old, filter out
+      }
+
+      return {
+        ...c,
+        cachedAt,
+        stale,
+      } as CachedCandidate;
+    })
+    .filter((c): c is CachedCandidate => c !== null);
+
+  return {
+    candidates: cached,
+    totalEntries: candidates.length,
+    cacheEmpty: false,
+  };
 }
