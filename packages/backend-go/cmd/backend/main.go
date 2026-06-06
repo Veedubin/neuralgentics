@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -31,6 +32,48 @@ import (
 // version is set at build time via -ldflags="-X main.version=...".
 // Defaults to "dev" for local builds.
 var version = "dev"
+
+// ─── Active Peer Context ────────────────────────────────────────────────────
+
+// activePeerContext tracks the currently active peer for multi-peer operations.
+// It is a thread-safe, in-process state manager — each backend process has one
+// instance. When peer.switchContext is called, the active peer ID is updated and
+// subsequent calls like peer.getSharedMemories use the active peer.
+type activePeerContext struct {
+	mu         sync.RWMutex
+	activePeer string
+}
+
+const defaultPeerID = "default"
+
+// newActivePeerContext creates an activePeerContext with the default peer active.
+func newActivePeerContext() *activePeerContext {
+	return &activePeerContext{
+		activePeer: defaultPeerID,
+	}
+}
+
+// SwitchPeer changes the active peer to the given peer ID.
+// An empty peerID resets to the default peer.
+// The caller is responsible for validating that the peer exists (done in the handler).
+func (a *activePeerContext) SwitchPeer(peerID string) (previousPeerID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	previousPeerID = a.activePeer
+	if peerID == "" {
+		a.activePeer = defaultPeerID
+	} else {
+		a.activePeer = peerID
+	}
+	return previousPeerID
+}
+
+// GetActivePeerID returns the currently active peer ID.
+func (a *activePeerContext) GetActivePeerID() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.activePeer
+}
 
 // ─── JSON-RPC Types ──────────────────────────────────────────────────────────
 
@@ -155,6 +198,10 @@ type peerGetSharedMemoriesParams struct {
 
 type peerListPeersParams struct {
 	Limit *int `json:"limit,omitempty"`
+}
+
+type peerSwitchContextParams struct {
+	PeerID string `json:"peerId"`
 }
 
 // ─── Status Request/Response Structs ────────────────────────────────────────────
@@ -474,6 +521,9 @@ func main() {
 
 	log.Println("neuralgentics-backend: initialized successfully")
 
+	// Create the active peer context for multi-peer operations.
+	peerCtx := newActivePeerContext()
+
 	// ── Ready signal ─────────────────────────────────────────────────────
 	// Emit a JSON-RPC notification (no id) on stdout so the client knows
 	// the backend is ready to accept requests. Without this, the client's
@@ -506,7 +556,7 @@ func main() {
 
 	// ── JSON-RPC read loop ───────────────────────────────────────────────
 	if err := handleStream(os.Stdin, os.Stdout, func(req jsonrpcRequest) jsonrpcResponse {
-		return handleRequest(ctx, req, memSys, orch, brk)
+		return handleRequest(ctx, req, memSys, orch, brk, peerCtx)
 	}); err != nil {
 		log.Printf("stdin scanner error: %v", err)
 	}
@@ -557,6 +607,7 @@ func handleRequest(
 	memSys *memory.MemorySystem,
 	orch *orchestrator.Orchestrator,
 	brk *broker.Broker,
+	peerCtx *activePeerContext,
 ) jsonrpcResponse {
 	switch req.Method {
 	// Lifecycle
@@ -703,7 +754,9 @@ func handleRequest(
 	case "peer.getPeerMemories":
 		return handlePeerGetPeerMemories(ctx, req, memSys)
 	case "peer.getSharedMemories":
-		return handlePeerGetSharedMemories(ctx, req, memSys)
+		return handlePeerGetSharedMemories(ctx, req, memSys, peerCtx)
+	case "peer.switchContext":
+		return handlePeerSwitchContext(ctx, req, memSys, peerCtx)
 
 	// Agent Tools (Lazy Tool Exposure)
 	case "agent.recordToolRequest":
@@ -1136,7 +1189,7 @@ func handlePeerGetPeerMemories(ctx context.Context, req jsonrpcRequest, memSys *
 	return successResponse(req.ID, results)
 }
 
-func handlePeerGetSharedMemories(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem) jsonrpcResponse {
+func handlePeerGetSharedMemories(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem, peerCtx *activePeerContext) jsonrpcResponse {
 	var params peerGetSharedMemoriesParams
 	if req.Params != nil {
 		if err := json.Unmarshal(req.Params, &params); err != nil {
@@ -1149,10 +1202,8 @@ func handlePeerGetSharedMemories(ctx context.Context, req jsonrpcRequest, memSys
 		limit = *params.Limit
 	}
 
-	// TODO: peerID should come from the current session context once
-	// switchPeerContext is implemented. For now, use an empty string
-	// which will return no results until context switching is wired.
-	peerID := ""
+	// Use the active peer from the peer context instead of hardcoded "".
+	peerID := peerCtx.GetActivePeerID()
 
 	results, err := memSys.GetSharedMemories(ctx, peerID, limit)
 	if err != nil {
@@ -1160,6 +1211,45 @@ func handlePeerGetSharedMemories(ctx context.Context, req jsonrpcRequest, memSys
 	}
 
 	return successResponse(req.ID, results)
+}
+
+func handlePeerSwitchContext(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem, peerCtx *activePeerContext) jsonrpcResponse {
+	var params peerSwitchContextParams
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	if params.PeerID == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: peerId is required")
+	}
+
+	// Validate that the peer exists by checking the peer list.
+	// ListPeers with a generous limit lets us find any peer.
+	peers, err := memSys.ListPeers(ctx, 1000)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	found := false
+	for _, p := range peers {
+		if p.ID == params.PeerID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return errorResponse(req.ID, -32603, fmt.Sprintf("Peer %q not found", params.PeerID))
+	}
+
+	previousPeerID := peerCtx.SwitchPeer(params.PeerID)
+	switchedAt := time.Now().UTC().Format(time.RFC3339)
+
+	return successResponse(req.ID, map[string]any{
+		"success":        true,
+		"previousPeerId": previousPeerID,
+		"newPeerId":      params.PeerID,
+		"switchedAt":     switchedAt,
+	})
 }
 
 // ─── Status Handlers ──────────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { EventEmitter } from "node:events";
 import { resolveBackendPath, resolveDbUrl } from "./resolver.js";
-import type { MethodName, MethodParams, MethodResult } from "./types.js";
+import type { MethodName, MethodParams, MethodResult, SwitchContextResult } from "./types.js";
 
 /** Online/offline status for the health-check layer (T-081a). */
 export type ClientStatus = "online" | "offline";
@@ -221,6 +221,19 @@ export class NeuralgenticsClient {
         }
       });
     });
+  }
+
+  // ─── Peer Context (T-EXPOSE-001a) ────────────────────────────────────────
+
+  /**
+   * Switch the active peer context. Subsequent calls to
+   * `peer.getSharedMemories` will use this peer until switched again.
+   *
+   * @param peerId - The peer ID to activate. Must be a registered peer.
+   * @returns The switch result with previous/new peer IDs and timestamp.
+   */
+  async switchPeerContext(peerId: string): Promise<SwitchContextResult> {
+    return (await this.call("peer.switchContext", { peerId })) as SwitchContextResult;
   }
 
   // ─── Offline Detection (T-081a) ──────────────────────────────────────────

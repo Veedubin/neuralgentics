@@ -87,6 +87,14 @@ export interface MemoryAdjustTrustResult {
   adjustmentAmount: number;
 }
 
+/** peer.switchContext response */
+export interface SwitchContextResult {
+  success: boolean;
+  previousPeerId: string;
+  newPeerId: string;
+  switchedAt: string; // RFC3339 timestamp
+}
+
 // ─── Method Registry ──────────────────────────────────────────────────────────
 // Maps each JSON-RPC method name to its param and result types.
 // Core 6 are fully typed; the rest use generic types for now.
@@ -179,6 +187,7 @@ export interface MethodRegistry {
   "peer.shareMemory": { params: Record<string, unknown>; result: { id: string } };
   "peer.getPeerMemories": { params: Record<string, unknown>; result: Record<string, unknown>[] };
   "peer.getSharedMemories": { params: Record<string, unknown>; result: Record<string, unknown>[] };
+  "peer.switchContext": { params: { peerId: string }; result: SwitchContextResult };
 
   // Agent Tools (Lazy Tool Exposure)
   "agent.recordToolRequest": { params: Record<string, unknown>; result: { status: string } };
