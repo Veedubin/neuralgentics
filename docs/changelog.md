@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-06-06
+
+Patch release: closes the 4 deferred items from v0.1.2 plus 6 follow-up fixes from Session 27.
+
+### Added
+
+- **MIT LICENSE** at repo root (T-072) — `LICENSE` file with Copyright 2026 neuralgentics contributors.
+- **`--version`/`-v` CLI flag** on the Go backend (T-VERS) — `neuralgentics-backend --version` prints version and exits. No DB needed.
+- **JSON-RPC `initialize` returns real version** (T-VERS) — replaces hardcoded "0.1.0".
+- **`docs/changelog.md` in mkdocs nav** (T-DOCS-CHANGELOG) — `/changelog/` route.
+- **Release assets now ship install.sh + Dockerfiles** (T-073) — v0.1.3 release has 11 assets (was 6).
+- **Checkpoint persistence** (T-079) — compaction cycles now write `compaction_checkpoint` memories, enabling future session resume (P2).
+- **God-file split: `memories_1024.go`** (T-COV-001) — 1024-dim dual-model operations extracted from the 1773-line `store/memories.go` god-file. First step in the 11-card coverage push.
+
+### Fixed
+
+- **release.yml `body_path` bug** (T-RELEASE-CHANGELOG-PATH) — pointed at `CHANGELOG.md` which was moved to `docs/changelog.md` in T-DOCS-CHANGELOG. v0.1.3 release notes now actually populate.
+- **19 trailing-slash relative links in docs/index.md** (T-LINKS-INDEX) — all 18 link patterns now use `.md` extension.
+- **2 broken `v0.1.0-release-pipeline.md` links** in docs/design/docs-site-architecture.md — references removed (the parent doc was never created).
+- **Quickstart troubleshooting link** (T-077) — `../troubleshooting/` → `../troubleshooting.md`.
+
+### Quality gates (v0.1.3)
+
+- `go vet` — 4/4 Go modules clean
+- `go test -short` — 4/4 Go modules PASS
+- `tsc --noEmit` — TUI + overlay both clean
+- `bun test` — **595 pass / 0 fail** (TUI, was 578 + 17 from T-079) + **72 pass / 0 fail** (SDK) = 667 total
+- `mkdocs build --strict` — 0 warnings
+
 ## [0.1.2] - 2026-06-05
 
 Patch release: closes the T-067b wrap-up gap from v0.1.1. The T-067b

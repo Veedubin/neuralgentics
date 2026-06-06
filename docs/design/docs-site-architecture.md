@@ -3,7 +3,7 @@
 **Author:** boomerang-architect (deepseek-v4-pro:cloud)
 **Date:** 2026-06-04
 **Status:** Approved (Session 21)
-**Parent:** [v0.1.0-release-pipeline.md](v0.1.0-release-pipeline/)
+**Parent:** _(no parent doc; this design stands alone — release pipeline was delivered via `.github/workflows/release.yml` and `scripts/install.sh`)_
 
 ---
 
@@ -452,6 +452,6 @@ All diagrams use the same visual language for consistency. The writer agent
 - [ghp-import](https://github.com/davisp/ghp-import)
 - [mkdocs-minify-plugin](https://github.com/byrnereese/mkdocs-minify-plugin)
 - [Unicode box-drawing reference](https://en.wikipedia.org/wiki/Box-drawing_character)
-- Internal: [v0.1.0-release-pipeline.md](v0.1.0-release-pipeline/)
+- Internal: _(no parent doc; release pipeline is `.github/workflows/release.yml` + `scripts/install.sh`)_
 - Internal: [BROKER.md (archived)](../archive/v0-pre-docs/BROKER.md)
 - Internal: [ARCHITECTURE.md (archived)](../archive/v0-pre-docs/ARCHITECTURE.md)

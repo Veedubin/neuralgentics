@@ -38,7 +38,7 @@
 
 ```bash
 # One-line install (Linux, macOS, WSL2)
-curl -LsSf https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash
 ```
 
 The install script handles Go, Node, podman, and SSL certs. It detects WSL2, prompts for the install prefix, and supports `--dry-run` and `--yes` flags. See the [installation guide](https://veedubin.github.io/neuralgentics/getting-started/installation/) for the full option list.
@@ -94,7 +94,7 @@ Neuralgentics is a coding-agent runtime that:
 4. **Speaks MCP to the world** — 42 JSON-RPC methods, stdio transport, broker-gated
 5. **Installs in one command** (`./scripts/install.sh`) or one `podman-compose up`
 
-Agent prompts are ~200 tokens each. State lives in memory, not in the prompt. Open-source under the MIT License.
+Agent prompts are ~200 tokens each. State lives in memory, not in the prompt. Open-source under the [MIT License](https://github.com/Veedubin/neuralgentics/blob/main/LICENSE).
 
 HACK THE PLANET. See the [docs](https://veedubin.github.io/neuralgentics/) for everything else.
 
