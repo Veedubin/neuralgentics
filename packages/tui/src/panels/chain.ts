@@ -8,6 +8,7 @@
 import { Box, Text, ScrollBox } from "@opentui/core";
 import type { ThemeColors } from "../themes/types.js";
 import type { TextVNode, ScrollBoxVNode, BoxVNode } from "../vnode-types.js";
+import type { NeuralgenticsClient } from "../neuralgentics-client/client.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -156,5 +157,60 @@ export class ChainPanel {
     }
 
     return lines.join("\n");
+  }
+}
+
+// ─── Load Chain from Memory (T-080) ────────────────────────────────────────────
+
+/**
+ * Fetch a thought chain from memory and return its state for replay on the ChainPanel.
+ *
+ * Used by SessionManager.resume() to restore the active thought chain after
+ * a TUI restart. If the chain is not found, returns an empty default state.
+ *
+ * @param client - NeuralgenticsClient for memory RPC calls.
+ * @param chainId - The thought chain ID to load.
+ * @returns A ChainState with the loaded thoughts, or empty state if not found.
+ */
+export async function loadFromChain(
+  client: NeuralgenticsClient,
+  chainId: string,
+): Promise<ChainState> {
+  const emptyState: ChainState = {
+    thoughts: [],
+    activeBranch: null,
+    collapsed: new Set(),
+  };
+
+  if (!chainId) {
+    return emptyState;
+  }
+
+  try {
+    const result = await client.call("memory.getThoughtChain", { chainId });
+    const chain = result as Record<string, unknown>;
+    const thoughts = (chain.thoughts ?? []) as Array<Record<string, unknown>>;
+
+    if (!Array.isArray(thoughts) || thoughts.length === 0) {
+      return emptyState;
+    }
+
+    const loadedThoughts: ThoughtEntry[] = thoughts.map((t) => ({
+      thoughtNumber: typeof t.thoughtNumber === "number" ? t.thoughtNumber : 0,
+      totalThoughts: typeof t.totalThoughts === "number" ? t.totalThoughts : 1,
+      content: typeof t.thought === "string" ? t.thought : String(t.thought ?? ""),
+      isRevision: t.isRevision === true,
+      branchId: typeof t.branchId === "string" ? t.branchId : undefined,
+    }));
+
+    return {
+      thoughts: loadedThoughts,
+      activeBranch: loadedThoughts[0]?.branchId ?? null,
+      collapsed: new Set(),
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[chain] Failed to load chain ${chainId}: ${msg}`);
+    return emptyState;
   }
 }

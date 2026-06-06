@@ -229,11 +229,12 @@ describe("Slash Command Routing", () => {
     }
   });
 
-  test("/resume without args shows usage", () => {
+  test("/resume without args signals session resume (T-080)", () => {
     const result = handleSlashCommand("/resume");
     expect(result.command).toBe("resume");
-    expect(result.message).toContain("specify a card ID");
+    expect(result.message).toContain("Checking session checkpoint status");
     expect(result.refreshKanban).toBe(false);
+    expect(result.resumeStatus).toBeNull();
   });
 
   test("/resume without circuit breaker shows unavailable", () => {

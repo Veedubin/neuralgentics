@@ -22,6 +22,7 @@ import type {
   SeedPrompt,
   RevertResult,
   PromptOptions,
+  ResumeResult,
 } from "./types.js";
 import type { CompactionCheckpoint } from "../compaction/types.js";
 import { restoreModelPref } from "../agents/model-registry.js";
@@ -29,6 +30,30 @@ import type { ModelPrefClient } from "../agents/model-registry.js";
 import type { TokenCounter } from "../observability/token-counter.js";
 import { restoreCache, saveCache } from "../opportunity-detector/detector.js";
 import type { Candidate } from "../opportunity-detector/types.js";
+
+// ─── Age Formatting Helper (T-080) ──────────────────────────────────────────────
+
+/**
+ * Format an ISO timestamp into a human-readable relative age string.
+ * E.g. "2.3 hours ago", "5 minutes ago", "3 days ago".
+ */
+function formatAge(timestamp: string): string {
+  const now = Date.now();
+  const then = new Date(timestamp).getTime();
+  const diffMs = now - then;
+
+  if (diffMs < 0) return "just now";
+
+  const seconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${days} day${days > 1 ? "s" : ""} ago`;
+  if (hours > 0) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+  if (minutes > 0) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
+  return "just now";
+}
 
 // ─── Seed Prompt Template ──────────────────────────────────────────────────────
 
@@ -94,6 +119,9 @@ export class SessionManager {
 
   /** Current opportunity candidates (populated by OpportunityDetector.scanAndRank, saved on shutdown T-085). */
   private _currentCandidates: Candidate[] = [];
+
+  /** Guard flag: true after a successful resume(), prevents double-resume (T-080). */
+  private _isResumed = false;
 
   // ─── Event listeners ────────────────────────────────────────────────────
 
@@ -550,6 +578,60 @@ export class SessionManager {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[session] Failed to restore opportunity cache: ${msg}`);
     }
+  }
+
+  // ─── Session Resume (T-080) ──────────────────────────────────────────────────
+
+  /**
+   * Resume session state from the most recent checkpoint.
+   *
+   * Orchestrates checkpoint load → sub-state restore → kanban re-parse →
+   * thought chain replay. Yields to T-081 if the OpenCode client is offline.
+   * Double-resume is a no-op (_isResumed guard).
+   */
+  async resume(): Promise<ResumeResult> {
+    // 1. Check if OpenCode client is offline → yield to T-081
+    if (this.opencode.status === "offline" || this.opencode.status === "degraded") {
+      console.log("[session] Resume skipped — OpenCode client offline");
+      return { resumed: false, reason: "offline" };
+    }
+
+    // 2. Double-resume guard
+    if (this._isResumed) {
+      console.log("[session] Resume skipped — already resumed");
+      return { resumed: false, reason: "already-resumed" };
+    }
+
+    // 3. Load last checkpoint
+    const checkpoint = await this.loadLastCheckpoint();
+    if (!checkpoint) {
+      console.log("[session] No checkpoint found — starting fresh session");
+      return { resumed: false, reason: "no-checkpoint" };
+    }
+
+    // 4. Restore from checkpoint (T-079 + T-082 + T-084 + T-085)
+    try {
+      await this.restoreFromCheckpoint(checkpoint);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[session] Resume failed during restoreFromCheckpoint: ${msg}`);
+      return { resumed: false, reason: "error" };
+    }
+
+    // 5. Mark as resumed
+    this._isResumed = true;
+
+    const age = formatAge(checkpoint.timestamp);
+    console.log(
+      `[session] Resumed session ${checkpoint.sessionId} at ${age} ` +
+      `(checkpoint=${checkpoint.checkpointId}, facts=${checkpoint.factsExtracted})`,
+    );
+
+    return {
+      resumed: true,
+      checkpointId: checkpoint.checkpointId,
+      age,
+    };
   }
 
   // ─── Private Helpers ───────────────────────────────────────────────────

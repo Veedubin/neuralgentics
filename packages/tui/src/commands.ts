@@ -37,6 +37,7 @@ import type { KanbanBoard, KanbanStatus } from "./kanban/types.js";
 import { KANBAN_STATUSES } from "./kanban/types.js";
 import type { NeuralgenticsClient } from "./neuralgentics-client/client.js";
 import type { ModelPrefClient } from "./agents/model-registry.js";
+import type { ResumeResult, ResumeStatus } from "./session/types.js";
 import {
   getActiveModel,
   setActiveModel,
@@ -69,6 +70,8 @@ export interface CommandResult {
   modelChanged?: boolean;
   /** Whether this command requires async handling for /opportunities cached (T-085). */
   opportunitiesCached?: boolean;
+  /** Whether this command should report session resume status (T-080). */
+  resumeStatus?: ResumeStatus | null;
 }
 
 /** All supported slash commands. */
@@ -91,7 +94,7 @@ const COMMANDS = [
 export type CommandName = (typeof COMMANDS)[number];
 
 /** Available commands string for `/help` display. */
-const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume <card-id>, /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light], /model [name|reset]`;
+const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume [card-id], /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light], /model [name|reset]`;
 
 // ─── Dependency injection container ──────────────────────────────────────────────
 
@@ -319,24 +322,30 @@ export function isSlashCommand(input: string): boolean {
 // ─── /resume Command ────────────────────────────────────────────────────────────
 
 /**
- * Handle the `/resume <card-id>` command.
+ * Handle the `/resume` command.
  *
- * Resets the circuit breaker failure count for the specified card,
- * allowing it to be dispatched again.
+ * Two modes (T-080 extension):
+ * - `/resume` (no args) → returns a signal to the TUI to call sessionManager.resume()
+ *   and display the checkpoint status. The CommandResult.resumeStatus is set to
+ *   a placeholder; the TUI will replace it with the actual ResumeResult.
+ * - `/resume <card-id>` → resets the circuit breaker failure count for the card.
  *
- * @param args - Command arguments (first arg is the card ID, e.g. "T-036").
+ * @param args - Command arguments.
  * @param circuitBreaker - CircuitBreaker instance (optional — graceful degradation).
  */
 function handleResumeCommand(args: string[], circuitBreaker?: CircuitBreaker): CommandResult {
-  const cardId = args[0];
-
-  if (!cardId) {
+  // No args: signal TUI to call sessionManager.resume() and show status
+  if (args.length === 0) {
     return {
       command: "resume",
-      message: "/resume <card-id> — specify a card ID to reset its failure count.\nExample: /resume T-036",
+      message: "Checking session checkpoint status...",
       refreshKanban: false,
+      resumeStatus: null, // TUI will replace with actual ResumeResult
     };
   }
+
+  // With card ID: reset circuit breaker (original behavior)
+  const cardId = args[0];
 
   if (!circuitBreaker) {
     return {
@@ -361,6 +370,55 @@ function handleResumeCommand(args: string[], circuitBreaker?: CircuitBreaker): C
     message: `✗ Card ${cardId} not found in circuit breaker. Is the card ID correct?`,
     refreshKanban: false,
   };
+}
+
+/**
+ * Async handler for `/resume` (no args) — calls sessionManager.resume() and
+ * returns a CommandResult with checkpoint status.
+ *
+ * @param sessionManager - The SessionManager instance.
+ * @returns A CommandResult with resume status message.
+ */
+export async function handleResumeSessionCommand(
+  sessionManager: import("./session/session-manager.js").SessionManager,
+): Promise<CommandResult> {
+  try {
+    const result = await sessionManager.resume();
+
+    if (!result.resumed) {
+      const reasons: Record<string, string> = {
+        "no-checkpoint": "No checkpoint found — starting fresh session. Use /compact to create one.",
+        offline: "OpenCode client offline — cannot resume. Run /compact after reconnecting.",
+        "already-resumed": "Session already resumed from checkpoint.",
+        error: "Resume failed due to an error. Check logs for details.",
+      };
+      return {
+        command: "resume",
+        message: `/resume: ${reasons[result.reason ?? "error"] ?? "Unknown reason."}`,
+        refreshKanban: false,
+      };
+    }
+
+    return {
+      command: "resume",
+      message: `✓ Resuming session from checkpoint ${result.checkpointId} (${result.age})`,
+      refreshKanban: true,
+      resumeStatus: {
+        checkpointId: result.checkpointId ?? "",
+        age: result.age ?? "unknown",
+        tokenCount: 0,
+        modelName: "",
+        opportunityCount: 0,
+      },
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      command: "resume",
+      message: `/resume failed: ${msg}`,
+      refreshKanban: false,
+    };
+  }
 }
 
 // ─── /harness Command ────────────────────────────────────────────────────────────
