@@ -270,6 +270,16 @@ type memoryGetTier1SummaryParams struct {
 	ForceRefresh bool `json:"forceRefresh,omitempty"`
 }
 
+// ─── Extraction Request Structs ────────────────────────────────────────────────
+
+type memoryTriggerExtractionParams struct {
+	Conversation *string `json:"conversation,omitempty"` // nil means use server buffer
+}
+
+type memoryPrecompressExtractionParams struct {
+	ContextContent *string `json:"contextContent,omitempty"` // nil means capture current context
+}
+
 // ─── Knowledge Graph Request Structs ──────────────────────────────────────────
 
 type memoryExtractEntitiesParams struct {
@@ -675,6 +685,12 @@ func handleRequest(
 		return handleMemoryGetTier0Summary(ctx, req, memSys)
 	case "memory.getTier1Summary":
 		return handleMemoryGetTier1Summary(ctx, req, memSys)
+
+	// Memory — Extraction (T-EXPOSE-001c)
+	case "memory.triggerExtraction":
+		return handleMemoryTriggerExtraction(ctx, req, memSys)
+	case "memory.precompressExtraction":
+		return handleMemoryPrecompressExtraction(ctx, req, memSys)
 
 	// Memory — Knowledge Graph
 	case "memory.extractEntities":
@@ -1516,6 +1532,82 @@ func handleMemoryGetTier1Summary(ctx context.Context, req jsonrpcRequest, memSys
 	}
 
 	return successResponse(req.ID, summary)
+}
+
+// ─── Extraction Handlers (T-EXPOSE-001c) ────────────────────────────────────────
+
+func handleMemoryTriggerExtraction(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem) jsonrpcResponse {
+	var params memoryTriggerExtractionParams
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+		}
+	}
+
+	if memSys == nil {
+		return errorResponse(req.ID, -32603, "Internal error: memory system not initialized")
+	}
+
+	conversation := ""
+	if params.Conversation != nil {
+		conversation = *params.Conversation
+	}
+
+	result, err := memSys.TriggerExtraction(ctx, conversation)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	var memoryIDs []string
+	if result != nil {
+		memoryIDs = result.MemoryIDs
+	}
+	count := 0
+	if result != nil {
+		count = result.Count
+	}
+
+	return successResponse(req.ID, map[string]interface{}{
+		"extracted":   count,
+		"memoryIds":   memoryIDs,
+		"triggeredAt": time.Now().Format(time.RFC3339),
+	})
+}
+
+func handleMemoryPrecompressExtraction(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem) jsonrpcResponse {
+	var params memoryPrecompressExtractionParams
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+		}
+	}
+
+	if memSys == nil {
+		return errorResponse(req.ID, -32603, "Internal error: memory system not initialized")
+	}
+
+	contextContent := ""
+	if params.ContextContent != nil {
+		contextContent = *params.ContextContent
+	}
+
+	result, err := memSys.PrecompressExtraction(ctx, contextContent)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	captured := false
+	contextSize := 0
+	if result != nil {
+		captured = result.MemoriesExtracted > 0
+		contextSize = len(result.Context)
+	}
+
+	return successResponse(req.ID, map[string]interface{}{
+		"captured":    captured,
+		"contextSize": contextSize,
+		"capturedAt":  time.Now().Format(time.RFC3339),
+	})
 }
 
 // ─── Knowledge Graph Handlers ─────────────────────────────────────────────────

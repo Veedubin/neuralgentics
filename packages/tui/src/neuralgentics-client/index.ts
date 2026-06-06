@@ -27,5 +27,9 @@ export type {
   Tier0SummaryParams,
   Tier1SummaryParams,
   TierSummaryResult,
+  TriggerExtractionParams,
+  TriggerExtractionResult,
+  PrecompressExtractionParams,
+  PrecompressExtractionResult,
 } from "./types.js";
 export { resolveBackendPath, resolveDbUrl, DEFAULT_DB_URL } from "./resolver.js";

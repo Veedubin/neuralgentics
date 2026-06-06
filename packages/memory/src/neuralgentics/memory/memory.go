@@ -356,6 +356,20 @@ func (m *MemorySystem) GetTier1Summary(ctx context.Context, forceRefresh bool) (
 	return m.tieredLoader.GetTier1Summary(ctx, forceRefresh)
 }
 
+// ─── Extraction Methods (Phase 2 Part 2) ──────────────────────────────────────
+
+// TriggerExtraction extracts memories from a conversation string using the LLM.
+// If conversation is empty, it returns an empty result without calling the LLM.
+func (m *MemorySystem) TriggerExtraction(ctx context.Context, conversation string) (*tiered.ExtractionResult, error) {
+	return m.tieredLoader.TriggerExtraction(ctx, conversation)
+}
+
+// PrecompressExtraction captures context and extracts memories before compaction squeeze.
+// If contextContent is empty, it returns an empty result without calling the LLM.
+func (m *MemorySystem) PrecompressExtraction(ctx context.Context, contextContent string) (*tiered.PrecompressResult, error) {
+	return m.tieredLoader.PrecompressExtraction(ctx, contextContent)
+}
+
 // ─── Knowledge Graph Methods (Phase 3 Track A) ─────────────────────────────────
 
 // ExtractEntities extracts entities from text using the LLM and upserts them to the store.

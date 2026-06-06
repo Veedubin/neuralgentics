@@ -1,9 +1,9 @@
 /**
- * TypeScript type definitions for all 44 Neuralgentics JSON-RPC methods.
+ * TypeScript type definitions for all 46 Neuralgentics JSON-RPC methods.
  *
  * Core 6 methods (ping, initialize, memory.add, memory.query, memory.get,
  * memory.delete) have fully typed request params and response results.
- * Remaining 38 methods use generic Record<string, unknown> params/results
+ * Remaining 40 methods use generic Record<string, unknown> params/results
  * and can be typed later when needed.
  */
 
@@ -113,6 +113,30 @@ export interface TierSummaryResult {
   tier: string; // "L0" or "L1"
 }
 
+/** memory.triggerExtraction params */
+export interface TriggerExtractionParams {
+  conversation?: string;
+}
+
+/** memory.triggerExtraction response */
+export interface TriggerExtractionResult {
+  extracted: number;
+  memoryIds: string[];
+  triggeredAt: string; // RFC3339 timestamp
+}
+
+/** memory.precompressExtraction params */
+export interface PrecompressExtractionParams {
+  contextContent?: string;
+}
+
+/** memory.precompressExtraction response */
+export interface PrecompressExtractionResult {
+  captured: boolean;
+  contextSize: number;
+  capturedAt: string; // RFC3339 timestamp
+}
+
 // ─── Method Registry ──────────────────────────────────────────────────────────
 // Maps each JSON-RPC method name to its param and result types.
 // Core 6 are fully typed; the rest use generic types for now.
@@ -152,6 +176,10 @@ export interface MethodRegistry {
   // Memory Tiered Summaries
   "memory.getTier0Summary": { params: Tier0SummaryParams; result: TierSummaryResult };
   "memory.getTier1Summary": { params: Tier1SummaryParams; result: TierSummaryResult };
+
+  // Memory Extraction (T-EXPOSE-001c)
+  "memory.triggerExtraction": { params: TriggerExtractionParams; result: TriggerExtractionResult };
+  "memory.precompressExtraction": { params: PrecompressExtractionParams; result: PrecompressExtractionResult };
 
   // Memory Knowledge Graph
   "memory.extractEntities": { params: { text: string }; result: { entityIds: string[] } };
@@ -218,7 +246,7 @@ export interface MethodRegistry {
   "agent.getInitialToolSet": { params: Record<string, unknown>; result: { peerId: string; tools: unknown[] } };
 }
 
-/** All known method names (44 total). */
+/** All known method names (46 total). */
 export type MethodName = keyof MethodRegistry;
 
 /** Get the params type for a method. */

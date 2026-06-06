@@ -1091,6 +1091,73 @@ func TestHandleRequest_MemoryGetTier1Summary_WithForceRefresh(t *testing.T) {
 	}
 }
 
+// ─── TestHandleRequest_MemoryTriggerExtraction ──────────────────────────────
+
+func TestHandleRequest_MemoryTriggerExtraction_NoParams(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("te1"),
+		Method:  "memory.triggerExtraction",
+		// Params nil — handler should accept empty params
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	// With nil memSys, the handler should return a -32603 internal error
+	// (the methods call into memSys which is nil). Test only that the
+	// call routes correctly (no -32602 invalid params).
+	if resp.Error != nil && resp.Error.Code == -32602 {
+		t.Errorf("unexpected -32602 (invalid params) for nil params: %+v", resp.Error)
+	}
+}
+
+func TestHandleRequest_MemoryTriggerExtraction_WithConversation(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("te2"),
+		Method:  "memory.triggerExtraction",
+		Params:  json.RawMessage(`{"conversation":"User discussed project architecture"}`),
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	if resp.Error != nil && resp.Error.Code == -32602 {
+		t.Errorf("unexpected -32602 (invalid params): %+v", resp.Error)
+	}
+}
+
+// ─── TestHandleRequest_MemoryPrecompressExtraction ──────────────────────────
+
+func TestHandleRequest_MemoryPrecompressExtraction_NoParams(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("pe1"),
+		Method:  "memory.precompressExtraction",
+		// Params nil — handler should accept empty params
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	if resp.Error != nil && resp.Error.Code == -32602 {
+		t.Errorf("unexpected -32602 (invalid params) for nil params: %+v", resp.Error)
+	}
+}
+
+func TestHandleRequest_MemoryPrecompressExtraction_WithContext(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("pe2"),
+		Method:  "memory.precompressExtraction",
+		Params:  json.RawMessage(`{"contextContent":"Long conversation about project setup..."}`),
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	if resp.Error != nil && resp.Error.Code == -32602 {
+		t.Errorf("unexpected -32602 (invalid params): %+v", resp.Error)
+	}
+}
+
 // ─── TestHandleRequest_PeerSwitchContext_NilParams ────────────────────────────
 
 func TestHandleRequest_PeerSwitchContext_NilParams(t *testing.T) {
