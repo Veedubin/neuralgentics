@@ -96,6 +96,42 @@ func TestListFadingMemories_NoPool(t *testing.T) {
 	}
 }
 
+func TestUpdateTrustFields_NoPool(t *testing.T) {
+	s := NewPostgresStore(nil)
+	err := s.UpdateTrustFields(context.Background(), "mem-123", 0.8, false)
+	if err == nil {
+		t.Fatal("expected error for nil pool, got nil")
+	}
+	expected := "database pool not initialized"
+	if err.Error() != expected {
+		t.Errorf("UpdateTrustFields nil-pool error = %q, want %q", err.Error(), expected)
+	}
+}
+
+func TestUpdateTrustFields_ArchiveNoPool(t *testing.T) {
+	s := NewPostgresStore(nil)
+	err := s.UpdateTrustFields(context.Background(), "mem-123", 0.3, true)
+	if err == nil {
+		t.Fatal("expected error for nil pool when archiving, got nil")
+	}
+	expected := "database pool not initialized"
+	if err.Error() != expected {
+		t.Errorf("UpdateTrustFields archive nil-pool error = %q, want %q", err.Error(), expected)
+	}
+}
+
+func TestIncrementRetrievalCount_NoPool(t *testing.T) {
+	s := NewPostgresStore(nil)
+	err := s.IncrementRetrievalCount(context.Background(), "mem-456")
+	if err == nil {
+		t.Fatal("expected error for nil pool, got nil")
+	}
+	expected := "database pool not initialized"
+	if err.Error() != expected {
+		t.Errorf("IncrementRetrievalCount nil-pool error = %q, want %q", err.Error(), expected)
+	}
+}
+
 // ─── Integration tests (require running DB) ──────────────────────────────────
 
 func TestLogAuditEvent_Success(t *testing.T) {

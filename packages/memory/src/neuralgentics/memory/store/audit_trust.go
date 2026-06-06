@@ -147,6 +147,31 @@ func (s *PostgresStore) GetTrustAdjustments(ctx context.Context, memoryID string
 	return nil, fmt.Errorf("not implemented: GetTrustAdjustments")
 }
 
+// ─── Trust Field Operations ──────────────────────────────────────────────────
+
+// UpdateTrustFields updates trust_score and archived status for a memory.
+func (s *PostgresStore) UpdateTrustFields(ctx context.Context, id string, trustScore float64, archived bool) error {
+	if s.pool == nil {
+		return fmt.Errorf("database pool not initialized")
+	}
+
+	if archived {
+		_, err := s.pool.Exec(ctx, "UPDATE memories SET is_archived = TRUE, updated_at = NOW() WHERE id = $1", id)
+		return err
+	}
+	_, err := s.pool.Exec(ctx, UpdateTrustScore, trustScore, id)
+	return err
+}
+
+// IncrementRetrievalCount increments the retrieval_count for a memory.
+func (s *PostgresStore) IncrementRetrievalCount(ctx context.Context, id string) error {
+	if s.pool == nil {
+		return fmt.Errorf("database pool not initialized")
+	}
+	_, err := s.pool.Exec(ctx, IncrementRetrievalCount, id)
+	return err
+}
+
 // ─── Decay Operations ────────────────────────────────────────────────────────
 
 // UpdateDecayRate updates the decay rate for a memory.
