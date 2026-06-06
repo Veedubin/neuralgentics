@@ -7,11 +7,13 @@ FROM oven/bun:1.3-slim AS builder
 
 WORKDIR /app
 
-# Copy TUI package files for dependency installation.
-COPY packages/tui/package.json packages/tui/bun.lock ./
-
-# Install dependencies.
-RUN bun install --frozen-lockfile
+# Copy TUI package.json for dependency installation.
+# Note: TUI uses package.json without a lockfile (deps installed via bun install
+# with exact=true in bunfig.toml). Running `bun install --no-save` would be a
+# no-op since node_modules is already populated; we COPY node_modules in.
+COPY packages/tui/package.json ./
+COPY packages/tui/node_modules/ node_modules/
+COPY packages/tui/bunfig.toml ./
 
 # Copy TUI source code.
 COPY packages/tui/src/ src/
