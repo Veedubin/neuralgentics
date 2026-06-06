@@ -73,6 +73,17 @@ export interface GrandTotalReport {
   byModel: ModelTokenReport[];
 }
 
+/** A persisted batch of token usage for a session (T-084). */
+export interface TokenBatch {
+  sessionId: string;
+  timestamp: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalSpend: number;
+  model: string;
+  operation: string;
+}
+
 /** Options for creating a TokenCounter. */
 export interface TokenCounterOptions {
   /** NeuralgenticsClient for storing ledger entries (optional — testing). */
@@ -302,6 +313,172 @@ export class TokenCounter {
   /** Reset all ledger entries for a new session. */
   reset(): void {
     this._entries.length = 0;
+  }
+
+  // ─── Batch Persistence (T-084) ──────────────────────────────────────────
+
+  /**
+   * Save the current session's token usage as a batch to neuralgentics memory.
+   * Persists with sourceType "token_ledger_batch" for later retrieval.
+   * Returns the memory ID of the stored batch, or empty string on failure.
+   */
+  async saveBatch(): Promise<string> {
+    if (!this._client) return "";
+
+    const total = this.getSessionTotal();
+    const models = new Set<string>();
+    let primaryModel = "";
+    for (const entry of this._entries) {
+      models.add(entry.model);
+    }
+    primaryModel = Array.from(models).join(",") || "unknown";
+
+    const batch: TokenBatch = {
+      sessionId: this._sessionId,
+      timestamp: new Date().toISOString(),
+      inputTokens: total.input,
+      outputTokens: total.output,
+      totalSpend: total.total,
+      model: primaryModel,
+      operation: "session_batch",
+    };
+
+    try {
+      const result = await this._client.call("memory.add", {
+        content: JSON.stringify(batch),
+        sourceType: "token_ledger_batch",
+        metadata: {
+          type: "token_ledger_batch",
+          sessionId: batch.sessionId,
+          totalSpend: batch.totalSpend,
+          model: batch.model,
+          timestamp: batch.timestamp,
+        },
+      });
+      const typed = result as { id?: string };
+      return typed.id ?? "";
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[token-counter] Failed to save batch: ${msg}`);
+      return "";
+    }
+  }
+
+  /**
+   * Restore token counter state from the most recent batch in neuralgentics memory.
+   * Queries for the latest "token_ledger_batch" and populates internal state
+   * with cumulative totals from previous sessions.
+   * Returns true if a batch was restored, false otherwise.
+   */
+  async restoreBatch(sessionId?: string): Promise<boolean> {
+    if (!this._client) return false;
+
+    try {
+      const results = await this._client.call("memory.queryBySourceType", {
+        sourceType: "token_ledger_batch",
+        limit: 1,
+        sortBy: "createdAt",
+        sortOrder: "DESC",
+      }) as Array<Record<string, unknown>>;
+
+      if (!Array.isArray(results) || results.length === 0) {
+        return false;
+      }
+
+      // Filter by sessionId if provided
+      let batch: Record<string, unknown> | undefined;
+      if (sessionId) {
+        batch = results.find((r) => {
+          const content = typeof r.content === "string" ? r.content : JSON.stringify(r.content ?? r);
+          try {
+            const parsed = JSON.parse(content) as Record<string, unknown>;
+            return parsed.sessionId === sessionId;
+          } catch { return false; }
+        });
+      }
+      if (!batch) {
+        batch = results[0];
+      }
+
+      const content = typeof batch!.content === "string"
+        ? batch!.content
+        : JSON.stringify(batch!.content ?? batch!);
+
+      const parsed = JSON.parse(content) as Record<string, unknown>;
+
+      // Validate required fields
+      if (typeof parsed.sessionId !== "string" || typeof parsed.totalSpend !== "number") {
+        console.warn("[token-counter] Batch has missing or invalid required fields — ignoring");
+        return false;
+      }
+
+      // Create a synthetic entry to restore cumulative totals
+      const syntheticEntry: TokenLedgerEntry = {
+        id: `tc-restore-${this._nextId++}`,
+        timestamp: Date.now(),
+        sessionId: parsed.sessionId as string,
+        model: (parsed.model as string) ?? "unknown",
+        input: (parsed.inputTokens as number) ?? 0,
+        output: (parsed.outputTokens as number) ?? 0,
+        cached: 0,
+        system: 0,
+        total: (parsed.totalSpend as number) ?? 0,
+      };
+      this._entries.push(syntheticEntry);
+
+      return true;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[token-counter] Failed to restore batch: ${msg}`);
+      return false;
+    }
+  }
+
+  /**
+   * Get previous session batches from neuralgentics memory (T-084).
+   * Returns the last N batches for the /spend history command.
+   */
+  async getHistory(limit: number = 5): Promise<TokenBatch[]> {
+    if (!this._client) return [];
+
+    try {
+      const results = await this._client.call("memory.queryBySourceType", {
+        sourceType: "token_ledger_batch",
+        limit,
+        sortBy: "createdAt",
+        sortOrder: "DESC",
+      }) as Array<Record<string, unknown>>;
+
+      if (!Array.isArray(results)) return [];
+
+      const batches: TokenBatch[] = [];
+      for (const entry of results) {
+        const content = typeof entry.content === "string"
+          ? entry.content
+          : JSON.stringify(entry.content ?? entry);
+        try {
+          const parsed = JSON.parse(content) as Record<string, unknown>;
+          if (typeof parsed.sessionId === "string" && typeof parsed.totalSpend === "number") {
+            batches.push({
+              sessionId: parsed.sessionId as string,
+              timestamp: (parsed.timestamp as string) ?? "",
+              inputTokens: (parsed.inputTokens as number) ?? 0,
+              outputTokens: (parsed.outputTokens as number) ?? 0,
+              totalSpend: (parsed.totalSpend as number) ?? 0,
+              model: (parsed.model as string) ?? "unknown",
+              operation: (parsed.operation as string) ?? "session_batch",
+            });
+          }
+        } catch {
+          // Skip corrupted entries
+        }
+      }
+      return batches;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[token-counter] Failed to get history: ${msg}`);
+      return [];
+    }
   }
 
   // ─── Private ────────────────────────────────────────────────────────────
@@ -554,7 +731,7 @@ export interface SpendCommandResult {
 }
 
 /**
- * Handle the `/spend` slash command with sub-commands.
+ * Handle the `/spend` slash command with sub-commands (T-084: async for /history).
  *
  * Sub-commands:
  * - `/spend`         → session total
@@ -564,6 +741,10 @@ export interface SpendCommandResult {
  * - `/spend by-model` → per-model breakdown
  * - `/spend projected` → burn rate estimate
  * - `/spend report`  → full wrap-up report
+ * - `/spend history`  → show previous 5 session batches (T-084, async)
+ *
+ * Note: `/spend history` is async; all other sub-commands are synchronous.
+ * If the caller needs history, use handleSpendHistoryCommand() instead.
  */
 export function handleSpendCommand(
   counter: TokenCounter,
@@ -573,6 +754,15 @@ export function handleSpendCommand(
   const parts = trimmed.split(/\s+/);
   // First part is "spend", second is the sub-command
   const sub = parts[1]?.toLowerCase() ?? "";
+
+  // /spend history requires async — caller should use handleSpendHistoryCommand instead
+  if (sub === "history") {
+    return {
+      command: "spend",
+      message: "Loading spend history...",
+      refreshKanban: false,
+    };
+  }
 
   const reporter = new TokenReporter(counter);
 
@@ -623,8 +813,51 @@ export function handleSpendCommand(
     default:
       return {
         command: "spend",
-        message: `Unknown /spend sub-command: "${sub}". Available: /spend, /spend today, /spend by-card, /spend by-agent, /spend by-model, /spend projected, /spend report`,
+        message: `Unknown /spend sub-command: "${sub}". Available: /spend, /spend today, /spend by-card, /spend by-agent, /spend by-model, /spend projected, /spend report, /spend history`,
         refreshKanban: false,
       };
   }
+}
+
+/**
+ * Handle the `/spend history` sub-command (T-084, async).
+ * Returns formatted list of previous session batches.
+ */
+export async function handleSpendHistoryCommand(
+  counter: TokenCounter,
+  limit: number = 5,
+): Promise<SpendCommandResult> {
+  const batches = await counter.getHistory(limit);
+
+  if (batches.length === 0) {
+    return {
+      command: "spend",
+      message: "No previous session spend history found.",
+      refreshKanban: false,
+    };
+  }
+
+  const lines: string[] = [
+    "═══ Spend History ═══",
+    "",
+  ];
+
+  for (const batch of batches) {
+    const date = batch.timestamp
+      ? new Date(batch.timestamp).toLocaleString()
+      : "unknown date";
+    lines.push(`  Session ${batch.sessionId.slice(0, 8)}...`);
+    lines.push(`    Date: ${date}`);
+    lines.push(`    Model: ${batch.model}`);
+    lines.push(`    Input: ${fmt(batch.inputTokens)} | Output: ${fmt(batch.outputTokens)} | Total: ${fmt(batch.totalSpend)}`);
+    lines.push("");
+  }
+
+  lines.push("═════════════════════");
+
+  return {
+    command: "spend",
+    message: lines.join("\n"),
+    refreshKanban: false,
+  };
 }
