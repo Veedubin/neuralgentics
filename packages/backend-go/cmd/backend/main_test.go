@@ -1199,6 +1199,64 @@ func TestHandleRequest_PeerGetSharedMemories_UsesActivePeerContext(t *testing.T)
 	}
 }
 
+// ─── TestHandleRequest_MemoryGetRelationshipSummary ────────────────────────────
+
+func TestHandleRequest_MemoryGetRelationshipSummary_MissingID(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("grs1"),
+		Method:  "memory.getRelationshipSummary",
+		Params:  json.RawMessage(`{"memoryId":""}`),
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	if resp.Error == nil {
+		t.Fatal("expected error for empty memoryId")
+	}
+	if resp.Error.Code != -32602 {
+		t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
+	}
+}
+
+func TestHandleRequest_MemoryGetRelationshipSummary_NilParams(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("grs2"),
+		Method:  "memory.getRelationshipSummary",
+		// Params nil — parseParams will error
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	if resp.Error == nil {
+		t.Fatal("expected error for nil params")
+	}
+	if resp.Error.Code != -32602 {
+		t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
+	}
+}
+
+func TestHandleRequest_MemoryGetRelationshipSummary_ValidID(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("grs3"),
+		Method:  "memory.getRelationshipSummary",
+		Params:  json.RawMessage(`{"memoryId":"abc-123"}`),
+	}
+	// With nil memSys, the handler should reach the internal error path
+	// (not -32602), because params validation already passed.
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	if resp.Error == nil {
+		t.Fatal("expected error with nil memSys")
+	}
+	if resp.Error.Code == -32602 {
+		t.Errorf("error code should not be -32602 (params validation passed), got %d", resp.Error.Code)
+	}
+}
+
 // ─── TestOrchestratorHandlerParamsValidation ──────────────────────────────────
 
 func TestOrchestratorHandlerParamsValidation_Route(t *testing.T) {

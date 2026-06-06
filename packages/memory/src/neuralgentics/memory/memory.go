@@ -409,6 +409,55 @@ func (m *MemorySystem) RenderGraphHTML(ctx context.Context, entityID string, dep
 	return m.graphVisualizer.RenderHTML(ctx, entityID, depth)
 }
 
+// ─── Relationship Summary ───────────────────────────────────────────────────
+
+// RelationshipSummaryResult is the enriched response returned by
+// MemorySystem.GetRelationshipSummary.  It includes the aggregate counts from
+// core.RelationshipSummary plus the individual relationship entries.
+type RelationshipSummaryResult struct {
+	MemoryID           string               `json:"memoryId"`
+	TotalRelationships int                  `json:"totalRelationships"`
+	ByType             map[string]int       `json:"byType"`
+	Related            []RelationshipDetail `json:"related"`
+}
+
+// RelationshipDetail is a single relationship entry in the summary response.
+type RelationshipDetail struct {
+	ID               string  `json:"id"`
+	RelationshipType string  `json:"relationshipType"`
+	Confidence       float64 `json:"confidence"`
+}
+
+// GetRelationshipSummary returns an enriched summary of all relationships
+// for a memory, including counts by type and the individual relationship entries.
+func (m *MemorySystem) GetRelationshipSummary(ctx context.Context, memoryID string) (*RelationshipSummaryResult, error) {
+	summary, err := m.store.GetRelationshipSummary(ctx, memoryID)
+	if err != nil {
+		return nil, fmt.Errorf("get relationship summary: %w", err)
+	}
+
+	rels, err := m.store.GetRelationships(ctx, memoryID)
+	if err != nil {
+		return nil, fmt.Errorf("get relationships: %w", err)
+	}
+
+	related := make([]RelationshipDetail, 0, len(rels))
+	for _, r := range rels {
+		related = append(related, RelationshipDetail{
+			ID:               r.ID,
+			RelationshipType: r.RelationshipType,
+			Confidence:       r.Confidence,
+		})
+	}
+
+	return &RelationshipSummaryResult{
+		MemoryID:           summary.MemoryID,
+		TotalRelationships: summary.TotalRelationships,
+		ByType:             summary.ByType,
+		Related:            related,
+	}, nil
+}
+
 // ─── Thought Chain Methods (Phase 4A) ─────────────────────────────────────
 
 // StartThoughtChain creates a new thought chain and returns its ID.
