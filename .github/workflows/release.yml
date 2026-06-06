@@ -276,6 +276,16 @@ jobs:
           cp checksums.txt staging/
           ls -lh staging/
 
+      - name: Stage extra release assets
+        run: |
+          cp scripts/install.sh staging/install.sh
+          cp docker-compose.yml staging/docker-compose.yml
+          cp docker/postgres.Dockerfile staging/postgres.Dockerfile
+          cp docker/sidecar.Dockerfile staging/sidecar.Dockerfile
+          cp docker/backend.Dockerfile staging/backend.Dockerfile
+          cp docker/tui.Dockerfile staging/tui.Dockerfile
+          ls -lh staging/
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
