@@ -58,8 +58,8 @@ func TestHandleInitialize(t *testing.T) {
 	if result.ServerInfo.Name != "neuralgentics-backend" {
 		t.Errorf("server name: got %q, want %q", result.ServerInfo.Name, "neuralgentics-backend")
 	}
-	if result.ServerInfo.Version != "0.1.0" {
-		t.Errorf("server version: got %q, want %q", result.ServerInfo.Version, "0.1.0")
+	if result.ServerInfo.Version != version {
+		t.Errorf("server version: got %q, want %q", result.ServerInfo.Version, version)
 	}
 	if !result.Capabilities.Memory {
 		t.Error("capabilities.memory: got false, want true")

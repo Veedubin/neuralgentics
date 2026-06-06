@@ -28,6 +28,10 @@ import (
 	"neuralgentics-broker/src/neuralgentics/broker"
 )
 
+// version is set at build time via -ldflags="-X main.version=...".
+// Defaults to "dev" for local builds.
+var version = "dev"
+
 // ─── JSON-RPC Types ──────────────────────────────────────────────────────────
 
 type jsonrpcRequest struct {
@@ -407,6 +411,12 @@ type capabilities struct {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 func main() {
+	// Handle --version / -v before any subsystem initialization.
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Printf("neuralgentics-backend %s\n", version)
+		os.Exit(0)
+	}
+
 	log.SetOutput(os.Stderr)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
@@ -716,7 +726,7 @@ func handleInitialize(req jsonrpcRequest) jsonrpcResponse {
 	return successResponse(req.ID, initializeResult{
 		ServerInfo: serverInfo{
 			Name:    "neuralgentics-backend",
-			Version: "0.1.0",
+			Version: version,
 		},
 		Capabilities: capabilities{
 			Memory:       true,
