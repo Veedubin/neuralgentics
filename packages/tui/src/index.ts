@@ -320,9 +320,18 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
  export function greet(name: string) {
 -  return greeting + " " + name;
 +  return \`\${greeting} \${name}!\`;
- }`,
+  }`,
             title: "example.ts (sample diff for T-030 demo)",
             confidence: "high",
+          });
+        }
+
+        // If /diff --threeway command, show 3-way merge viewer (T-083)
+        if (result.showDiffThreeWay && diffPanel && result.threeWayData) {
+          diffPanel.showThreeWay({
+            base: result.threeWayData.base,
+            ours: result.threeWayData.ours,
+            theirs: result.threeWayData.theirs,
           });
         }
 

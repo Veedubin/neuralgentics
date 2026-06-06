@@ -405,6 +405,13 @@ export class DiffPanel {
   private _rejectCallback: RejectCallback | null = null;
   private _statusMessage: string = "";
 
+  // T-083: 3-way merge state (additive — existing 2-way fields untouched)
+  private _mode: DiffMode = "twoWay";
+  private _threeWayState: ThreeWayState = "idle";
+  private _threeWayInput: ThreeWayDiffInput | null = null;
+  private _threeWayResult: ThreeWayRenderResult | null = null;
+  private _activePane: ThreeWayPane = "ours";
+
   // VNode references for TUI rendering (set during mount)
   private _panelBox: BoxVNode | null = null;
   private _contentText: TextVNode | null = null;
@@ -423,6 +430,21 @@ export class DiffPanel {
   /** Current rendered result. */
   get currentResult(): DiffPanelRenderResult | null {
     return this._currentResult;
+  }
+
+  /** Current 3-way merge state. */
+  get threeWayState(): ThreeWayState {
+    return this._threeWayState;
+  }
+
+  /** Current 3-way pane selector. */
+  get activePane(): ThreeWayPane {
+    return this._activePane;
+  }
+
+  /** Current diff mode (2-way or 3-way). */
+  get mode(): DiffMode {
+    return this._mode;
   }
 
   /**
@@ -463,7 +485,42 @@ export class DiffPanel {
     this._currentInput = null;
     this._currentResult = null;
     this._statusMessage = "";
+    this._mode = "twoWay";
+    this._threeWayState = "idle";
+    this._threeWayInput = null;
+    this._threeWayResult = null;
+    this._activePane = "ours";
     this._updateDisplay();
+  }
+
+  /**
+   * Show the 3-way merge viewer (T-083).
+   *
+   * @param input - The 3-way diff input (base, ours, theirs).
+   * @param terminalWidth - Terminal width for layout (default 120).
+   * @returns The rendered result.
+   */
+  showThreeWay(input: ThreeWayDiffInput, terminalWidth: number = 120): ThreeWayRenderResult {
+    this._mode = "threeWay";
+    this._threeWayInput = input;
+    this._activePane = "ours";
+    this._threeWayState = "ours-active";
+
+    this._threeWayResult = renderThreeWay(input, this._activePane, terminalWidth);
+
+    if (this._threeWayResult.state === "error") {
+      this._threeWayState = "error";
+      this._statusMessage = this._threeWayResult.statusMessage;
+    } else {
+      this._threeWayState = "ours-active";
+      this._statusMessage = "Active: ours";
+    }
+
+    // Also set 2-way state to showing so the panel is visible
+    this._state = "showing";
+    this._updateDisplay();
+
+    return this._threeWayResult;
   }
 
   /**
@@ -486,40 +543,19 @@ export class DiffPanel {
    * Handle a key press event.
    *
    * Returns true if the key was consumed (panel is active), false otherwise.
+   * Dispatches to 2-way or 3-way handler based on current mode.
    */
   async handleKey(keyName: string): Promise<boolean> {
     // If panel is hidden, don't consume
-    if (this._state === "hidden") {
+    if (this._state === "hidden" && this._threeWayState === "idle") {
       return false;
     }
 
-    // If already in a terminal state, only allow close
-    if (this._state === "accepted" || this._state === "rejected" || this._state === "blocked") {
-      if (keyName === "q" || keyName === "escape") {
-        this.hide();
-        return true;
-      }
-      return true; // Consume all keys in terminal states except q/Esc
+    // Dispatch based on mode
+    if (this._mode === "threeWay") {
+      return this._handleThreeWayKey(keyName);
     }
-
-    // Key handling in "showing" state
-    switch (keyName) {
-      case "y":
-        await this._handleAccept();
-        return true;
-
-      case "n":
-        this._handleReject();
-        return true;
-
-      case "q":
-      case "escape":
-        this.hide();
-        return true;
-
-      default:
-        return true; // Panel is active, consume all keys to prevent input going to chat
-    }
+    return this._handleTwoWayKey(keyName);
   }
 
   /**
@@ -568,7 +604,127 @@ export class DiffPanel {
     return panelBox as unknown as BoxVNode;
   }
 
-  // ── Private methods ──────────────────────────────────────────────────────
+  /**
+   * 2-way key handler (original behavior, extracted from handleKey).
+   */
+  private async _handleTwoWayKey(keyName: string): Promise<boolean> {
+    // If panel is hidden, don't consume
+    if (this._state === "hidden") {
+      return false;
+    }
+
+    // If already in a terminal state, only allow close
+    if (this._state === "accepted" || this._state === "rejected" || this._state === "blocked") {
+      if (keyName === "q" || keyName === "escape") {
+        this.hide();
+        return true;
+      }
+      return true; // Consume all keys in terminal states except q/Esc
+    }
+
+    // Key handling in "showing" state
+    switch (keyName) {
+      case "y":
+        await this._handleAccept();
+        return true;
+
+      case "n":
+        this._handleReject();
+        return true;
+
+      case "q":
+      case "escape":
+        this.hide();
+        return true;
+
+      default:
+        return true; // Panel is active, consume all keys to prevent input going to chat
+    }
+  }
+
+  /**
+   * 3-way merge key handler (T-083).
+   *
+   * Handles Tab (cycle pane), 1/2/3 (jump to pane), y (accept), n (reject), q/Esc (quit).
+   */
+  private async _handleThreeWayKey(keyName: string): Promise<boolean> {
+    // If in idle state, don't consume
+    if (this._threeWayState === "idle") {
+      return false;
+    }
+
+    // Terminal states: accepted/rejected/error — only q/Esc closes
+    if (this._threeWayState === "accepted" || this._threeWayState === "rejected" || this._threeWayState === "error") {
+      if (keyName === "q" || keyName === "escape") {
+        this.hide();
+        return true;
+      }
+      return true; // Consume all keys in terminal states
+    }
+
+    // Active states: ours-active, theirs-active, base-active
+    switch (keyName) {
+      case "tab": {
+        this._activePane = cycleActivePane(this._activePane);
+        this._threeWayState = this._activePane === "base" ? "base-active" : this._activePane === "ours" ? "ours-active" : "theirs-active";
+        this._rerenderThreeWay();
+        return true;
+      }
+
+      case "1":
+        this._activePane = "base";
+        this._threeWayState = "base-active";
+        this._rerenderThreeWay();
+        return true;
+
+      case "2":
+        this._activePane = "ours";
+        this._threeWayState = "ours-active";
+        this._rerenderThreeWay();
+        return true;
+
+      case "3":
+        this._activePane = "theirs";
+        this._threeWayState = "theirs-active";
+        this._rerenderThreeWay();
+        return true;
+
+      case "y": {
+        const result = acceptActive(this._threeWayState);
+        this._threeWayState = result.newState;
+        this._statusMessage = result.message;
+        this._updateDisplay();
+        return true;
+      }
+
+      case "n": {
+        const result = rejectTheirs();
+        this._threeWayState = result.newState;
+        this._statusMessage = result.message;
+        this._updateDisplay();
+        return true;
+      }
+
+      case "q":
+      case "escape":
+        this.hide();
+        return true;
+
+      default:
+        // Consume all keys when panel is active (modal behavior)
+        return true;
+    }
+  }
+
+  /**
+   * Re-render the 3-way merge view after a pane change.
+   */
+  private _rerenderThreeWay(): void {
+    if (!this._threeWayInput) return;
+    this._threeWayResult = renderThreeWay(this._threeWayInput, this._activePane);
+    this._statusMessage = `Active: ${this._activePane}`;
+    this._updateDisplay();
+  }
 
   private async _handleAccept(): Promise<void> {
     if (!this._acceptCallback) {
@@ -621,6 +777,44 @@ export class DiffPanel {
   private _updateDisplay(): void {
     if (!this._contentText || !this._statusText) return;
 
+    // 3-way merge mode display
+    if (this._mode === "threeWay" && this._threeWayResult) {
+      if (this._threeWayState === "idle") {
+        if (this._panelBox) {
+          this._panelBox.visible = false;
+        }
+        return;
+      }
+
+      if (this._panelBox) {
+        this._panelBox.visible = true;
+      }
+
+      const contentLines = this._threeWayResult.lines.map(stripAnsiForDisplay).join("\n");
+      this._contentText.content = contentLines;
+
+      // Status message with color based on 3-way state
+      this._statusText.content = this._statusMessage;
+      switch (this._threeWayState) {
+        case "accepted":
+          this._statusText.fg = "#00ff88";
+          break;
+        case "rejected":
+          this._statusText.fg = "#ff4444";
+          break;
+        case "error":
+          this._statusText.fg = "#ff4444";
+          break;
+        case "base-active":
+          this._statusText.fg = "#ffaa00";
+          break;
+        default:
+          this._statusText.fg = "#e0e0e0";
+      }
+      return;
+    }
+
+    // 2-way mode display (original)
     if (this._state === "hidden" || !this._currentResult) {
       if (this._panelBox) {
         this._panelBox.visible = false;
@@ -662,6 +856,11 @@ export class DiffPanel {
    * the kanban manager can read later.
    */
   getWrapUpEvidence(): DiffWrapUpEvidence | null {
+    // 3-way merge mode does not produce wrap-up evidence
+    if (this._mode === "threeWay") {
+      return null;
+    }
+
     if (this._state === "hidden" || !this._currentInput) {
       return null;
     }
@@ -707,4 +906,265 @@ export function createMockTestRunner(
   result: TestResult,
 ): AcceptCallback {
   return async () => result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// T-083 — 3-Way Merge Viewer (Additive Extension)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── 3-Way Types (additive) ─────────────────────────────────────────────────────
+
+/** Diff mode: 2-way (original) or 3-way merge viewer. */
+export type DiffMode = "twoWay" | "threeWay";
+
+/** 3-way merge pane identifier. */
+export type ThreeWayPane = "base" | "ours" | "theirs";
+
+/** State machine for the 3-way merge viewer. */
+export type ThreeWayState =
+  | "idle"
+  | "ours-active"
+  | "theirs-active"
+  | "base-active"
+  | "accepted"
+  | "rejected"
+  | "error";
+
+/** Input for the 3-way merge viewer. */
+export interface ThreeWayDiffInput {
+  /** Original file content before any changes (ancestor). */
+  base: string;
+  /** Local/current file content (our version). */
+  ours: string;
+  /** Proposed/coder's file content (their version). */
+  theirs: string;
+  /** Optional conflict marker lines. */
+  conflictMarkers?: string[];
+}
+
+/** Stores a single pane's rendered output. */
+interface ThreeWayPaneData {
+  label: "base" | "ours" | "theirs";
+  lines: string[];
+  lineCount: number;
+  isReadOnly: boolean;
+  isActive: boolean;
+}
+
+/** Result from `renderThreeWay`. */
+export interface ThreeWayRenderResult {
+  lines: string[];
+  paneData: [ThreeWayPaneData, ThreeWayPaneData, ThreeWayPaneData];
+  activePane: ThreeWayPane;
+  state: ThreeWayState;
+  statusMessage: string;
+}
+
+// ─── 3-Way Constants ─────────────────────────────────────────────────────────────
+
+const THREE_WAY_COLORS = {
+  dimText: "\x1b[38;5;244m",    // gray #888
+  activeBorder: "\x1b[1;36m",   // cyan bold
+  inactiveBorder: "\x1b[37m",    // white
+  headerSep: "\x1b[33m",        // yellow
+  reset: "\x1b[0m",
+};
+
+const THREE_WAY_MIN_WIDTH = 60;
+
+// ─── 3-Way Rendering (pure function for testability) ──────────────────────────
+
+/**
+ * Calculate pane widths for 3-way viewer.
+ * base gets 25%, ours/theirs split remaining evenly.
+ */
+export function calculatePaneWidths(terminalWidth: number): { baseW: number; oursW: number; theirsW: number } | null {
+  if (terminalWidth < THREE_WAY_MIN_WIDTH) {
+    return null;
+  }
+
+  const separators = 2; // │ between panes
+  const outerBorder = 2; // │ left + │ right
+  const overhead = outerBorder + separators;
+  const contentW = terminalWidth - overhead;
+  const baseW = Math.max(15, Math.floor(contentW * 0.25));
+  const remaining = contentW - baseW;
+  const oursW = Math.floor(remaining / 2);
+  const theirsW = remaining - oursW;
+
+  return { baseW, oursW, theirsW };
+}
+
+/**
+ * Render 3-way merge panes as formatted strings for display.
+ *
+ * This pure function produces an array of formatted strings representing
+ * the three side-by-side panes (base, ours, theirs) with line numbers,
+ * a status bar, and keybinding hints.
+ *
+ * @param input - The 3-way diff input (base, ours, theirs).
+ * @param activePane - Which pane is currently active/highlighted.
+ * @param terminalWidth - Terminal width in columns (default 120).
+ * @returns ThreeWayRenderResult with lines and state.
+ */
+export function renderThreeWay(
+  input: ThreeWayDiffInput,
+  activePane: ThreeWayPane = "ours",
+  terminalWidth: number = 120,
+): ThreeWayRenderResult {
+  const widths = calculatePaneWidths(terminalWidth);
+
+  if (widths === null) {
+    return {
+      lines: [`⚠ Terminal too narrow for 3-way view (min ${THREE_WAY_MIN_WIDTH} cols, got ${terminalWidth})`],
+      paneData: [
+        { label: "base", lines: [], lineCount: 0, isReadOnly: true, isActive: false },
+        { label: "ours", lines: [], lineCount: 0, isReadOnly: false, isActive: false },
+        { label: "theirs", lines: [], lineCount: 0, isReadOnly: false, isActive: false },
+      ],
+      activePane,
+      state: "error",
+      statusMessage: `Terminal too narrow (min ${THREE_WAY_MIN_WIDTH} cols)`,
+    };
+  }
+
+  const { baseW, oursW, theirsW } = widths;
+  const lineNumWidth = 5; // " 123 " format
+
+  // Split content into lines
+  const baseLines = input.base.split("\n");
+  const oursLines = input.ours.split("\n");
+  const theirsLines = input.theirs.split("\n");
+  const maxLines = Math.max(baseLines.length, oursLines.length, theirsLines.length);
+
+  // Build pane data
+  const basePane: ThreeWayPaneData = {
+    label: "base",
+    lines: baseLines,
+    lineCount: baseLines.length,
+    isReadOnly: true,
+    isActive: activePane === "base",
+  };
+  const oursPane: ThreeWayPaneData = {
+    label: "ours",
+    lines: oursLines,
+    lineCount: oursLines.length,
+    isReadOnly: false,
+    isActive: activePane === "ours",
+  };
+  const theirsPane: ThreeWayPaneData = {
+    label: "theirs",
+    lines: theirsLines,
+    lineCount: theirsLines.length,
+    isActive: activePane === "theirs",
+    isReadOnly: false,
+  };
+
+  const panes: [ThreeWayPaneData, ThreeWayPaneData, ThreeWayPaneData] = [basePane, oursPane, theirsPane];
+
+  // Render header
+  const lines: string[] = [];
+  const headerTitle = " Three-Way Merge ";
+  lines.push(`╔${headerTitle}${"═".repeat(Math.max(0, terminalWidth - headerTitle.length - 2))}╗`);
+
+  // Column headers
+  const baseHeader = padPaneHeader("Base (original)", baseW);
+  const oursHeader = padPaneHeader("Ours (local)", oursW);
+  const theirsHeader = padPaneHeader("Theirs (proposed)", theirsW);
+  lines.push(`║${baseHeader}│${oursHeader}│${theirsHeader}║`);
+
+  // Separator line
+  lines.push(`║${"─".repeat(baseW)}┼${"─".repeat(oursW)}┼${"─".repeat(theirsW)}║`);
+
+  // Render content lines
+  for (let i = 0; i < maxLines; i++) {
+    const lineNum = String(i + 1).padStart(lineNumWidth - 2);
+    const numPrefix = ` ${lineNum} `;
+
+    const bContent = (baseLines[i] ?? "").slice(0, baseW - lineNumWidth);
+    const oContent = (oursLines[i] ?? "").slice(0, oursW - lineNumWidth);
+    const tContent = (theirsLines[i] ?? "").slice(0, theirsW - lineNumWidth);
+
+    // Dim text for base pane, normal for others
+    const bLine = activePane === "base"
+      ? `${numPrefix}${padContent(bContent, baseW - lineNumWidth)}`
+      : `${THREE_WAY_COLORS.dimText}${numPrefix}${padContent(bContent, baseW - lineNumWidth)}${THREE_WAY_COLORS.reset}`;
+    const oLine = `${numPrefix}${padContent(oContent, oursW - lineNumWidth)}`;
+    const tLine = `${numPrefix}${padContent(tContent, theirsW - lineNumWidth)}`;
+
+    lines.push(`║${bLine}│${oLine}│${tLine}║`);
+  }
+
+  // Keybinding bar
+  const keyBar = " [Tab] cycle  [1] base  [2] ours  [3] theirs  [y] accept  [n] reject  [q/Esc] quit ";
+  lines.push(`║${keyBar}${" ".repeat(Math.max(0, terminalWidth - keyBar.length - 2))}║`);
+  lines.push(`╚${"═".repeat(terminalWidth - 2)}╝`);
+
+  return {
+    lines,
+    paneData: panes,
+    activePane,
+    state: activePane === "base" ? "base-active" : activePane === "ours" ? "ours-active" : "theirs-active",
+    statusMessage: `Active: ${activePane}`,
+  };
+}
+
+/** Pad a pane header to the given width. */
+function padPaneHeader(header: string, width: number): string {
+  const padded = header.length >= width
+    ? header.slice(0, width)
+    : header + " ".repeat(width - header.length);
+  return padded.slice(0, width);
+}
+
+/** Pad content string to the given width. */
+function padContent(content: string, width: number): string {
+  const padded = content.length >= width
+    ? content.slice(0, width)
+    : content + " ".repeat(width - content.length);
+  return padded.slice(0, Math.max(0, width));
+}
+
+// ─── 3-Way Navigation Functions (pure, testable) ────────────────────────────────
+
+/**
+ * Cycle the active pane in order: ours → theirs → base → ours.
+ */
+export function cycleActivePane(current: ThreeWayPane): ThreeWayPane {
+  const cycle: ThreeWayPane[] = ["ours", "theirs", "base"];
+  const idx = cycle.indexOf(current);
+  return cycle[(idx + 1) % 3]!;
+}
+
+/**
+ * Jump directly to a specific pane by number (1=base, 2=ours, 3=theirs).
+ */
+export function jumpToPane(num: 1 | 2 | 3): ThreeWayPane {
+  const map: Record<number, ThreeWayPane> = { 1: "base", 2: "ours", 3: "theirs" };
+  return map[num]!;
+}
+
+/**
+ * Accept the currently active pane's version.
+ * In base-active state, this is a no-op (base is read-only).
+ */
+export function acceptActive(state: ThreeWayState): { newState: ThreeWayState; message: string } {
+  if (state === "ours-active") {
+    return { newState: "accepted", message: "✓ Merged with ours" };
+  }
+  if (state === "theirs-active") {
+    return { newState: "accepted", message: "✓ Merged with theirs" };
+  }
+  if (state === "base-active") {
+    return { newState: "base-active", message: "Base pane is read-only — select ours or theirs to accept" };
+  }
+  // accepted, rejected, error, idle — no-op
+  return { newState: state, message: "" };
+}
+
+/**
+ * Reject theirs — discard their version and keep ours.
+ */
+export function rejectTheirs(): { newState: ThreeWayState; message: string } {
+  return { newState: "rejected", message: "✗ Merge rejected — keeping ours" };
 }

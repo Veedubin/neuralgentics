@@ -343,8 +343,39 @@ describe("/diff command (T-030)", () => {
     const result = handleSlashCommand("/diff");
     expect(result.command).toBe("diff");
     expect(result.showDiffPanel).toBe(true);
+    expect(result.showDiffThreeWay).toBeFalsy();
+    expect(result.threeWayData).toBeFalsy();
     expect(result.message).toContain("diff verification panel");
     expect(result.refreshKanban).toBe(false);
+  });
+
+  test("/diff --threeway shows 3-way merge viewer (T-083)", () => {
+    const result = handleSlashCommand("/diff --threeway");
+    expect(result.command).toBe("diff");
+    expect(result.showDiffThreeWay).toBe(true);
+    expect(result.showDiffPanel).toBeFalsy();
+    expect(result.threeWayData).toBeDefined();
+    expect(result.threeWayData!.base).toContain("base");
+    expect(result.threeWayData!.ours).toContain("ours");
+    expect(result.threeWayData!.theirs).toContain("theirs");
+    expect(result.message).toContain("3-way merge");
+    expect(result.refreshKanban).toBe(false);
+  });
+
+  test("/diff -3 shows 3-way merge viewer (T-083)", () => {
+    const result = handleSlashCommand("/diff -3");
+    expect(result.command).toBe("diff");
+    expect(result.showDiffThreeWay).toBe(true);
+  });
+
+  test("/diff --threeway with explicit content (T-083)", () => {
+    const result = handleSlashCommand("/diff --threeway base-content ours-content theirs-content");
+    expect(result.command).toBe("diff");
+    expect(result.showDiffThreeWay).toBe(true);
+    expect(result.threeWayData).toBeDefined();
+    expect(result.threeWayData!.base).toBe("base-content");
+    expect(result.threeWayData!.ours).toBe("ours-content");
+    expect(result.threeWayData!.theirs).toBe("theirs-content");
   });
 });
 
