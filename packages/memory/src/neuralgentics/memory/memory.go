@@ -18,6 +18,7 @@ import (
 	"neuralgentics/src/neuralgentics/memory/search"
 	"neuralgentics/src/neuralgentics/memory/store"
 	"neuralgentics/src/neuralgentics/memory/thought"
+	"neuralgentics/src/neuralgentics/memory/tiered"
 	"neuralgentics/src/neuralgentics/memory/trust"
 	"neuralgentics/src/neuralgentics/memory/user"
 )
@@ -53,6 +54,7 @@ type MemorySystem struct {
 	dialecticEngine *dialectic.Engine
 	chainsManager   *thought.ChainsManager
 	profileManager  *user.ProfileManager
+	tieredLoader    *tiered.TieredLoader
 	config          *core.Config
 	indexer         *index.ProjectIndexer
 	backgroundJobs  map[string]*IndexerJob
@@ -123,6 +125,9 @@ func New(ctx context.Context, cfg *core.Config) (*MemorySystem, error) {
 	// Create project indexer for file indexing
 	projectIndexer := index.NewProjectIndexer(pgStore, emb)
 
+	// Create tiered loader for L0/L1 summaries
+	tieredLoader := tiered.NewTieredLoader(pgStore, llmClient, nil)
+
 	return &MemorySystem{
 		store:           pgStore,
 		embedder:        emb,
@@ -138,6 +143,7 @@ func New(ctx context.Context, cfg *core.Config) (*MemorySystem, error) {
 		chainsManager:   chainsManager,
 		dialecticEngine: dialecticEng,
 		profileManager:  profileMgr,
+		tieredLoader:    tieredLoader,
 		config:          cfg,
 		indexer:         projectIndexer,
 		backgroundJobs:  make(map[string]*IndexerJob),
@@ -149,6 +155,7 @@ func NewWithComponents(s core.Store, e core.Embedder, sr core.Searcher, cfg *cor
 	de := decay.NewDecayEngine(s)
 	llmClient := newOpenAILLMClient("", "", "") // no-op LLM for tests: empty baseURL skips HTTP calls
 	idx := index.NewProjectIndexer(s, e)
+	tLoader := tiered.NewTieredLoader(s, llmClient, nil)
 	return &MemorySystem{
 		store:           s,
 		embedder:        e,
@@ -164,6 +171,7 @@ func NewWithComponents(s core.Store, e core.Embedder, sr core.Searcher, cfg *cor
 		chainsManager:   thought.NewChainsManager(s, e),
 		dialecticEngine: dialectic.NewEngine(s, llmClient),
 		profileManager:  user.NewProfileManager(s),
+		tieredLoader:    tLoader,
 		config:          cfg,
 		indexer:         idx,
 		backgroundJobs:  make(map[string]*IndexerJob),
@@ -332,6 +340,20 @@ func (m *MemorySystem) TriggerConsolidation(ctx context.Context, force bool) (*c
 // ListFadingMemories returns memories approaching the archive threshold.
 func (m *MemorySystem) ListFadingMemories(ctx context.Context, limit int) ([]*core.MemoryEntry, error) {
 	return m.decayEngine.ListFadingMemories(ctx, limit)
+}
+
+// ─── Tiered Summary Methods (Phase 2 Part 2) ────────────────────────────────────
+
+// GetTier0Summary returns an L0 project summary (~100 tokens) from high-trust memories (trust >= 0.5).
+// Use forceRefresh=true to bypass the cache and regenerate.
+func (m *MemorySystem) GetTier0Summary(ctx context.Context, forceRefresh bool) (*tiered.Summary, error) {
+	return m.tieredLoader.GetTier0Summary(ctx, forceRefresh)
+}
+
+// GetTier1Summary returns an L1 key decisions summary (~2K tokens) from highest-trust memories (trust >= 0.8).
+// Use forceRefresh=true to bypass the cache and regenerate.
+func (m *MemorySystem) GetTier1Summary(ctx context.Context, forceRefresh bool) (*tiered.Summary, error) {
+	return m.tieredLoader.GetTier1Summary(ctx, forceRefresh)
 }
 
 // ─── Knowledge Graph Methods (Phase 3 Track A) ─────────────────────────────────

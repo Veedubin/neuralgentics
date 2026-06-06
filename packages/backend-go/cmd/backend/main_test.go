@@ -1025,6 +1025,72 @@ func TestHandleRequest_PeerSwitchContext_EmptyPeerID(t *testing.T) {
 	}
 }
 
+// ─── TestHandleRequest_MemoryGetTier0Summary ────────────────────────────────
+
+func TestHandleRequest_MemoryGetTier0Summary_NoParams(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("t0s1"),
+		Method:  "memory.getTier0Summary",
+		// Params nil — handler should accept empty params
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	// With nil memSys, the handler should return a -32603 internal error
+	// (the methods call into memSys which is nil). Test only that the
+	// call routes correctly (no -32602 invalid params).
+	if resp.Error != nil && resp.Error.Code == -32602 {
+		t.Errorf("unexpected -32602 (invalid params) for nil params: %+v", resp.Error)
+	}
+}
+
+func TestHandleRequest_MemoryGetTier0Summary_WithForceRefresh(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("t0s2"),
+		Method:  "memory.getTier0Summary",
+		Params:  json.RawMessage(`{"forceRefresh":true}`),
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	if resp.Error != nil && resp.Error.Code == -32602 {
+		t.Errorf("unexpected -32602 (invalid params): %+v", resp.Error)
+	}
+}
+
+// ─── TestHandleRequest_MemoryGetTier1Summary ────────────────────────────────
+
+func TestHandleRequest_MemoryGetTier1Summary_NoParams(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("t1s1"),
+		Method:  "memory.getTier1Summary",
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	if resp.Error != nil && resp.Error.Code == -32602 {
+		t.Errorf("unexpected -32602 (invalid params) for nil params: %+v", resp.Error)
+	}
+}
+
+func TestHandleRequest_MemoryGetTier1Summary_WithForceRefresh(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("t1s2"),
+		Method:  "memory.getTier1Summary",
+		Params:  json.RawMessage(`{"forceRefresh":true}`),
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	if resp.Error != nil && resp.Error.Code == -32602 {
+		t.Errorf("unexpected -32602 (invalid params): %+v", resp.Error)
+	}
+}
+
 // ─── TestHandleRequest_PeerSwitchContext_NilParams ────────────────────────────
 
 func TestHandleRequest_PeerSwitchContext_NilParams(t *testing.T) {

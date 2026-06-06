@@ -1,9 +1,9 @@
 /**
- * TypeScript type definitions for all 42 Neuralgentics JSON-RPC methods.
+ * TypeScript type definitions for all 44 Neuralgentics JSON-RPC methods.
  *
  * Core 6 methods (ping, initialize, memory.add, memory.query, memory.get,
  * memory.delete) have fully typed request params and response results.
- * Remaining 36 methods use generic Record<string, unknown> params/results
+ * Remaining 38 methods use generic Record<string, unknown> params/results
  * and can be typed later when needed.
  */
 
@@ -95,6 +95,24 @@ export interface SwitchContextResult {
   switchedAt: string; // RFC3339 timestamp
 }
 
+/** memory.getTier0Summary params */
+export interface Tier0SummaryParams {
+  forceRefresh?: boolean;
+}
+
+/** memory.getTier1Summary params */
+export interface Tier1SummaryParams {
+  forceRefresh?: boolean;
+}
+
+/** memory.getTier0Summary / memory.getTier1Summary response */
+export interface TierSummaryResult {
+  content: string;
+  generatedAt: string; // RFC3339 timestamp
+  tokenCount: number;
+  tier: string; // "L0" or "L1"
+}
+
 // ─── Method Registry ──────────────────────────────────────────────────────────
 // Maps each JSON-RPC method name to its param and result types.
 // Core 6 are fully typed; the rest use generic types for now.
@@ -130,6 +148,10 @@ export interface MethodRegistry {
   "memory.adjustDecayRate": { params: { memoryId: string; rate: number }; result: Record<string, never> };
   "memory.triggerConsolidation": { params: Record<string, unknown>; result: Record<string, unknown> };
   "memory.listFadingMemories": { params: Record<string, unknown>; result: Record<string, unknown>[] };
+
+  // Memory Tiered Summaries
+  "memory.getTier0Summary": { params: Tier0SummaryParams; result: TierSummaryResult };
+  "memory.getTier1Summary": { params: Tier1SummaryParams; result: TierSummaryResult };
 
   // Memory Knowledge Graph
   "memory.extractEntities": { params: { text: string }; result: { entityIds: string[] } };
@@ -196,7 +218,7 @@ export interface MethodRegistry {
   "agent.getInitialToolSet": { params: Record<string, unknown>; result: { peerId: string; tools: unknown[] } };
 }
 
-/** All known method names (42 total). */
+/** All known method names (44 total). */
 export type MethodName = keyof MethodRegistry;
 
 /** Get the params type for a method. */

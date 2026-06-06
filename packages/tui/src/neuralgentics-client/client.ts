@@ -16,7 +16,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { EventEmitter } from "node:events";
 import { resolveBackendPath, resolveDbUrl } from "./resolver.js";
-import type { MethodName, MethodParams, MethodResult, SwitchContextResult } from "./types.js";
+import type { MethodName, MethodParams, MethodResult, SwitchContextResult, Tier0SummaryParams, Tier1SummaryParams, TierSummaryResult } from "./types.js";
 
 /** Online/offline status for the health-check layer (T-081a). */
 export type ClientStatus = "online" | "offline";
@@ -234,6 +234,28 @@ export class NeuralgenticsClient {
    */
   async switchPeerContext(peerId: string): Promise<SwitchContextResult> {
     return (await this.call("peer.switchContext", { peerId })) as SwitchContextResult;
+  }
+
+  // ─── Tiered Summaries (T-EXPOSE-001b) ──────────────────────────────────────
+
+  /**
+   * Get a short L0 project summary (~100 tokens) from high-trust memories.
+   *
+   * @param forceRefresh - If true, bypass the cache and regenerate.
+   * @returns The tier summary result.
+   */
+  async getTier0Summary(forceRefresh = false): Promise<TierSummaryResult> {
+    return (await this.call("memory.getTier0Summary", { forceRefresh })) as TierSummaryResult;
+  }
+
+  /**
+   * Get a detailed L1 key decisions summary (~2K tokens) from highest-trust memories.
+   *
+   * @param forceRefresh - If true, bypass the cache and regenerate.
+   * @returns The tier summary result.
+   */
+  async getTier1Summary(forceRefresh = false): Promise<TierSummaryResult> {
+    return (await this.call("memory.getTier1Summary", { forceRefresh })) as TierSummaryResult;
   }
 
   // ─── Offline Detection (T-081a) ──────────────────────────────────────────
