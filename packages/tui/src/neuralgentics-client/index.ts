@@ -24,5 +24,8 @@ export type {
   MemoryDeleteResult,
   MemoryAdjustTrustParams,
   MemoryAdjustTrustResult,
+  Tier0SummaryParams,
+  Tier1SummaryParams,
+  TierSummaryResult,
 } from "./types.js";
 export { resolveBackendPath, resolveDbUrl, DEFAULT_DB_URL } from "./resolver.js";

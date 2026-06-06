@@ -260,6 +260,16 @@ type memoryListFadingMemoriesParams struct {
 	Limit *int `json:"limit,omitempty"`
 }
 
+// ─── Tiered Summary Request Structs ──────────────────────────────────────────
+
+type memoryGetTier0SummaryParams struct {
+	ForceRefresh bool `json:"forceRefresh,omitempty"`
+}
+
+type memoryGetTier1SummaryParams struct {
+	ForceRefresh bool `json:"forceRefresh,omitempty"`
+}
+
 // ─── Knowledge Graph Request Structs ──────────────────────────────────────────
 
 type memoryExtractEntitiesParams struct {
@@ -659,6 +669,12 @@ func handleRequest(
 		return handleMemoryTriggerConsolidation(ctx, req, memSys)
 	case "memory.listFadingMemories":
 		return handleMemoryListFadingMemories(ctx, req, memSys)
+
+	// Memory — Tiered Summaries
+	case "memory.getTier0Summary":
+		return handleMemoryGetTier0Summary(ctx, req, memSys)
+	case "memory.getTier1Summary":
+		return handleMemoryGetTier1Summary(ctx, req, memSys)
 
 	// Memory — Knowledge Graph
 	case "memory.extractEntities":
@@ -1458,6 +1474,48 @@ func handleMemoryListFadingMemories(ctx context.Context, req jsonrpcRequest, mem
 	}
 
 	return successResponse(req.ID, memories)
+}
+
+// ─── Tiered Summary Handlers ──────────────────────────────────────────────────
+
+func handleMemoryGetTier0Summary(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem) jsonrpcResponse {
+	var params memoryGetTier0SummaryParams
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+		}
+	}
+
+	if memSys == nil {
+		return errorResponse(req.ID, -32603, "Internal error: memory system not initialized")
+	}
+
+	summary, err := memSys.GetTier0Summary(ctx, params.ForceRefresh)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	return successResponse(req.ID, summary)
+}
+
+func handleMemoryGetTier1Summary(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem) jsonrpcResponse {
+	var params memoryGetTier1SummaryParams
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+		}
+	}
+
+	if memSys == nil {
+		return errorResponse(req.ID, -32603, "Internal error: memory system not initialized")
+	}
+
+	summary, err := memSys.GetTier1Summary(ctx, params.ForceRefresh)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	return successResponse(req.ID, summary)
 }
 
 // ─── Knowledge Graph Handlers ─────────────────────────────────────────────────
