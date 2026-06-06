@@ -7,13 +7,13 @@ FROM oven/bun:1.3-slim AS builder
 
 WORKDIR /app
 
-# Copy TUI package.json for dependency installation.
-# Note: TUI uses package.json without a lockfile (deps installed via bun install
-# with exact=true in bunfig.toml). Running `bun install --no-save` would be a
-# no-op since node_modules is already populated; we COPY node_modules in.
+# Copy TUI package.json (no bun.lock — TUI deps are not pinned to a lockfile).
+# node_modules is gitignored so we re-install at build time.
 COPY packages/tui/package.json ./
-COPY packages/tui/node_modules/ node_modules/
 COPY packages/tui/bunfig.toml ./
+
+# Install dependencies (uses bunfig.toml for exact-version pinning).
+RUN bun install
 
 # Copy TUI source code.
 COPY packages/tui/src/ src/
