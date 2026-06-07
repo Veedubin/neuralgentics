@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-07
+
+Minor release: HTTP/SSE transport for hosted MCPs, OCI-shareable profile export/import, provider-aware small_model, and CI short-test fix.
+
+### Added
+
+- **HTTP/SSE transport for hosted MCPs (T-HTTP-TRANSPORT)** — `TransportType = "http"` and `"sse"` now work end-to-end. New `HTTPClient` in `packages/broker-go/src/neuralgentics/broker/proxy/http_client.go` implements `Initialize`, `ListTools`, `Call`, and `CallSSE` over HTTP POST + Server-Sent Events. Session tracking via `Mcp-Session-Id` response header. Auth via `Authorization` header from `TransportConfig.Env["NEURALGENTICS_MCP_AUTH"]`. SSE parsing via `bufio.Scanner` over `text/event-stream` responses. New `Client` interface in `proxy.go` and `NewClientForConfig` dispatch — `stdioClientAdapter` wraps the existing `MCPProxy` so stdio and HTTP use one code path. The `broker.activateMCPServer` handler now accepts an optional `url` field to auto-create an HTTP transport config. Activating a hosted MCP is as simple as `/mcp activate cloudflare-mcp` (assuming catalog has it) or `/catalog add <name>` with an `http` transport in the catalog.
+
+- **OCI-shareable profile export/import (T-PROFILE-OCI)** — New `tar.gz` profile format for sharing active broker state across machines. New `packages/broker-go/src/neuralgentics/broker/profile/profile.go` with `Profile` struct, `Manifest` (version+exported_at+exported_by+broker_version+file_count), `Export(w, passphrase)` and `Import(r, passphrase)` functions. Profile contents: `profile.json`, `provider-pref.json`, `catalog.lock.json`, `permissions.json`, `opencode.snapshot.json`, `provider.json`, `manifest.json`, plus optional `signature.bin` (HMAC-SHA256 over the archive). 2 new Broker methods `ExportProfile(w, passphrase, brokerVersion)` and `ImportProfile(r, passphrase)`. 2 new JSON-RPC handlers (broker.exportProfile, broker.importProfile). TUI `/profile` slash command with sub-commands `export`, `import <path>`, `list`, `help`. Default export path: `~/Downloads/neuralgentics-profile-{timestamp}.tar.gz`. Export history tracked in `~/.config/neuralgentics/profile-history.json` (last 5). OCI registry push/pull deferred to v0.5.1.
+
+- **Provider-aware small_model (T-SMALL-MODEL)** — TUI `/provider` command now writes the equivalent small model from the chosen provider to `provider-pref.json`. New `SMALL_MODEL_BY_PROVIDER` map: ollama-cloud → devstral-small-2:24b-cloud, dmr-local → ai/devstral-small-2:24b, openrouter → meta-llama/llama-3.1-8b-instruct. New `ProviderPref` interface fields `smallModel?` and `smallModelProvider?` (optional, backward compatible with v0.4.0 prefs). `readProviderPref` defaults to ollama-cloud's small model when prefs are missing or v0.4.0-shaped. Note: opencode itself reads `small_model` from `.opencode/opencode.json` (not from provider-pref.json) — that's documented as a design trade-off, will be unified in v0.6.0.
+
+- **CI short-test fix (T-CI-FIX)** — Added `testing.Short()` guard to `TestStartReader_ConcurrentRequests` in `proxy_test.go`. The test exercises concurrent JSON-RPC requests over a mock stdio subprocess and takes ~30s — it's now skipped under `-short` (which is already in `ci.yml` line 73). Full test suite (no `-short`) still runs locally for verification.
+
+### Quality gates (v0.5.0)
+
+- `go vet` — 4/4 Go modules clean
+- `go test -short` — 4/4 Go modules PASS
+- 24 new Go tests (9 profile + 6 http_client + 6 wireup + 3 misc): 6 in `http_client_test.go`, 9 in `profile_test.go`, 9 elsewhere
+- `tsc --noEmit` — TUI clean
+- `bun test` — TUI 780 pass / 0 fail (was 766 in v0.4.0; +14: 5 small-model + 9 profile)
+- `mkdocs build --strict` — 0 warnings
+- Pre-existing: `TestBroker` integration test was the 30s slow test — now guarded with `t.Short()` so it skips under `-short` (CI) and runs locally with `go test -count=1 ./...`
+
 ## [0.4.0] - 2026-06-07
 
 Minor release: multi-transport MCP support, curated catalog of 20 popular MCP servers, runtime LLM provider picker (3 providers: Ollama Cloud, Docker Model Runner, OpenRouter), and Docker Compose v2.38+ model integration.
