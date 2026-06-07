@@ -121,12 +121,13 @@ const COMMANDS = [
   "catalog",
   "mcp",
   "provider",
+  "profile",
 ] as const;
 
 export type CommandName = (typeof COMMANDS)[number];
 
 /** Available commands string for `/help` display. */
-const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume [card-id], /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light], /model [name|reset], /offline, /tier0 [force], /tier1 [force], /peer [list|switch <id>], /relationships <id>, /decay, /extract [convo], /catalog [list|add <name>|info <name>], /mcp [list|activate <name>|deactivate <name>], /provider [list|status|<name>]`;
+const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume [card-id], /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light], /model [name|reset], /offline, /tier0 [force], /tier1 [force], /peer [list|switch <id>], /relationships <id>, /decay, /extract [convo], /catalog [list|add <name>|info <name>], /mcp [list|activate <name>|deactivate <name>], /provider [list|status|<name>], /profile [export|import|list|help]`;
 
 /** Write commands that should be blocked when offline (T-081b). */
 const WRITE_COMMANDS: ReadonlySet<string> = new Set([
@@ -141,6 +142,7 @@ const WRITE_COMMANDS: ReadonlySet<string> = new Set([
   "catalog",
   "mcp",
   "provider",
+  "profile",
 ]);
 
 // ─── Dependency injection container ──────────────────────────────────────────────
@@ -372,6 +374,7 @@ export function handleSlashCommand(
     case "catalog":
     case "mcp":
     case "provider":
+    case "profile":
       // Async commands — signal that caller should use the dedicated async handler
       return {
         command: cmd,
@@ -2093,6 +2096,158 @@ export async function handleProviderCommand(
     return {
       command: "provider",
       message: `/provider failed: ${msg}`,
+      refreshKanban: false,
+    };
+  }
+}
+
+// ─── /profile command (T-PROFILE-OCI) ─────────────────────────────────────────────
+
+interface ProfileHistoryEntry {
+  path: string;
+  manifest: { version: string; exported_by: string; exported_at: string };
+  exportedAt: string;
+}
+
+function getProfileHistoryPath(): string {
+  const xdgConfig = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
+  return join(xdgConfig, "neuralgentics", "profile-history.json");
+}
+
+function readProfileHistory(): ProfileHistoryEntry[] {
+  const histPath = getProfileHistoryPath();
+  if (!existsSync(histPath)) return [];
+  try {
+    return JSON.parse(readFileSync(histPath, "utf-8"));
+  } catch {
+    return [];
+  }
+}
+
+function appendProfileHistory(p: string, manifest: { version: string; exported_by: string; exported_at: string }): void {
+  const histPath = getProfileHistoryPath();
+  const history = readProfileHistory();
+  history.unshift({ path: p, manifest, exportedAt: new Date().toISOString() });
+  history.splice(5); // keep last 5
+  mkdirSync(join(histPath, ".."), { recursive: true });
+  writeFileSync(histPath, JSON.stringify(history, null, 2));
+}
+
+function defaultProfilePath(): string {
+  const dl = join(homedir(), "Downloads");
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  return join(dl, `neuralgentics-profile-${ts}.tar.gz`);
+}
+
+export async function handleProfileCommand(client: NeuralgenticsClient, args: string[]): Promise<CommandResult> {
+  const sub = args[0];
+
+  if (!sub || sub === "help") {
+    return {
+      command: "profile",
+      message:
+        "Usage:\n" +
+        "  /profile export [path] [-p passphrase]  - Export active set to tar.gz\n" +
+        "  /profile import <path> [-p passphrase] [--force]  - Import a profile\n" +
+        "  /profile list  - Show last 5 exports",
+      refreshKanban: false,
+    };
+  }
+
+  try {
+    if (sub === "export") {
+      const passIdx = args.indexOf("-p");
+      const passphrase = passIdx >= 0 && args[passIdx + 1] ? args[passIdx + 1] : "";
+      const positional = args.slice(1).filter(a => !a.startsWith("-") && a !== args[passIdx + 1]);
+      const outputPath = positional[0] || defaultProfilePath();
+
+      const result = await client.call("broker.exportProfile", { passphrase, brokerVersion: "0.5.0" }) as {
+        manifest: { version: string; exported_at: string; exported_by: string; broker_version: string; file_count: number };
+        tarball: string;
+      };
+
+      mkdirSync(join(outputPath, ".."), { recursive: true });
+      writeFileSync(outputPath, Buffer.from(result.tarball, "base64"));
+      appendProfileHistory(outputPath, result.manifest);
+
+      return {
+        command: "profile",
+        message:
+          `Exported profile to: ${outputPath}\n` +
+          `Version: ${result.manifest.version}\n` +
+          `Exported by: ${result.manifest.exported_by} at ${result.manifest.exported_at}\n` +
+          `Files: ${result.manifest.file_count}${passphrase ? " (signed)" : " (unsigned)"}`,
+        refreshKanban: false,
+      };
+    }
+
+    if (sub === "import" && args[1]) {
+      const inputPath = args[1];
+      const passIdx = args.indexOf("-p");
+      const passphrase = passIdx >= 0 && args[passIdx + 1] ? args[passIdx + 1] : "";
+      const force = args.includes("--force");
+
+      if (!existsSync(inputPath)) {
+        return {
+          command: "profile",
+          message: `Profile file not found: ${inputPath}`,
+          refreshKanban: false,
+        };
+      }
+
+      const tarball = readFileSync(inputPath);
+      const result = await client.call("broker.importProfile", {
+        tarball: tarball.toString("base64"),
+        passphrase,
+        force,
+      }) as {
+        applied: number;
+        conflicts: string[];
+        manifest: { version: string; exported_by: string; exported_at: string };
+      };
+
+      return {
+        command: "profile",
+        message:
+          `Imported profile:\n` +
+          `  Version: ${result.manifest.version}\n` +
+          `  Exported by: ${result.manifest.exported_by}\n` +
+          `  Applied: ${result.applied} MCPs\n` +
+          `  Conflicts: ${result.conflicts.length > 0 ? result.conflicts.join(", ") : "(none)"}`,
+        refreshKanban: false,
+      };
+    }
+
+    if (sub === "list") {
+      const history = readProfileHistory();
+      if (history.length === 0) {
+        return {
+          command: "profile",
+          message: "No profile history yet. Run /profile export to create one.",
+          refreshKanban: false,
+        };
+      }
+      const lines = ["Last 5 profile exports:"];
+      for (const h of history) {
+        lines.push(`  ${h.exportedAt}  ${h.path}  (v${h.manifest.version})`);
+      }
+      return {
+        command: "profile",
+        message: lines.join("\n"),
+        refreshKanban: false,
+      };
+    }
+
+    return {
+      command: "profile",
+      message: "Usage: /profile [export|import|list|help]",
+      refreshKanban: false,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      command: "profile",
+      message: `/profile failed: ${msg}`,
       refreshKanban: false,
     };
   }

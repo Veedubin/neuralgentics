@@ -347,6 +347,42 @@ export interface ListTransportsResult {
   unavailable: string[];
 }
 
+// ─── Broker Profile Types (T-PROFILE-OCI) ──────────────────────────────────────
+
+/** Params for broker.exportProfile */
+export interface ExportProfileParams {
+  passphrase?: string;
+  brokerVersion?: string;
+}
+
+/** Result for broker.exportProfile */
+export interface ExportProfileResult {
+  tarball: string; // base64-encoded tar.gz
+  manifest: {
+    version: string;
+    exported_by: string;
+    broker_version: string;
+  };
+}
+
+/** Params for broker.importProfile */
+export interface ImportProfileParams {
+  tarball: string; // base64-encoded tar.gz
+  passphrase?: string;
+  force?: boolean;
+}
+
+/** Result for broker.importProfile */
+export interface ImportProfileResult {
+  applied: number;
+  conflicts: string[];
+  manifest: {
+    version: string;
+    exported_by: string;
+    exported_at: string;
+  };
+}
+
 export interface MethodRegistry {
   // Lifecycle
   "ping": { params: Record<string, never>; result: PingResult };
@@ -488,6 +524,10 @@ export interface MethodRegistry {
   "broker.activateFromCatalog": { params: ActivateFromCatalogParams; result: ActivateFromCatalogResult };
   "broker.deactivateMCPServer": { params: DeactivateMCPServerParams; result: DeactivateMCPServerResult };
   "broker.listTransports": { params: ListTransportsParams; result: ListTransportsResult };
+
+  // Broker Profile (T-PROFILE-OCI)
+  "broker.exportProfile": { params: ExportProfileParams; result: ExportProfileResult };
+  "broker.importProfile": { params: ImportProfileParams; result: ImportProfileResult };
 
   // Peer
   "peer.listPeers": { params: Record<string, unknown>; result: Record<string, unknown>[] };
