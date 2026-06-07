@@ -1,7 +1,8 @@
 /**
  * T-065 tests: /provider TUI slash command for runtime LLM provider switching.
+ * T-SMALL-MODEL tests: provider-aware small_model in /provider command.
  *
- * Covers 8 test cases:
+ * Covers 13 test cases:
  * 1. /provider (no args) shows current default ollama-cloud
  * 2. /provider ollama-cloud writes provider-pref.json
  * 3. /provider dmr-local writes provider-pref.json
@@ -10,6 +11,11 @@
  * 6. /provider list calls client.providerStatus and formats
  * 7. /provider status is alias for list
  * 8. After /provider dmr-local, reading the file back shows activeProvider: "dmr-local"
+ * 9. /provider writes small model for dmr-local
+ * 10. /provider writes small model for openrouter
+ * 11. /provider with no args shows current small model
+ * 12. readProviderPref handles v0.4.0 prefs (no smallModel field)
+ * 13. readProviderPref handles missing pref file
  */
 
 import { describe, test, expect, vi, beforeEach, afterEach } from "bun:test";
@@ -17,6 +23,11 @@ import {
   handleSlashCommand,
   isWriteCommand,
   handleProviderCommand,
+  readProviderPref,
+  getProviderPrefPath,
+  SMALL_MODEL_BY_PROVIDER,
+  DEFAULT_PROVIDER,
+  writeActiveProvider,
 } from "../commands.js";
 import type { NeuralgenticsClient } from "../neuralgentics-client/client.js";
 import type {
@@ -124,6 +135,7 @@ describe("/provider command (async)", () => {
     const result = await handleProviderCommand(client, "/provider ollama-cloud");
     expect(result.command).toBe("provider");
     expect(result.message).toContain("Switched active provider to: ollama-cloud");
+    expect(result.message).toContain("Small model:");
     expect(result.message).toContain("Restart opencode TUI session");
 
     // Verify file was written
@@ -131,6 +143,8 @@ describe("/provider command (async)", () => {
     expect(fs.existsSync(prefPath)).toBe(true);
     const pref = JSON.parse(fs.readFileSync(prefPath, "utf-8"));
     expect(pref.activeProvider).toBe("ollama-cloud");
+    expect(pref.smallModel).toBe("ollama-cloud/devstral-small-2:24b-cloud");
+    expect(pref.smallModelProvider).toBe("ollama-cloud");
   });
 
   test("/provider dmr-local writes provider-pref.json", async () => {
@@ -204,5 +218,70 @@ describe("/provider command (async)", () => {
     const readClient = createMockClient({});
     const readResult = await handleProviderCommand(readClient, "/provider");
     expect(readResult.message).toContain("Active provider: dmr-local");
+    expect(readResult.message).toContain("Small model:");
+  });
+});
+
+// ─── T-SMALL-MODEL: provider-aware small_model tests ──────────────────────────────
+
+describe("/provider small model (T-SMALL-MODEL)", () => {
+  test("/provider writes small model for dmr-local", async () => {
+    const client = createMockClient({});
+    await handleProviderCommand(client, "/provider dmr-local");
+
+    const prefPath = path.join(tmpDir, "neuralgentics", "provider-pref.json");
+    const pref = JSON.parse(fs.readFileSync(prefPath, "utf-8"));
+    expect(pref.activeProvider).toBe("dmr-local");
+    expect(pref.smallModel).toBe("dmr-local/ai/devstral-small-2:24b");
+    expect(pref.smallModelProvider).toBe("dmr-local");
+  });
+
+  test("/provider writes small model for openrouter", async () => {
+    const client = createMockClient({});
+    await handleProviderCommand(client, "/provider openrouter");
+
+    const prefPath = path.join(tmpDir, "neuralgentics", "provider-pref.json");
+    const pref = JSON.parse(fs.readFileSync(prefPath, "utf-8"));
+    expect(pref.activeProvider).toBe("openrouter");
+    expect(pref.smallModel).toBe("openrouter/meta-llama/llama-3.1-8b-instruct");
+    expect(pref.smallModelProvider).toBe("openrouter");
+  });
+
+  test("/provider with no args shows current small model", async () => {
+    // First switch to dmr-local
+    const switchClient = createMockClient({});
+    await handleProviderCommand(switchClient, "/provider dmr-local");
+
+    // Now call /provider with no args — should show small model
+    const readClient = createMockClient({});
+    const readResult = await handleProviderCommand(readClient, "/provider");
+    expect(readResult.message).toContain("Active provider: dmr-local");
+    expect(readResult.message).toContain("Small model: dmr-local/ai/devstral-small-2:24b");
+  });
+
+  test("readProviderPref handles v0.4.0 prefs (no smallModel field)", () => {
+    // Write a v0.4.0-shaped pref (no smallModel, no smallModelProvider)
+    const prefDir = path.join(tmpDir, "neuralgentics");
+    fs.mkdirSync(prefDir, { recursive: true });
+    const prefPath = path.join(prefDir, "provider-pref.json");
+    const v04Pref = {
+      activeProvider: "dmr-local",
+      updatedAt: "2026-06-01T00:00:00Z",
+    };
+    fs.writeFileSync(prefPath, JSON.stringify(v04Pref, null, 2));
+
+    // readProviderPref should fill in the smallModel from the catalog
+    const pref = readProviderPref();
+    expect(pref.activeProvider).toBe("dmr-local");
+    expect(pref.smallModel).toBe("dmr-local/ai/devstral-small-2:24b");
+    expect(pref.smallModelProvider).toBe("dmr-local");
+  });
+
+  test("readProviderPref handles missing pref file", () => {
+    // Ensure no pref file exists (tmpDir is fresh from beforeEach)
+    const pref = readProviderPref();
+    expect(pref.activeProvider).toBe(DEFAULT_PROVIDER);
+    expect(pref.smallModel).toBe(SMALL_MODEL_BY_PROVIDER[DEFAULT_PROVIDER]);
+    expect(pref.smallModelProvider).toBe(DEFAULT_PROVIDER);
   });
 });
