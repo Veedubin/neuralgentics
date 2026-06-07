@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-07
+
+Minor release: TUI command coverage, IMPROVE phase implementation, broker exposure fixes, dual-model memory elevation.
+
+### Added
+
+- **IMPROVE phase runner (T-IMPROVE-002)** — Step 7 of the 9-step Boomerang Protocol is now executable, not just documented. `packages/orchestrator-go/improve.go` provides `ImproveHandler` that calls `memory.triggerExtraction` and `memory.getTier1Summary` after quality gates pass. 6 unit tests cover success, partial failure, and edge cases.
+- **7 new TUI slash commands (T-WIRE-001)** — closes the gap where 5 broker methods were exposed at the protocol layer but had no UI. New commands: `/tier0 [force]`, `/tier1 [force]`, `/peer list`, `/peer switch <id>`, `/relationships <memoryId>`, `/decay`, `/extract [convo]`. 29 new tests in `t063-slash-commands.test.ts`.
+- **`elevate_memory_to_1024` Go implementation (T-ELEVATE-001)** — the last of the 6 methods from the Session 30 broker-exposure audit. Promotes a 384-dim memory to the 1024-dim table, with zero-pad + L2-normalize fallback, trust clamping to [0, 1], and idempotent inserts. 5 unit tests + 2 handler tests.
+
+### Changed
+
+- **4 JSON-RPC param signatures aligned with memini-ai source-of-truth (T-ALIGN-PARAMS)** — `extract_entities` now takes `memoryId` (fetches memory first), `resolve_contradiction` takes `memoryIdA + memoryIdB` (was `contradictionId`), `challenge_memory` dropped the extra `challengerId` param, `get_inference_chain` is now a standalone handler (was folded into `queryKG`).
+- **TUI MethodRegistry: 43 entries marked as not-yet-wired (T-CLEANUP-DEAD-49)** — comment-only refactor. No deletions. 25 entries preserved for active use + reserved for T-WIRE-001 / T-ALIGN-PARAMS. Doc header count updated from 46 to 68 to reflect total entries.
+
+### Fixed
+
+- **`setup.test.ts` no longer hardcodes the version literal (T-VERS-DISK)** — reads expected version from root `package.json` at test time. Prevents the v0.1.1 / v0.1.2 / v0.1.3 / v0.2.0 release-day scramble where this test had to be manually bumped every release.
+
+### Quality gates (v0.3.0)
+
+- `go vet` — 4/4 Go modules clean
+- `go test -short` — 4/4 Go modules PASS
+- `tsc --noEmit` — TUI + overlay both clean
+- `bun test` — TUI 744 pass / 0 fail + SDK pass / 0 fail
+- `mkdocs build --strict` — 0 warnings
+- Pre-existing: store + orchestrator E2E tests fail with "no Docker provider" (testcontainers can't init in this environment). Not a regression from this release; documented in v0.2.0 quality gates section as well.
+
 ## [0.2.0] - 2026-06-06
 
 Minor release: first-class container support + complete store/ coverage push.
