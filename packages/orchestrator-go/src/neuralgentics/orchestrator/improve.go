@@ -39,6 +39,54 @@ type ConfigFingerprint struct {
 	CapturedAt     time.Time         `json:"captured_at"`
 }
 
+// ContextBudget tracks token usage for a single IMPROVE call and the
+// running session total. When the session total exceeds 70% of the
+// model's context window, the orchestrator should precompress.
+type ContextBudget struct {
+	TaskInputTokens       int       `json:"task_input_tokens"`                // estimated from `conversation` argument
+	TaskOutputTokens      int       `json:"task_output_tokens"`               // estimated from extracted patterns + summary
+	SessionTokensUsed     int       `json:"session_tokens_used"`              // running total (set by orchestrator)
+	SessionBudgetPercent  float64   `json:"session_budget_percent"`           // 0.0-1.0 (set by orchestrator)
+	ContextWindowTokens   int       `json:"context_window_tokens"`            // model's max context (e.g. 200000)
+	RecommendPrecompress  bool      `json:"recommend_precompress"`            // true if SessionBudgetPercent >= 0.70
+	PrecompressionTrigger string    `json:"precompression_trigger,omitempty"` // human-readable reason
+	CapturedAt            time.Time `json:"captured_at"`
+}
+
+// DefaultContextWindowTokens is the assumed max context window for
+// Ollama Cloud models. Conservative default; orchestrator can override
+// per-model via SetContextWindow().
+const DefaultContextWindowTokens = 200000
+
+// PrecompressionThresholdPercent is the session-budget percentage at
+// which IMPROVE recommends precompression. 70% leaves headroom for
+// the next task's input + output.
+const PrecompressionThresholdPercent = 0.70
+
+// EstimateTokens is a rough heuristic for English/code-mixed text.
+// Uses the standard rule of thumb: ~4 chars per token. Returns 0 for
+// empty input. This is a coarse estimate; production systems should
+// use the model's actual tokenizer. Documented limitation.
+func EstimateTokens(s string) int {
+	if s == "" {
+		return 0
+	}
+	// 4 chars/token is the standard heuristic (OpenAI, Anthropic)
+	return (len(s) + 3) / 4
+}
+
+// EstimateTaskOutputTokens estimates the output tokens from a typical
+// IMPROVE call. The summary is ~2K tokens for a non-empty project.
+// The patterns are a small overhead (~50-200 tokens each).
+func EstimateTaskOutputTokens(patternsExtracted int, summaryGenerated bool) int {
+	var n int
+	if summaryGenerated {
+		n += 2000 // typical L1 summary
+	}
+	n += patternsExtracted * 100 // each pattern ~100 tokens
+	return n
+}
+
 // ImproveResult tracks what the IMPROVE phase accomplished.
 type ImproveResult struct {
 	TaskID              string             `json:"task_id"`
@@ -51,6 +99,7 @@ type ImproveResult struct {
 	CompletedAt         time.Time          `json:"completed_at"`
 	Duration            string             `json:"duration"`
 	ConfigFingerprint   *ConfigFingerprint `json:"config_fingerprint,omitempty"`
+	ContextBudget       *ContextBudget     `json:"context_budget,omitempty"`
 	RestartRecommended  bool               `json:"restart_recommended"`
 }
 
@@ -72,14 +121,35 @@ type ImproveMemoryProvider interface {
 // orchestrator's normal trust-bump and relationship pathways — the
 // IMPROVE handler's job is extraction + summary generation.
 type ImproveHandler struct {
-	memory   ImproveMemoryProvider
-	repoRoot string
+	memory        ImproveMemoryProvider
+	repoRoot      string
+	contextWindow int
 }
 
 // NewImproveHandler creates a new IMPROVE handler with the given memory provider.
 // If repoRoot is empty, fingerprinting is skipped (returns empty ConfigFingerprint).
 func NewImproveHandler(memory ImproveMemoryProvider, repoRoot string) *ImproveHandler {
-	return &ImproveHandler{memory: memory, repoRoot: repoRoot}
+	return &ImproveHandler{
+		memory:        memory,
+		repoRoot:      repoRoot,
+		contextWindow: DefaultContextWindowTokens,
+	}
+}
+
+// NewImproveHandlerWithContext creates a handler with a custom context
+// window size (otherwise defaults to DefaultContextWindowTokens).
+func NewImproveHandlerWithContext(memory ImproveMemoryProvider, repoRoot string, contextWindow int) *ImproveHandler {
+	h := NewImproveHandler(memory, repoRoot)
+	if contextWindow > 0 {
+		h.contextWindow = contextWindow
+	}
+	return h
+}
+
+// SetContextWindow overrides the default context window size.
+// Useful for models with smaller or larger context (e.g. 32K, 1M).
+func (h *ImproveHandler) SetContextWindow(tokens int) {
+	h.contextWindow = tokens
 }
 
 // Run executes the IMPROVE phase. It is safe to call multiple times
@@ -126,10 +196,32 @@ func (h *ImproveHandler) Run(ctx context.Context, taskID string, conversation st
 	//    trust-bump pathway when memories are queried during work.
 	result.TrustAdjustments = 0
 
+	// 4. Compute context budget and recommend precompression if needed.
+	result.ContextBudget = h.computeContextBudget(conversation, result.PatternsExtracted, result.SummaryGenerated)
+
 	log.Printf("[IMPROVE] complete task_id=%s patterns=%d summary=%t",
 		taskID, result.PatternsExtracted, result.SummaryGenerated)
 
 	return result, nil
+}
+
+// computeContextBudget returns the per-task token estimate. Session-level
+// totals (SessionTokensUsed, SessionBudgetPercent) are populated by the
+// orchestrator after this call returns, not here.
+func (h *ImproveHandler) computeContextBudget(conversation string, patterns int, summary bool) *ContextBudget {
+	inputTokens := EstimateTokens(conversation)
+	outputTokens := EstimateTaskOutputTokens(patterns, summary)
+	window := h.contextWindow
+	if window <= 0 {
+		window = DefaultContextWindowTokens
+	}
+	return &ContextBudget{
+		TaskInputTokens:      inputTokens,
+		TaskOutputTokens:     outputTokens,
+		ContextWindowTokens:  window,
+		RecommendPrecompress: false,
+		CapturedAt:           time.Now(),
+	}
 }
 
 // ComputeConfigFingerprint reads AGENTS.md, opencode.json, and the

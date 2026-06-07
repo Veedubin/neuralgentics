@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -359,5 +360,129 @@ func TestHashFile_NotFound(t *testing.T) {
 	}
 	if size != 0 {
 		t.Errorf("size = %d, want 0", size)
+	}
+}
+
+// ============================================================================
+// Token Estimation Tests
+// ============================================================================
+
+func TestEstimateTokens_Empty(t *testing.T) {
+	got := EstimateTokens("")
+	if got != 0 {
+		t.Errorf("EstimateTokens(\"\") = %d, want 0", got)
+	}
+}
+
+func TestEstimateTokens_Short(t *testing.T) {
+	// "hello world" = 11 chars → (11+3)/4 = 3
+	got := EstimateTokens("hello world")
+	if got != 3 {
+		t.Errorf("EstimateTokens(\"hello world\") = %d, want 3", got)
+	}
+}
+
+func TestEstimateTokens_Long(t *testing.T) {
+	// 400 chars → (400+3)/4 = 100
+	got := EstimateTokens(strings.Repeat("a", 400))
+	if got != 100 {
+		t.Errorf("EstimateTokens(400 chars) = %d, want 100", got)
+	}
+}
+
+func TestEstimateTaskOutputTokens_NoSummary(t *testing.T) {
+	got := EstimateTaskOutputTokens(0, false)
+	if got != 0 {
+		t.Errorf("EstimateTaskOutputTokens(0, false) = %d, want 0", got)
+	}
+}
+
+func TestEstimateTaskOutputTokens_SummaryOnly(t *testing.T) {
+	got := EstimateTaskOutputTokens(0, true)
+	if got != 2000 {
+		t.Errorf("EstimateTaskOutputTokens(0, true) = %d, want 2000", got)
+	}
+}
+
+func TestEstimateTaskOutputTokens_PatternsAndSummary(t *testing.T) {
+	// 5 patterns * 100 + 2000 summary = 2500
+	got := EstimateTaskOutputTokens(5, true)
+	if got != 2500 {
+		t.Errorf("EstimateTaskOutputTokens(5, true) = %d, want 2500", got)
+	}
+}
+
+// ============================================================================
+// ContextBudget Tests
+// ============================================================================
+
+func TestImproveHandler_IncludesContextBudget(t *testing.T) {
+	mock := &mockImproveMemory{
+		triggerExtractionN: 2,
+		summaryResult:      "some summary",
+	}
+	handler := NewImproveHandler(mock, "")
+
+	result, err := handler.Run(context.Background(), "task-001", "some conversation text")
+	if err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	if result.ContextBudget == nil {
+		t.Fatal("ContextBudget should not be nil")
+	}
+	if result.ContextBudget.TaskInputTokens <= 0 {
+		t.Errorf("TaskInputTokens = %d, want > 0", result.ContextBudget.TaskInputTokens)
+	}
+	if result.ContextBudget.ContextWindowTokens != DefaultContextWindowTokens {
+		t.Errorf("ContextWindowTokens = %d, want %d", result.ContextBudget.ContextWindowTokens, DefaultContextWindowTokens)
+	}
+	if result.ContextBudget.CapturedAt.IsZero() {
+		t.Error("CapturedAt should not be zero")
+	}
+	// RecommendPrecompress is false by default (orchestrator sets it based on session totals)
+	if result.ContextBudget.RecommendPrecompress {
+		t.Error("RecommendPrecompress should be false (set by orchestrator)")
+	}
+}
+
+func TestImproveHandler_CustomContextWindow(t *testing.T) {
+	mock := &mockImproveMemory{
+		triggerExtractionN: 0,
+		summaryResult:      "",
+	}
+	handler := NewImproveHandlerWithContext(mock, "", 32000)
+
+	result, err := handler.Run(context.Background(), "task-001", "")
+	if err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	if result.ContextBudget == nil {
+		t.Fatal("ContextBudget should not be nil")
+	}
+	if result.ContextBudget.ContextWindowTokens != 32000 {
+		t.Errorf("ContextWindowTokens = %d, want 32000", result.ContextBudget.ContextWindowTokens)
+	}
+}
+
+func TestSetContextWindow(t *testing.T) {
+	mock := &mockImproveMemory{
+		triggerExtractionN: 1,
+		summaryResult:      "summary",
+	}
+	handler := NewImproveHandler(mock, "")
+	handler.SetContextWindow(128000)
+
+	result, err := handler.Run(context.Background(), "task-001", "conversation")
+	if err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	if result.ContextBudget == nil {
+		t.Fatal("ContextBudget should not be nil")
+	}
+	if result.ContextBudget.ContextWindowTokens != 128000 {
+		t.Errorf("ContextWindowTokens = %d, want 128000", result.ContextBudget.ContextWindowTokens)
 	}
 }
