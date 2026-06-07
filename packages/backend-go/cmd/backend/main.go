@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -519,6 +520,29 @@ type agentGetInitialToolSetParams struct {
 	PeerID string `json:"peerId"`
 }
 
+// ─── Provider Status Request/Response Structs (T-DUAL-PROVIDER) ──────────────
+
+type providerStatusParams struct{}
+
+// ProviderStatus represents the health check result for a single LLM provider.
+type ProviderStatus struct {
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	Status    string `json:"status"` // "ok", "offline", "needs_auth", "error"
+	LatencyMs int64  `json:"latencyMs,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// Known providers for health checking.
+var knownProviders = []struct {
+	Name string
+	URL  string
+}{
+	{"ollama-cloud", "https://ollama.com/v1/models"},
+	{"dmr-local", "http://localhost:12434/engines/v1/models"},
+	{"openrouter", "https://openrouter.ai/api/v1/models"},
+}
+
 // ─── Dual-Model RRF: Elevation Request Struct (T-ELEVATE-001) ──────────────
 
 type memoryElevateMemoryTo1024Params struct {
@@ -888,6 +912,10 @@ func handleRequest(
 		return handleAgentGetTools(ctx, req, memSys)
 	case "agent.getInitialToolSet":
 		return handleAgentGetInitialToolSet(ctx, req, memSys)
+
+	// Provider Status (T-DUAL-PROVIDER)
+	case "provider.status":
+		return handleProviderStatus(req)
 
 	default:
 		return errorResponse(req.ID, -32601, fmt.Sprintf("Method not found: %s", req.Method))
@@ -2802,4 +2830,80 @@ func emitReadyNotificationTo(w io.Writer) {
 
 func emitReadyNotification() {
 	emitReadyNotificationTo(os.Stdout)
+}
+
+// ─── Provider Status Handler (T-DUAL-PROVIDER) ──────────────────────────────────
+
+// handleProviderStatus pings the /v1/models endpoint of each known LLM provider
+// and returns an array of status results. This is a read-only operation that
+// does not require a permission check.
+func handleProviderStatus(req jsonrpcRequest) jsonrpcResponse {
+	// Validate params if present
+	if req.Params != nil {
+		var params providerStatusParams
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+		}
+	}
+
+	results := make([]ProviderStatus, len(knownProviders))
+
+	// Use a WaitGroup to ping all providers concurrently.
+	var wg sync.WaitGroup
+	for i, p := range knownProviders {
+		wg.Add(1)
+		go func(idx int, name, url string) {
+			defer wg.Done()
+			results[idx] = pingProvider(name, url)
+		}(i, p.Name, p.URL)
+	}
+	wg.Wait()
+
+	return successResponse(req.ID, results)
+}
+
+// pingProvider performs an HTTP GET to the provider's /models endpoint with
+// a 3-second timeout and classifies the response status.
+func pingProvider(name, url string) ProviderStatus {
+	client := &http.Client{Timeout: 3 * time.Second}
+	start := time.Now()
+	resp, err := client.Get(url)
+	elapsed := time.Since(start).Milliseconds()
+
+	if err != nil {
+		// Connection refused or timeout → offline
+		return ProviderStatus{
+			Name:      name,
+			URL:       url,
+			Status:    "offline",
+			LatencyMs: elapsed,
+			Error:     err.Error(),
+		}
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return ProviderStatus{
+			Name:      name,
+			URL:       url,
+			Status:    "ok",
+			LatencyMs: elapsed,
+		}
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return ProviderStatus{
+			Name:      name,
+			URL:       url,
+			Status:    "needs_auth",
+			LatencyMs: elapsed,
+		}
+	default:
+		return ProviderStatus{
+			Name:      name,
+			URL:       url,
+			Status:    "error",
+			LatencyMs: elapsed,
+			Error:     fmt.Sprintf("HTTP %d", resp.StatusCode),
+		}
+	}
 }
