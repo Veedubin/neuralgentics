@@ -135,7 +135,7 @@ func TestProtocolMachineAdvance(t *testing.T) {
 	// Advance through protocol steps
 	steps := []ProtocolStep{
 		StepMemoryQuery, StepThoughtChain, StepPlan,
-		StepDelegate, StepGitCheck, StepQualityGates,
+		StepDelegate, StepGitCheck, StepQualityGates, StepImprove,
 		StepDocUpdate, StepMemorySave, StepComplete,
 	}
 
@@ -149,8 +149,8 @@ func TestProtocolMachineAdvance(t *testing.T) {
 	if state.CurrentStep != StepComplete {
 		t.Errorf("final state = %v, want COMPLETE", state.CurrentStep)
 	}
-	if len(state.CompletedSteps) != 8 {
-		t.Errorf("completed steps = %d, want 8", len(state.CompletedSteps))
+	if len(state.CompletedSteps) != 9 {
+		t.Errorf("completed steps = %d, want 9", len(state.CompletedSteps))
 	}
 }
 
@@ -173,6 +173,7 @@ func TestProtocolMachineEnforce(t *testing.T) {
 	pm.Advance(taskID, StepDelegate)
 	pm.Advance(taskID, StepGitCheck)
 	pm.Advance(taskID, StepQualityGates)
+	pm.Advance(taskID, StepImprove)
 	pm.Advance(taskID, StepDocUpdate)
 	pm.Advance(taskID, StepMemorySave)
 
@@ -198,6 +199,7 @@ func TestProtocolMachineWaiverPhrases(t *testing.T) {
 		{"skip gates", StepQualityGates, true},
 		{"git is fine", StepGitCheck, true},
 		{"no docs needed", StepDocUpdate, true},
+		{"skip improve", StepImprove, true},
 		{"skip planning", StepGitCheck, false},
 		{"random phrase", StepPlan, false},
 	}
@@ -209,6 +211,75 @@ func TestProtocolMachineWaiverPhrases(t *testing.T) {
 				t.Errorf("CanWaiverStep(%q, %s) = %v, want %v", tt.phrase, tt.step, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestProtocolImproveTransitions(t *testing.T) {
+	pm := NewProtocolMachine(StrictnessStrict)
+	taskID := "test-improve-transitions"
+	pm.InitState(taskID)
+
+	// Advance through all steps leading up to QUALITY_GATES
+	for _, step := range []ProtocolStep{
+		StepMemoryQuery, StepThoughtChain, StepPlan,
+		StepDelegate, StepGitCheck, StepQualityGates,
+	} {
+		if err := pm.Advance(taskID, step); err != nil {
+			t.Fatalf("Advance to %s error: %v", step, err)
+		}
+	}
+
+	// Valid: QUALITY_GATES → IMPROVE
+	if err := pm.Advance(taskID, StepImprove); err != nil {
+		t.Errorf("Advance from QUALITY_GATES to IMPROVE should be valid, got: %v", err)
+	}
+
+	// Valid: IMPROVE → DOC_UPDATE
+	if err := pm.Advance(taskID, StepDocUpdate); err != nil {
+		t.Errorf("Advance from IMPROVE to DOC_UPDATE should be valid, got: %v", err)
+	}
+}
+
+func TestProtocolImproveCannotSkipToMemorySave(t *testing.T) {
+	pm := NewProtocolMachine(StrictnessStrict)
+	taskID := "test-improve-no-skip"
+	pm.InitState(taskID)
+
+	// Advance to IMPROVE
+	pm.Advance(taskID, StepQualityGates)
+	pm.Advance(taskID, StepImprove)
+
+	// Invalid: IMPROVE → MEMORY_SAVE (must go through DOC_UPDATE first)
+	err := pm.Advance(taskID, StepMemorySave)
+	if err == nil {
+		t.Error("Advance from IMPROVE to MEMORY_SAVE should fail in strict mode")
+	}
+}
+
+func TestProtocolStepsContainsImprove(t *testing.T) {
+	found := false
+	for _, step := range ProtocolSteps {
+		if step == StepImprove {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("ProtocolSteps should contain StepImprove")
+	}
+
+	// IMPROVE should be at index 6 (between QUALITY_GATES at 5 and DOC_UPDATE at 7)
+	if len(ProtocolSteps) < 7 {
+		t.Fatalf("ProtocolSteps length = %d, want at least 7", len(ProtocolSteps))
+	}
+	if ProtocolSteps[5] != StepQualityGates {
+		t.Errorf("ProtocolSteps[5] = %v, want QUALITY_GATES", ProtocolSteps[5])
+	}
+	if ProtocolSteps[6] != StepImprove {
+		t.Errorf("ProtocolSteps[6] = %v, want IMPROVE", ProtocolSteps[6])
+	}
+	if ProtocolSteps[7] != StepDocUpdate {
+		t.Errorf("ProtocolSteps[7] = %v, want DOC_UPDATE", ProtocolSteps[7])
 	}
 }
 

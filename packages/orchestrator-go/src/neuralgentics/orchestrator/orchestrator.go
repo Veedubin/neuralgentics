@@ -23,6 +23,9 @@ type OrchestratorConfig struct {
 	// UseStatelessAgents enables stateless mode where context is stored in memory
 	// and agents receive a seed prompt with a memory ID.
 	UseStatelessAgents bool
+	// ImproveMemoryProvider supplies the memory interface used by the IMPROVE
+	// handler (step 7 of 9). If nil, the IMPROVE phase is skipped.
+	ImproveMemory ImproveMemoryProvider
 }
 
 // Orchestrator is the central routing and protocol enforcement layer.
@@ -30,13 +33,14 @@ type OrchestratorConfig struct {
 // *memory.MemorySystem satisfies this interface.
 //
 // All methods are thread-safe. The orchestrator manages protocol state per task,
-// enforces the 8-step Boomerang Protocol, and routes tasks to specialist agents.
+// enforces the 9-step Boomerang Protocol, and routes tasks to specialist agents.
 type Orchestrator struct {
-	mu       sync.Mutex
-	memory   MemoryProvider
-	config   *OrchestratorConfig
-	protocol *ProtocolMachine
-	fileLock *FileOwnershipRegistry
+	mu             sync.Mutex
+	memory         MemoryProvider
+	config         *OrchestratorConfig
+	protocol       *ProtocolMachine
+	fileLock       *FileOwnershipRegistry
+	improveHandler *ImproveHandler
 }
 
 // New creates a new Orchestrator with the given configuration.
@@ -53,12 +57,19 @@ func New(cfg *OrchestratorConfig) (*Orchestrator, error) {
 		cfg.MaxConcurrent = 5
 	}
 
-	return &Orchestrator{
+	orch := &Orchestrator{
 		memory:   cfg.Memory,
 		config:   cfg,
 		protocol: NewProtocolMachine(cfg.ProtocolStrictness),
 		fileLock: NewFileOwnershipRegistry(),
-	}, nil
+	}
+
+	// Wire IMPROVE handler if the improve memory provider is configured.
+	if cfg.ImproveMemory != nil {
+		orch.improveHandler = NewImproveHandler(cfg.ImproveMemory)
+	}
+
+	return orch, nil
 }
 
 // HandleTask is the main entry point. It routes a task to the correct agent,
@@ -221,7 +232,8 @@ func (o *Orchestrator) handleTaskInline(ctx context.Context, task Task) (Orchest
 }
 
 // CompleteTaskCycle completes the task cycle after an agent returns.
-// It fetches the wrap-up from memory, adjusts trust, and completes the protocol.
+// It fetches the wrap-up from memory, adjusts trust, runs the IMPROVE
+// phase (if configured), and completes the protocol.
 func (o *Orchestrator) CompleteTaskCycle(
 	ctx context.Context,
 	taskID string,
@@ -237,6 +249,18 @@ func (o *Orchestrator) CompleteTaskCycle(
 	// Step 2: Adjust trust on the context memory (agent_used signal = +0.05)
 	if _, err := o.memory.AdjustTrust(ctx, contextMemoryID, SignalAgentUsed); err != nil {
 		log.Printf("[Orchestrator] failed to adjust trust on context memory %s: %v", contextMemoryID, err)
+	}
+
+	// Step 2b: Run IMPROVE phase (step 7 of 9) if the improve handler is configured.
+	// This extracts patterns from the completed work and fetches L1 summary.
+	if o.improveHandler != nil {
+		improveResult, improveErr := o.improveHandler.Run(ctx, taskID, wrapUp.Summary)
+		if improveErr != nil {
+			log.Printf("[Orchestrator] IMPROVE phase failed for task %s: %v", taskID, improveErr)
+		} else if len(improveResult.Errors) > 0 {
+			log.Printf("[Orchestrator] IMPROVE phase completed with %d error(s) for task %s: %v",
+				len(improveResult.Errors), taskID, improveResult.Errors)
+		}
 	}
 
 	// Step 3: Complete remaining protocol steps
@@ -281,6 +305,21 @@ func (o *Orchestrator) defaultDispatch(ctx context.Context, task Task, agent Age
 		Success:  true,
 		Duration: time.Since(start),
 	}, nil
+}
+
+// SetImproveHandler sets the IMPROVE handler. Use this when the improve
+// memory provider is not available at construction time.
+func (o *Orchestrator) SetImproveHandler(handler *ImproveHandler) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.improveHandler = handler
+}
+
+// GetImproveHandler returns the current IMPROVE handler, or nil if not set.
+func (o *Orchestrator) GetImproveHandler() *ImproveHandler {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.improveHandler
 }
 
 // Close shuts down the orchestrator and releases resources.
