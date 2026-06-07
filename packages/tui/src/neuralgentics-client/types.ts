@@ -214,6 +214,20 @@ export interface ElevateMemoryTo1024Result {
   vectorDim: number;
 }
 
+// ─── Provider Status Types (T-DUAL-PROVIDER) ──────────────────────────────────
+
+/** A single provider health check result. */
+export interface ProviderStatusEntry {
+  name: string;
+  url: string;
+  status: 'ok' | 'offline' | 'needs_auth' | 'error';
+  latencyMs?: number;
+  error?: string;
+}
+
+/** Result type for provider.status — array of provider health check results. */
+export type ProviderStatusResult = ProviderStatusEntry[];
+
 // ─── Broker Multi-Transport Types (T-TRANSPORT-ABSTRACTION) ─────────────────
 
 /** Transport type for MCP server launch */
@@ -482,6 +496,9 @@ export interface MethodRegistry {
   "agent.getTools": { params: Record<string, unknown>; result: Record<string, unknown>[] };
   // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "agent.getInitialToolSet": { params: Record<string, unknown>; result: { peerId: string; tools: unknown[] } };
+
+  // Provider Status (T-DUAL-PROVIDER)
+  "provider.status": { params: Record<string, never>; result: ProviderStatusResult };
 }
 
 /** All known method names (68 total). */

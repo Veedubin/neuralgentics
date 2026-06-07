@@ -18,8 +18,9 @@
  *   /help — list commands
  */
 
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import type {
   CompactionOrchestrator,
   CompactionResult,
@@ -46,6 +47,7 @@ import type {
   CuratedTransport,
   DiscoverCatalogResult,
   ListTransportsResult,
+  ProviderStatusEntry,
 } from "./neuralgentics-client/types.js";
 import type { OfflineState } from "./panels/status.js";
 import type { ModelPrefClient } from "./agents/model-registry.js";
@@ -117,12 +119,13 @@ const COMMANDS = [
   "extract",
   "catalog",
   "mcp",
+  "provider",
 ] as const;
 
 export type CommandName = (typeof COMMANDS)[number];
 
 /** Available commands string for `/help` display. */
-const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume [card-id], /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light], /model [name|reset], /offline, /tier0 [force], /tier1 [force], /peer [list|switch <id>], /relationships <id>, /decay, /extract [convo], /catalog [list|add <name>|info <name>], /mcp [list|activate <name>|deactivate <name>]`;
+const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume [card-id], /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light], /model [name|reset], /offline, /tier0 [force], /tier1 [force], /peer [list|switch <id>], /relationships <id>, /decay, /extract [convo], /catalog [list|add <name>|info <name>], /mcp [list|activate <name>|deactivate <name>], /provider [list|status|<name>]`;
 
 /** Write commands that should be blocked when offline (T-081b). */
 const WRITE_COMMANDS: ReadonlySet<string> = new Set([
@@ -136,6 +139,7 @@ const WRITE_COMMANDS: ReadonlySet<string> = new Set([
   "extract",
   "catalog",
   "mcp",
+  "provider",
 ]);
 
 // ─── Dependency injection container ──────────────────────────────────────────────
@@ -366,6 +370,7 @@ export function handleSlashCommand(
     case "extract":
     case "catalog":
     case "mcp":
+    case "provider":
       // Async commands — signal that caller should use the dedicated async handler
       return {
         command: cmd,
@@ -1914,6 +1919,147 @@ export async function handleMCPCommand(
     return {
       command: "mcp",
       message: `/mcp failed: ${msg}`,
+      refreshKanban: false,
+    };
+  }
+}
+
+// ─── /provider Command (Async, T-DUAL-PROVIDER) ──────────────────────────────────
+
+/** Known provider names for validation. */
+const KNOWN_PROVIDERS = ["ollama-cloud", "dmr-local", "openrouter"] as const;
+
+/** Default provider name. */
+const DEFAULT_PROVIDER = "ollama-cloud";
+
+/**
+ * Get the path to the provider preference file.
+ *
+ * Respects XDG_CONFIG_HOME environment variable.
+ * Default: `~/.config/neuralgentics/provider-pref.json`
+ */
+function getProviderPrefPath(): string {
+  const xdgConfig = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
+  return join(xdgConfig, "neuralgentics", "provider-pref.json");
+}
+
+/**
+ * Read the current active provider from the preference file.
+ * Returns the default provider if the file doesn't exist or can't be parsed.
+ */
+function readActiveProvider(): string {
+  const prefPath = getProviderPrefPath();
+  if (existsSync(prefPath)) {
+    try {
+      const pref = JSON.parse(readFileSync(prefPath, "utf-8"));
+      if (typeof pref.activeProvider === "string" && pref.activeProvider) {
+        return pref.activeProvider;
+      }
+    } catch {
+      // Fall through to default
+    }
+  }
+  return DEFAULT_PROVIDER;
+}
+
+/**
+ * Write the active provider to the preference file.
+ * Creates parent directories if needed.
+ */
+function writeActiveProvider(name: string): void {
+  const prefPath = getProviderPrefPath();
+  mkdirSync(join(prefPath, ".."), { recursive: true });
+  writeFileSync(
+    prefPath,
+    JSON.stringify(
+      { activeProvider: name, updatedAt: new Date().toISOString() },
+      null,
+      2,
+    ),
+  );
+}
+
+/**
+ * Format provider status entries as a human-readable table.
+ */
+function formatProviderStatus(statuses: ProviderStatusEntry[]): string {
+  const lines = ["═══ Provider Status ═══", ""];
+  for (const s of statuses) {
+    const latency =
+      s.latencyMs !== undefined ? ` (${s.latencyMs}ms)` : "";
+    const error = s.error ? ` — ${s.error}` : "";
+    lines.push(
+      `  ${s.name.padEnd(15)} ${s.status.padEnd(12)} ${s.url}${latency}${error}`,
+    );
+  }
+  lines.push("");
+  lines.push("═══════════════════════════════════════");
+  return lines.join("\n");
+}
+
+/**
+ * Handle the `/provider [list|status|<name>]` command (async).
+ *
+ * Sub-commands:
+ * - `/provider` (no args) — show current active provider
+ * - `/provider list` or `/provider status` — ping all providers and show status
+ * - `/provider <name>` — switch active provider (writes to provider-pref.json)
+ *
+ * @param client - NeuralgenticsClient instance.
+ * @param input - The raw input string (e.g. "/provider list" or "/provider ollama-cloud").
+ */
+export async function handleProviderCommand(
+  client: NeuralgenticsClient,
+  input: string,
+): Promise<CommandResult> {
+  const trimmed = input.trim();
+  const parts = trimmed.slice(1).split(/\s+/);
+  // parts[0] is "provider", parts[1] is sub-command or provider name
+  const sub = parts[1]?.toLowerCase() ?? "";
+
+  try {
+    // No args: show current provider
+    if (!sub) {
+      const active = readActiveProvider();
+      return {
+        command: "provider",
+        message: `Active provider: ${active}\n(To switch: /provider <name>. List: /provider list. Status: /provider status)`,
+        refreshKanban: false,
+      };
+    }
+
+    // /provider list or /provider status
+    if (sub === "list" || sub === "status") {
+      const statuses = await client.call("provider.status", {});
+      const entries = statuses as ProviderStatusEntry[];
+      return {
+        command: "provider",
+        message: formatProviderStatus(entries),
+        refreshKanban: false,
+      };
+    }
+
+    // /provider <name> — switch provider
+    if ((KNOWN_PROVIDERS as readonly string[]).includes(sub)) {
+      writeActiveProvider(sub);
+      return {
+        command: "provider",
+        message: `Switched active provider to: ${sub}\n(Restart opencode TUI session to apply the change to agent dispatch.)`,
+        refreshKanban: false,
+      };
+    }
+
+    // Unknown sub-command
+    return {
+      command: "provider",
+      message: `Usage: /provider [list|status|<name>]\nKnown providers: ${KNOWN_PROVIDERS.join(", ")} (default: ${DEFAULT_PROVIDER})`,
+      refreshKanban: false,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      command: "provider",
+      message: `/provider failed: ${msg}`,
       refreshKanban: false,
     };
   }
