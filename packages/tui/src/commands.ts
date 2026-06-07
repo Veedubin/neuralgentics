@@ -42,6 +42,11 @@ import { CircuitBreaker } from "./kanban/circuit-breaker.js";
 import type { KanbanBoard, KanbanStatus } from "./kanban/types.js";
 import { KANBAN_STATUSES } from "./kanban/types.js";
 import type { NeuralgenticsClient } from "./neuralgentics-client/client.js";
+import type {
+  CuratedTransport,
+  DiscoverCatalogResult,
+  ListTransportsResult,
+} from "./neuralgentics-client/types.js";
 import type { OfflineState } from "./panels/status.js";
 import type { ModelPrefClient } from "./agents/model-registry.js";
 import type { ResumeResult, ResumeStatus } from "./session/types.js";
@@ -110,12 +115,14 @@ const COMMANDS = [
   "relationships",
   "decay",
   "extract",
+  "catalog",
+  "mcp",
 ] as const;
 
 export type CommandName = (typeof COMMANDS)[number];
 
 /** Available commands string for `/help` display. */
-const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume [card-id], /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light], /model [name|reset], /offline, /tier0 [force], /tier1 [force], /peer [list|switch <id>], /relationships <id>, /decay, /extract [convo]`;
+const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume [card-id], /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light], /model [name|reset], /offline, /tier0 [force], /tier1 [force], /peer [list|switch <id>], /relationships <id>, /decay, /extract [convo], /catalog [list|add <name>|info <name>], /mcp [list|activate <name>|deactivate <name>]`;
 
 /** Write commands that should be blocked when offline (T-081b). */
 const WRITE_COMMANDS: ReadonlySet<string> = new Set([
@@ -127,6 +134,8 @@ const WRITE_COMMANDS: ReadonlySet<string> = new Set([
   "model",
   "peer",
   "extract",
+  "catalog",
+  "mcp",
 ]);
 
 // ─── Dependency injection container ──────────────────────────────────────────────
@@ -355,6 +364,8 @@ export function handleSlashCommand(
     case "relationships":
     case "decay":
     case "extract":
+    case "catalog":
+    case "mcp":
       // Async commands — signal that caller should use the dedicated async handler
       return {
         command: cmd,
@@ -1619,6 +1630,290 @@ export async function handleExtractCommand(
     return {
       command: "extract",
       message: `/extract failed: ${msg}`,
+      refreshKanban: false,
+    };
+  }
+}
+
+// ─── /catalog Command (Async, T-CATALOG-001) ─────────────────────────────────────
+
+/** Local type for catalog server list items from broker.discoverCatalog */
+interface CuratedServerForCatalog {
+  name: string;
+  description: string;
+  category: string;
+  capabilities: string[];
+  transports_count?: number;
+  transports?: CuratedTransport[];
+  required_env?: string[];
+}
+
+/** Local type for transport info items from broker.listTransports */
+interface CatalogTransportInfo {
+  type: string;
+  package?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  default?: boolean;
+  description?: string;
+}
+
+/** Local type for active server info from broker.buildCatalog */
+interface ActiveServerInfo {
+  name: string;
+  description?: string;
+  status?: string;
+  toolsCount?: number;
+  tools?: unknown[];
+  capabilities?: string[];
+}
+
+/**
+ * Handle the `/catalog [list|add <name>|info <name>]` command (async).
+ *
+ * Sub-commands:
+ * - `/catalog list` — discover curated MCP servers not yet active
+ * - `/catalog add <name>` — activate a curated MCP server by name
+ * - `/catalog info <name>` — show transport details for a curated MCP server
+ * - `/catalog` — default to list
+ *
+ * @param client - NeuralgenticsClient instance.
+ * @param input - The raw input string (e.g. "/catalog list" or "/catalog add github-mcp").
+ */
+export async function handleCatalogCommand(
+  client: NeuralgenticsClient,
+  input: string,
+): Promise<CommandResult> {
+  const trimmed = input.trim();
+  const parts = trimmed.slice(1).split(/\s+/);
+  // parts[0] is "catalog", parts[1] is sub-command, parts[2]+ are args
+  const sub = parts[1]?.toLowerCase() ?? "list";
+
+  try {
+    if (sub === "list") {
+      // `/catalog list` — discover curated servers not yet active
+      const result = await client.call("broker.discoverCatalog", {});
+      const discovered = result as { servers: CuratedServerForCatalog[] };
+
+      if (!discovered.servers || discovered.servers.length === 0) {
+        return {
+          command: "catalog",
+          message: "No new catalog servers available (all may already be registered).",
+          refreshKanban: false,
+        };
+      }
+
+      const lines = [
+        `═══ MCP Catalog (${discovered.servers.length} available) ═══`,
+        "",
+      ];
+
+      for (const server of discovered.servers) {
+        const envBadge = server.required_env?.length
+          ? ` [env: ${server.required_env.join(", ")}]`
+          : "";
+        lines.push(
+          `  ${server.name} — ${server.description}${envBadge}`,
+        );
+        lines.push(
+          `    category: ${server.category} | transports: ${server.transports_count ?? server.transports?.length ?? 1}`,
+        );
+      }
+
+      lines.push("");
+      lines.push("Use /catalog add <name> to activate a server.");
+      lines.push("════════════════════════════════════════════");
+
+      return {
+        command: "catalog",
+        message: lines.join("\n"),
+        refreshKanban: false,
+      };
+    }
+
+    if (sub === "add" && parts[2]) {
+      // `/catalog add <name>` — activate a curated server
+      const name = parts.slice(2).join(" ");
+      const result = await client.call("broker.activateFromCatalog", {
+        name,
+        transportIndex: -1,
+      });
+      const activateResult = result as { transport: string };
+
+      return {
+        command: "catalog",
+        message: `✓ Activated ${name} via ${activateResult.transport}`,
+        refreshKanban: false,
+      };
+    }
+
+    if (sub === "info" && parts[2]) {
+      // `/catalog info <name>` — show transport details
+      const name = parts.slice(2).join(" ");
+      const result = await client.call("broker.listTransports", { name });
+      const transportInfo = result as {
+        transports: CatalogTransportInfo[];
+        unavailable: string[];
+      };
+
+      const lines = [
+        `═══ ${name} — Transports ═══`,
+        "",
+      ];
+
+      if (transportInfo.transports && transportInfo.transports.length > 0) {
+        for (const t of transportInfo.transports) {
+          const defaultBadge = t.default ? " ← default" : "";
+          const pkg = t.package ? ` (${t.package})` : "";
+          const unavailable = transportInfo.unavailable.includes(t.type)
+            ? " ✗ UNAVAILABLE"
+            : " ✓ available";
+          lines.push(
+            `  ${t.type}${pkg}${defaultBadge}${unavailable}`,
+          );
+          if (t.description) {
+            lines.push(`    ${t.description}`);
+          }
+        }
+      }
+
+      if (transportInfo.unavailable.length > 0) {
+        lines.push("");
+        lines.push(
+          `⚡ Unavailable transport types: ${transportInfo.unavailable.join(", ")}`,
+        );
+      }
+
+      lines.push("");
+      lines.push("═══════════════════════════════════");
+
+      return {
+        command: "catalog",
+        message: lines.join("\n"),
+        refreshKanban: false,
+      };
+    }
+
+    return {
+      command: "catalog",
+      message: "Usage: /catalog [list|add <name>|info <name>]",
+      refreshKanban: false,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      command: "catalog",
+      message: `/catalog failed: ${msg}`,
+      refreshKanban: false,
+    };
+  }
+}
+
+// ─── /mcp Command (Async, T-CATALOG-001) ──────────────────────────────────────────
+
+/**
+ * Handle the `/mcp [list|activate <name>|deactivate <name>]` command (async).
+ *
+ * Sub-commands:
+ * - `/mcp list` — list currently active MCP servers
+ * - `/mcp activate <name>` — same as `/catalog add <name>`
+ * - `/mcp deactivate <name>` — stop and deregister a server
+ * - `/mcp` — default to list
+ *
+ * @param client - NeuralgenticsClient instance.
+ * @param input - The raw input string (e.g. "/mcp list" or "/mcp activate github-mcp").
+ */
+export async function handleMCPCommand(
+  client: NeuralgenticsClient,
+  input: string,
+): Promise<CommandResult> {
+  const trimmed = input.trim();
+  const parts = trimmed.slice(1).split(/\s+/);
+  // parts[0] is "mcp", parts[1] is sub-command
+  const sub = parts[1]?.toLowerCase() ?? "list";
+
+  try {
+    if (sub === "list") {
+      // `/mcp list` — list active MCP servers via broker.buildCatalog
+      const result = await client.call("broker.buildCatalog", {});
+      const catalog = result as {
+        servers?: ActiveServerInfo[];
+        totalTools?: number;
+      };
+
+      const servers = catalog.servers ?? [];
+      if (servers.length === 0) {
+        return {
+          command: "mcp",
+          message: "No active MCP servers.",
+          refreshKanban: false,
+        };
+      }
+
+      const lines = [
+        `═══ Active MCP Servers (${servers.length}) ═══`,
+        "",
+      ];
+
+      for (const server of servers) {
+        const status = server.status ?? "registered";
+        const tools = server.toolsCount ?? server.tools?.length ?? 0;
+        lines.push(`  ${server.name} [${status}] — ${tools} tools`);
+        if (server.description) {
+          lines.push(`    ${server.description}`);
+        }
+      }
+
+      lines.push("");
+      lines.push(`Total tools: ${catalog.totalTools ?? 0}`);
+      lines.push("═══════════════════════════════════════");
+
+      return {
+        command: "mcp",
+        message: lines.join("\n"),
+        refreshKanban: false,
+      };
+    }
+
+    if (sub === "activate" && parts[2]) {
+      // `/mcp activate <name>` — same as /catalog add
+      const name = parts.slice(2).join(" ");
+      const result = await client.call("broker.activateFromCatalog", {
+        name,
+        transportIndex: -1,
+      });
+      const activateResult = result as { transport: string };
+
+      return {
+        command: "mcp",
+        message: `✓ Activated ${name} via ${activateResult.transport}`,
+        refreshKanban: false,
+      };
+    }
+
+    if (sub === "deactivate" && parts[2]) {
+      // `/mcp deactivate <name>` — stop and deregister
+      const name = parts.slice(2).join(" ");
+      await client.call("broker.deactivateMCPServer", { name });
+
+      return {
+        command: "mcp",
+        message: `✓ Deactivated ${name}`,
+        refreshKanban: false,
+      };
+    }
+
+    return {
+      command: "mcp",
+      message: "Usage: /mcp [list|activate <name>|deactivate <name>]",
+      refreshKanban: false,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      command: "mcp",
+      message: `/mcp failed: ${msg}`,
       refreshKanban: false,
     };
   }
