@@ -252,16 +252,89 @@ func TestHandleRequest_ExtractEntities_MissingParams(t *testing.T) {
 			JSONRPC: "2.0",
 			ID:      jsonRawID("ee2"),
 			Method:  "memory.extractEntities",
-			Params:  json.RawMessage(`{"text":""}`),
+			Params:  json.RawMessage(`{"memoryId":""}`),
 		}
 		resp := handleRequest(nil, req, nil, nil, nil, nil)
 		if resp.Error == nil {
-			t.Fatal("expected error for empty text")
+			t.Fatal("expected error for empty memoryId")
 		}
 		if resp.Error.Code != -32602 {
 			t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
 		}
 	})
+}
+
+func TestHandleRequest_GetInferenceChain_MissingParams(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing startEntity", func(t *testing.T) {
+		t.Parallel()
+		req := jsonrpcRequest{
+			JSONRPC: "2.0",
+			ID:      jsonRawID("ic1"),
+			Method:  "memory.getInferenceChain",
+			Params:  json.RawMessage(`{"endEntity":"entity2"}`),
+		}
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
+		if resp.Error == nil {
+			t.Fatal("expected error for missing startEntity")
+		}
+		if resp.Error.Code != -32602 {
+			t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
+		}
+	})
+
+	t.Run("missing endEntity", func(t *testing.T) {
+		t.Parallel()
+		req := jsonrpcRequest{
+			JSONRPC: "2.0",
+			ID:      jsonRawID("ic2"),
+			Method:  "memory.getInferenceChain",
+			Params:  json.RawMessage(`{"startEntity":"entity1"}`),
+		}
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
+		if resp.Error == nil {
+			t.Fatal("expected error for missing endEntity")
+		}
+		if resp.Error.Code != -32602 {
+			t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
+		}
+	})
+}
+
+func TestParamUnmarshaling_ResolveContradiction(t *testing.T) {
+	t.Parallel()
+
+	var params memoryResolveContradictionParams
+	raw := `{"memoryIdA":"mem-a","memoryIdB":"mem-b"}`
+	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if params.MemoryIDA != "mem-a" {
+		t.Errorf("memoryIdA: got %q, want %q", params.MemoryIDA, "mem-a")
+	}
+	if params.MemoryIDB != "mem-b" {
+		t.Errorf("memoryIdB: got %q, want %q", params.MemoryIDB, "mem-b")
+	}
+}
+
+func TestParamUnmarshaling_GetInferenceChain(t *testing.T) {
+	t.Parallel()
+
+	var params memoryGetInferenceChainParams
+	raw := `{"startEntity":"e1","endEntity":"e2","maxDepth":5}`
+	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if params.StartEntity != "e1" {
+		t.Errorf("startEntity: got %q, want %q", params.StartEntity, "e1")
+	}
+	if params.EndEntity != "e2" {
+		t.Errorf("endEntity: got %q, want %q", params.EndEntity, "e2")
+	}
+	if params.MaxDepth == nil || *params.MaxDepth != 5 {
+		t.Errorf("maxDepth: got %v, want 5", params.MaxDepth)
+	}
 }
 
 func TestHandleRequest_QueryKG_MissingStartEntity(t *testing.T) {
@@ -762,11 +835,11 @@ func TestHandleRequest_ResolveContradiction_MissingID(t *testing.T) {
 		JSONRPC: "2.0",
 		ID:      jsonRawID("rc1"),
 		Method:  "memory.resolveContradiction",
-		Params:  json.RawMessage(`{"contradictionId":""}`),
+		Params:  json.RawMessage(`{"memoryIdA":"","memoryIdB":"mem-b"}`),
 	}
 	resp := handleRequest(nil, req, nil, nil, nil, nil)
 	if resp.Error == nil {
-		t.Fatal("expected error for empty contradictionId")
+		t.Fatal("expected error for empty memoryIdA")
 	}
 	if resp.Error.Code != -32602 {
 		t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
@@ -1099,15 +1172,12 @@ func TestParamUnmarshaling_ChallengeMemory(t *testing.T) {
 	t.Parallel()
 
 	var params memoryChallengeMemoryParams
-	raw := `{"memoryId":"m1","challengerId":"c1","challengeText":"I disagree with this"}`
+	raw := `{"memoryId":"m1","challengeText":"I disagree with this"}`
 	if err := json.Unmarshal([]byte(raw), &params); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if params.MemoryID != "m1" {
 		t.Errorf("memoryId: got %q, want %q", params.MemoryID, "m1")
-	}
-	if params.ChallengerID != "c1" {
-		t.Errorf("challengerId: got %q, want %q", params.ChallengerID, "c1")
 	}
 	if params.ChallengeText != "I disagree with this" {
 		t.Errorf("challengeText: got %q, want %q", params.ChallengeText, "I disagree with this")
