@@ -198,6 +198,8 @@ type brokerActivateMCPServerParams struct {
 	Description    string                      `json:"description,omitempty"`
 	Capabilities   []string                    `json:"capabilities,omitempty"`
 	TransportIndex int                         `json:"transportIndex,omitempty"`
+	URL            string                      `json:"url,omitempty"`        // Shortcut: direct URL for HTTP/SSE transport
+	AuthHeader     string                      `json:"authHeader,omitempty"` // Authorization header value (e.g. "Bearer xxx") for HTTP transport
 }
 
 // ─── Broker Curated Catalog Request Structs (T-CATALOG-001) ──────────────────────
@@ -1281,8 +1283,23 @@ func handleBrokerActivateMCPServer(req jsonrpcRequest, brk *broker.Broker) jsonr
 		return errorResponse(req.ID, -32602, "Invalid params: name is required")
 	}
 
+	// Shortcut: if url is provided without transports, auto-create an HTTP transport config.
+	if len(params.Transports) == 0 && params.URL != "" {
+		params.Transports = []brokerTransportConfigJSON{
+			{
+				Type:    "http",
+				URL:     params.URL,
+				Default: true,
+				Env: map[string]string{
+					"NEURALGENTICS_MCP_URL":  params.URL,
+					"NEURALGENTICS_MCP_AUTH": params.AuthHeader,
+				},
+			},
+		}
+	}
+
 	if len(params.Transports) == 0 {
-		return errorResponse(req.ID, -32602, "Invalid params: at least one transport is required")
+		return errorResponse(req.ID, -32602, "Invalid params: at least one transport is required (or provide url for HTTP transport)")
 	}
 
 	transports := make([]types.TransportConfig, len(params.Transports))
