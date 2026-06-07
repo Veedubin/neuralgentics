@@ -470,6 +470,14 @@ type agentGetInitialToolSetParams struct {
 	PeerID string `json:"peerId"`
 }
 
+// ─── Dual-Model RRF: Elevation Request Struct (T-ELEVATE-001) ──────────────
+
+type memoryElevateMemoryTo1024Params struct {
+	MemoryID   string    `json:"memoryId"`
+	Vector1024 []float64 `json:"vector1024,omitempty"`
+	TrustBoost float64   `json:"trustBoost,omitempty"`
+}
+
 type initializeParams struct {
 	ClientInfo map[string]string `json:"clientInfo,omitempty"`
 }
@@ -751,6 +759,10 @@ func handleRequest(
 		return handleMemoryChallengeMemory(ctx, req, memSys)
 	case "memory.getDialecticHistory":
 		return handleMemoryGetDialecticHistory(ctx, req, memSys)
+
+	// Memory — Dual-Model RRF Elevation (T-ELEVATE-001)
+	case "memory.elevateMemoryTo1024":
+		return handleMemoryElevateMemoryTo1024(ctx, req, memSys)
 
 	// User Profile
 	case "user.getProfile":
@@ -2123,6 +2135,26 @@ func handleMemoryGetDialecticHistory(ctx context.Context, req jsonrpcRequest, me
 	}
 
 	return successResponse(req.ID, events)
+}
+
+// ─── Dual-Model RRF: Elevation Handler (T-ELEVATE-001) ──────────────────────
+
+func handleMemoryElevateMemoryTo1024(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem) jsonrpcResponse {
+	var params memoryElevateMemoryTo1024Params
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	if params.MemoryID == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: memoryId is required")
+	}
+
+	result, err := memSys.ElevateMemory(ctx, params.MemoryID, params.Vector1024, params.TrustBoost)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	return successResponse(req.ID, result)
 }
 
 // ─── User Profile Handlers ──────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { EventEmitter } from "node:events";
 import { resolveBackendPath, resolveDbUrl } from "./resolver.js";
-import type { MethodName, MethodParams, MethodResult, SwitchContextResult, Tier0SummaryParams, Tier1SummaryParams, TierSummaryResult, TriggerExtractionParams, TriggerExtractionResult, PrecompressExtractionParams, PrecompressExtractionResult, GetRelationshipSummaryParams, GetRelationshipSummaryResult, GetInferenceChainParams, GetInferenceChainResult } from "./types.js";
+import type { MethodName, MethodParams, MethodResult, SwitchContextResult, Tier0SummaryParams, Tier1SummaryParams, TierSummaryResult, TriggerExtractionParams, TriggerExtractionResult, PrecompressExtractionParams, PrecompressExtractionResult, GetRelationshipSummaryParams, GetRelationshipSummaryResult, GetInferenceChainParams, GetInferenceChainResult, ElevateMemoryTo1024Params, ElevateMemoryTo1024Result } from "./types.js";
 
 /** Online/offline status for the health-check layer (T-081a). */
 export type ClientStatus = "online" | "offline";
@@ -321,6 +321,29 @@ export class NeuralgenticsClient {
       params.maxDepth = maxDepth;
     }
     return (await this.call("memory.getInferenceChain", params)) as GetInferenceChainResult;
+  }
+
+  // ─── Dual-Model RRF Elevation (T-ELEVATE-001) ──────────────────────────────────
+
+  /**
+   * Promote a 384-dim memory into the 1024-dim table.
+   * If no vector1024 is provided, one is derived by zero-padding the
+   * 384-dim vector and L2-normalizing. Trust score is bumped by trustBoost.
+   *
+   * @param memoryId - The memory ID to elevate.
+   * @param vector1024 - Optional pre-computed 1024-dim embedding.
+   * @param trustBoost - Amount to add to the trust score (default 0.10, clamped to [0, 1]).
+   * @returns The elevate result with memoryId, elevated status, trust score, and vector dim.
+   */
+  async elevateMemoryTo1024(memoryId: string, vector1024?: number[], trustBoost?: number): Promise<ElevateMemoryTo1024Result> {
+    const params: ElevateMemoryTo1024Params = { memoryId };
+    if (vector1024 !== undefined) {
+      params.vector1024 = vector1024;
+    }
+    if (trustBoost !== undefined) {
+      params.trustBoost = trustBoost;
+    }
+    return (await this.call("memory.elevateMemoryTo1024", params)) as ElevateMemoryTo1024Result;
   }
 
   // ─── Offline Detection (T-081a) ──────────────────────────────────────────

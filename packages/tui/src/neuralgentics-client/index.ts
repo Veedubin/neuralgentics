@@ -34,5 +34,7 @@ export type {
   GetRelationshipSummaryParams,
   GetRelationshipSummaryResult,
   RelationshipSummaryItem,
+  ElevateMemoryTo1024Params,
+  ElevateMemoryTo1024Result,
 } from "./types.js";
 export { resolveBackendPath, resolveDbUrl, DEFAULT_DB_URL } from "./resolver.js";

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"sync"
 	"time"
 
@@ -773,4 +774,76 @@ func (m *MemorySystem) GetInitialToolSet(ctx context.Context, peerID string) ([]
 	}
 
 	return tools, nil
+}
+
+// ─── Dual-Model RRF: Elevation (v0.7.0+ port) ──────────────────────────────────
+
+// ElevateResult is the response from ElevateMemory.
+type ElevateResult struct {
+	MemoryID   string  `json:"memoryId"`
+	Elevated   bool    `json:"elevated"`
+	TrustScore float64 `json:"trustScore"`
+	VectorDim  int     `json:"vectorDim"`
+}
+
+// ElevateMemory promotes a 384-dim memory into the 1024-dim table.
+// If vector1024 is nil, derives one by zero-padding the 384-dim vector to 1024
+// and L2-normalizing. Trust score is bumped by trustBoost (default 0.10, clamped
+// to [0, 1]). Idempotent: re-elevating the same memory updates the row.
+func (m *MemorySystem) ElevateMemory(ctx context.Context, memoryID string, vector1024 []float64, trustBoost float64) (*ElevateResult, error) {
+	// 1. Fetch source memory (verify exists, has 384-dim vector)
+	mem, err := m.store.GetMemory(ctx, memoryID, false)
+	if err != nil {
+		return nil, fmt.Errorf("elevate memory: %w", err)
+	}
+	if mem == nil {
+		return nil, fmt.Errorf("memory not found: %s", memoryID)
+	}
+	if len(mem.Vector) != 384 {
+		return nil, fmt.Errorf("memory %s has no 384-dim vector (got %d dims)", memoryID, len(mem.Vector))
+	}
+
+	// 2. If no vector1024 provided: pad 384→1024 with zeros, L2-normalize
+	if vector1024 == nil {
+		vector1024 = make([]float64, 1024)
+		copy(vector1024, mem.Vector)
+		// zeros already in positions 384-1023
+		// L2-normalize
+		var sum float64
+		for _, v := range vector1024 {
+			sum += v * v
+		}
+		if sum > 0 {
+			norm := 1.0 / math.Sqrt(sum)
+			for i := range vector1024 {
+				vector1024[i] *= norm
+			}
+		}
+	}
+
+	// 3. Compute new trust score
+	if trustBoost == 0 {
+		trustBoost = 0.10
+	}
+	newTrust := mem.TrustScore + trustBoost
+	if newTrust > 1.0 {
+		newTrust = 1.0
+	}
+
+	// 4. Insert into memories_1024 (idempotent per schema ON CONFLICT)
+	if _, err := m.store.AddMemory1024(ctx, mem.ID, vector1024); err != nil {
+		return nil, fmt.Errorf("insert 1024 entry: %w", err)
+	}
+
+	// 5. Bump 384-dim trust score
+	if err := m.store.UpdateTrustFields(ctx, mem.ID, newTrust, mem.IsArchived); err != nil {
+		return nil, fmt.Errorf("update trust: %w", err)
+	}
+
+	return &ElevateResult{
+		MemoryID:   mem.ID,
+		Elevated:   true,
+		TrustScore: newTrust,
+		VectorDim:  1024,
+	}, nil
 }
