@@ -5,7 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-07
+
+Minor release: multi-transport MCP support, curated catalog of 20 popular MCP servers, runtime LLM provider picker (3 providers: Ollama Cloud, Docker Model Runner, OpenRouter), and Docker Compose v2.38+ model integration.
+
+### Added
+
+- **Multi-transport MCP support (T-TRANSPORT-ABSTRACTION)** — Each MCP server can now declare multiple transport options (npx, uvx, local binary, docker, http). The broker auto-falls-back through the list if the chosen transport fails to launch. New types: `TransportType` enum, `TransportConfig`, `MCPServerConfig` (the multi-transport form of the legacy `ServerConfig`). Legacy `ServerConfig` configs continue to work unchanged. New methods: `Broker.RegisterMCPServer`, `Broker.ActivateMCPServerWithTransport(name, config, transportIndex)`. New JSON-RPC handlers: `broker.registerMCPServer`, `broker.activateMCPServer`.
+
+- **Curated MCP catalog (T-CATALOG-001)** — New `mcp_catalog.json` (embedded into the broker binary via `//go:embed`) declares 20 popular MCP servers (github-mcp, gitlab-mcp, filesystem, postgres, sqlite, puppeteer, playwright, fetch, brave-search, google-maps, slack, discord, notion, linear, airtable, google-drive, memory, sequential-thinking, everything, markitdown), each with all available transports. New methods: `Broker.DiscoverCatalog(role)`, `Broker.ActivateFromCatalog(role, name, transportIndex)`, `Broker.DeactivateMCPServer(name)`, `Broker.ListTransports(name)`. `CheckTransportAvailability()` uses `exec.LookPath` to detect whether npx/uvx/docker/podman are on PATH. Permission matrix enforced on `ActivateFromCatalog`.
+
+- **TUI /catalog and /mcp commands (T-CATALOG-001)** — New slash commands. `/catalog list|add <name>|info <name>` for browsing and adding from the catalog. `/mcp list|activate <name>|deactivate <name>` for runtime MCP lifecycle.
+
+- **TUI /provider command (T-DUAL-PROVIDER)** — New slash command for runtime LLM provider switching. `/provider` shows current, `/provider list` pings all 3 providers with 3-second timeout, `/provider <name>` writes `~/.config/neuralgentics/provider-pref.json` (XDG_CONFIG_HOME aware). New broker method `provider.status` returns `{name, url, status, latencyMs, error}` for each provider. Note: switching is client-side and requires a TUI session restart to take effect on agent dispatch.
+
+- **3rd and 4th LLM providers (T-OPENROUTER-PROVIDER, T-DMR-PROVIDER)** — `dmr-local` (Docker Model Runner on `localhost:12434/engines/v1`, 3 models: qwen2.5-coder:7b, llama3.2:3b, devstral-small-2:24b) and `openrouter` (5 models: claude-3.5-sonnet, gpt-4o, gemini-pro-1.5, llama-3.1-405b, mistral-large) added to `.opencode/opencode.json`. `ollama-cloud` remains the default and `small_model` remains hardcoded to it (provider-aware `small_model` deferred to v0.5.0). All use `@ai-sdk/openai-compatible` for drop-in compatibility.
+
+- **Docker Compose v2.38+ models: block (T-COMPOSE-MODELS)** — `docker-compose.yml` now declares a top-level `models:` block with `llm: ai/qwen2.5-coder:7b`. Wired into `neuralgentics-backend` and `neuralgentics-tui` services via `models: [llm]`. Env vars `LLM_URL` and `LLM_MODEL` auto-injected by Compose. podman-compose ignores the `models:` block (graceful fallback to explicit env vars). DMR is a host-level Docker Desktop component — it is NOT a containerized service.
+
+### Quality gates (v0.4.0)
+
+- `go vet` — 4/4 Go modules clean
+- `go test -short` — 4/4 Go modules PASS
+- 65 Go tests added/modified in v0.4.0 (13 transport + 12 catalog wiring + 20 broker core + 20 improvements)
+- `tsc --noEmit` — TUI clean
+- `bun test` — TUI 766 pass / 0 fail (was 744 in v0.3.1; +22 new tests: 12 catalog + 10 provider)
+- `mkdocs build --strict` — 0 warnings
+- JSON validation — `.opencode/opencode.json` and `mcp_catalog.json` both parse cleanly
+- YAML validation — `docker-compose.yml` parses via `python3 yaml.safe_load`
+- Pre-existing: store + orchestrator E2E tests fail with "no Docker provider" (testcontainers init issue, not a regression)
+
 ## [0.3.1] - 2026-06-07
+
 
 Patch release: backward-compatible internal IMPROVE handler enhancements.
 

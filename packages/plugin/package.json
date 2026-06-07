@@ -1,6 +1,6 @@
 {
   "name": "@neuralgentics/plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Neuralgentics OpenCode plugin — MCP tools, memory adapter, routing enforcement",
   "type": "module",
   "main": "dist/index.js",
