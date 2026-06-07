@@ -6,8 +6,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,6 +31,7 @@ import (
 
 	"neuralgentics-broker/src/neuralgentics/broker"
 	"neuralgentics-broker/src/neuralgentics/broker/catalog"
+	"neuralgentics-broker/src/neuralgentics/broker/profile"
 	"neuralgentics-broker/src/neuralgentics/broker/types"
 )
 
@@ -220,6 +223,19 @@ type brokerDeactivateMCPServerParams struct {
 
 type brokerListTransportsParams struct {
 	Name string `json:"name"`
+}
+
+// ─── Broker Profile Request Structs (T-PROFILE-OCI) ──────────────────────────────
+
+type brokerExportProfileParams struct {
+	Passphrase    string `json:"passphrase,omitempty"`
+	BrokerVersion string `json:"brokerVersion,omitempty"`
+}
+
+type brokerImportProfileParams struct {
+	Tarball    string `json:"tarball"` // base64-encoded tar.gz
+	Passphrase string `json:"passphrase,omitempty"`
+	Force      bool   `json:"force,omitempty"`
 }
 
 // ─── Peer Request/Response Structs ─────────────────────────────────────────────
@@ -891,6 +907,12 @@ func handleRequest(
 	case "broker.listTransports":
 		return handleBrokerListTransports(req, brk)
 
+	// Broker Profile (T-PROFILE-OCI)
+	case "broker.exportProfile":
+		return handleBrokerExportProfile(req, brk)
+	case "broker.importProfile":
+		return handleBrokerImportProfile(req, brk)
+
 	// Peer/Multi-Peer
 	case "peer.listPeers":
 		return handlePeerListPeers(ctx, req, memSys)
@@ -1427,6 +1449,104 @@ func handleBrokerListTransports(req jsonrpcRequest, brk *broker.Broker) jsonrpcR
 	return successResponse(req.ID, map[string]interface{}{
 		"transports":  transports,
 		"unavailable": unavailable,
+	})
+}
+
+// ─── Broker Profile Handlers (T-PROFILE-OCI) ────────────────────────────────────
+
+func handleBrokerExportProfile(req jsonrpcRequest, brk *broker.Broker) jsonrpcResponse {
+	var params brokerExportProfileParams
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+		}
+	}
+
+	brokerVersion := params.BrokerVersion
+	if brokerVersion == "" {
+		brokerVersion = version
+	}
+
+	var buf bytes.Buffer
+	if err := brk.ExportProfile(&buf, params.Passphrase, brokerVersion); err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	tarball := base64.StdEncoding.EncodeToString(buf.Bytes())
+
+	return successResponse(req.ID, map[string]interface{}{
+		"tarball": tarball,
+		"manifest": map[string]string{
+			"version":        profile.CurrentVersion,
+			"exported_by":    "neuralgentics-backend",
+			"broker_version": brokerVersion,
+		},
+	})
+}
+
+func handleBrokerImportProfile(req jsonrpcRequest, brk *broker.Broker) jsonrpcResponse {
+	var params brokerImportProfileParams
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	if params.Tarball == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: tarball is required")
+	}
+
+	tarballBytes, err := base64.StdEncoding.DecodeString(params.Tarball)
+	if err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: tarball is not valid base64: "+err.Error())
+	}
+
+	reader := bytes.NewReader(tarballBytes)
+	p, err := brk.ImportProfile(reader, params.Passphrase)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	// Count applied MCPs from the catalog.
+	var catalogLock []map[string]any
+	applied := 0
+	conflicts := []string{}
+	if err := json.Unmarshal(p.Catalog, &catalogLock); err == nil {
+		for _, mcp := range catalogLock {
+			name, _ := mcp["name"].(string)
+			if name == "" {
+				continue
+			}
+			applied++
+		}
+	}
+
+	// Re-count properly: check which servers in the imported catalog
+	// are already registered in the broker (those are conflicts for import).
+	existingServers := brk.ListServers()
+	for _, mcp := range catalogLock {
+		name, _ := mcp["name"].(string)
+		if name == "" {
+			continue
+		}
+		for _, s := range existingServers {
+			if name == s.Name {
+				conflicts = append(conflicts, name)
+				break
+			}
+		}
+	}
+	applied = len(catalogLock) - len(conflicts)
+	if applied < 0 {
+		applied = 0
+	}
+
+	return successResponse(req.ID, map[string]interface{}{
+		"applied":   applied,
+		"conflicts": conflicts,
+		"manifest": map[string]string{
+			"version":     p.Manifest.Version,
+			"exported_by": p.Manifest.ExportedBy,
+			"exported_at": p.Manifest.ExportedAt,
+		},
 	})
 }
 
