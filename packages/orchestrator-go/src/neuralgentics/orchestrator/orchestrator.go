@@ -26,6 +26,9 @@ type OrchestratorConfig struct {
 	// ImproveMemoryProvider supplies the memory interface used by the IMPROVE
 	// handler (step 7 of 9). If nil, the IMPROVE phase is skipped.
 	ImproveMemory ImproveMemoryProvider
+	// RepoRoot is the path to the repository root, used for config fingerprinting.
+	// If empty, fingerprinting is skipped (returns empty ConfigFingerprint).
+	RepoRoot string
 }
 
 // Orchestrator is the central routing and protocol enforcement layer.
@@ -66,7 +69,7 @@ func New(cfg *OrchestratorConfig) (*Orchestrator, error) {
 
 	// Wire IMPROVE handler if the improve memory provider is configured.
 	if cfg.ImproveMemory != nil {
-		orch.improveHandler = NewImproveHandler(cfg.ImproveMemory)
+		orch.improveHandler = NewImproveHandler(cfg.ImproveMemory, cfg.RepoRoot)
 	}
 
 	return orch, nil
