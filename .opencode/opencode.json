@@ -39,6 +39,51 @@
           "name": "Devstral Small 2 (Cloud)"
         }
       }
+    },
+    "dmr-local": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Docker Model Runner (Local)",
+      "options": {
+        "baseURL": "http://localhost:12434/engines/v1"
+      },
+      "models": {
+        "ai/qwen2.5-coder:7b": {
+          "name": "Qwen 2.5 Coder 7B (Local)"
+        },
+        "ai/llama3.2:3b": {
+          "name": "Llama 3.2 3B (Local)"
+        },
+        "ai/devstral-small-2:24b": {
+          "name": "Devstral Small 2 24B (Local)"
+        }
+      }
+    },
+    "openrouter": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "OpenRouter",
+      "options": {
+        "baseURL": "https://openrouter.ai/api/v1",
+        "headers": {
+          "Authorization": "Bearer {env:OPENROUTER_API_KEY}"
+        }
+      },
+      "models": {
+        "anthropic/claude-3.5-sonnet": {
+          "name": "Claude 3.5 Sonnet"
+        },
+        "openai/gpt-4o": {
+          "name": "GPT-4o"
+        },
+        "google/gemini-pro-1.5": {
+          "name": "Gemini Pro 1.5"
+        },
+        "meta-llama/llama-3.1-405b-instruct": {
+          "name": "Llama 3.1 405B"
+        },
+        "mistralai/mistral-large-latest": {
+          "name": "Mistral Large"
+        }
+      }
     }
   },
   "autoupdate": false,
