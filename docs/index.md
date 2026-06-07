@@ -9,6 +9,8 @@ A harness wraps a model with prompts, tools, context, memory, and permissions. A
 
 **23 specialist agents, a trust-scored memory engine, and a permissions-based tool broker -- all in a 26 MB Go binary.** No cloud account, no telemetry, no vendor lock-in. You run it on your machine; it remembers what your agents did; it stops them from doing things they shouldn't.
 
+v0.3.0 adds the IMPROVE phase runner, 7 new slash commands for tiered memory + peer context, and `elevate_memory_to_1024` for dual-model promotion.
+
 
 [**Get Started →**](getting-started/installation.md)
 
@@ -103,10 +105,10 @@ The practical effect: agents never see tools they can't use, which cuts the tool
 
 Neuralgentics ships with four container images on `pgvector/pgvector:pg18` multi-stage builds:
 
-- `ghcr.io/veedubin/neuralgentics-postgres:v0.2.0` — PostgreSQL 18 + pgvector, schema baked in
-- `ghcr.io/veedubin/neuralgentics-sidecar:v0.2.0` — Python gRPC embedding service
-- `ghcr.io/veedubin/neuralgentics-backend:v0.2.0` — Go JSON-RPC backend, distroless
-- `ghcr.io/veedubin/neuralgentics-tui:v0.2.0` — TUI binary, distroless
+- `ghcr.io/veedubin/neuralgentics-postgres:v0.3.0` — PostgreSQL 18 + pgvector, schema baked in
+- `ghcr.io/veedubin/neuralgentics-sidecar:v0.3.0` — Python gRPC embedding service
+- `ghcr.io/veedubin/neuralgentics-backend:v0.3.0` — Go JSON-RPC backend, distroless
+- `ghcr.io/veedubin/neuralgentics-tui:v0.3.0` — TUI binary, distroless
 
 Bring up the full stack with `docker-compose up` or `podman-compose up`. The `podman-compose.yml` includes Podman-specific tweaks (SELinux `:Z` labels, `userns_mode: keep-id`, `pids_limit`).
 
