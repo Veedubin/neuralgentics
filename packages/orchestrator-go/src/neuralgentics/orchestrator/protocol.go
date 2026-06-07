@@ -10,7 +10,7 @@ import (
 // Protocol Steps
 // ============================================================================
 
-// ProtocolStep represents a step in the 8-step Boomerang Protocol state machine.
+// ProtocolStep represents a step in the 9-step Boomerang Protocol state machine.
 type ProtocolStep string
 
 const (
@@ -21,6 +21,7 @@ const (
 	StepDelegate     ProtocolStep = "DELEGATE"
 	StepGitCheck     ProtocolStep = "GIT_CHECK"
 	StepQualityGates ProtocolStep = "QUALITY_GATES"
+	StepImprove      ProtocolStep = "IMPROVE"
 	StepDocUpdate    ProtocolStep = "DOC_UPDATE"
 	StepMemorySave   ProtocolStep = "MEMORY_SAVE"
 	StepComplete     ProtocolStep = "COMPLETE"
@@ -34,6 +35,7 @@ var ProtocolSteps = []ProtocolStep{
 	StepDelegate,
 	StepGitCheck,
 	StepQualityGates,
+	StepImprove,
 	StepDocUpdate,
 	StepMemorySave,
 }
@@ -47,7 +49,8 @@ var ProtocolValidTransitions = map[ProtocolStep][]ProtocolStep{
 	StepPlan:         {StepDelegate},
 	StepDelegate:     {StepGitCheck},
 	StepGitCheck:     {StepQualityGates},
-	StepQualityGates: {StepDocUpdate},
+	StepQualityGates: {StepImprove},
+	StepImprove:      {StepDocUpdate},
 	StepDocUpdate:    {StepMemorySave},
 	StepMemorySave:   {StepComplete},
 	StepComplete:     {},
@@ -62,6 +65,7 @@ var WaiverPhrases = map[string]ProtocolStep{
 	"skip gates":     StepQualityGates,
 	"git is fine":    StepGitCheck,
 	"no docs needed": StepDocUpdate,
+	"skip improve":   StepImprove,
 }
 
 // ============================================================================
@@ -97,7 +101,7 @@ func NewProtocolState() *ProtocolState {
 // Protocol Machine
 // ============================================================================
 
-// ProtocolMachine enforces the 8-step Boomerang Protocol.
+// ProtocolMachine enforces the 9-step Boomerang Protocol.
 // It tracks state per task and blocks execution if required steps are missing.
 type ProtocolMachine struct {
 	strictness StrictnessLevel
@@ -225,7 +229,7 @@ func (pm *ProtocolMachine) ApplyWaiver(taskID string, step ProtocolStep, phrase 
 
 // CompleteProtocol advances through the remaining steps after agent execution.
 func (pm *ProtocolMachine) CompleteProtocol(taskID string) (*ProtocolState, error) {
-	remaining := []ProtocolStep{StepGitCheck, StepQualityGates, StepDocUpdate, StepMemorySave}
+	remaining := []ProtocolStep{StepGitCheck, StepQualityGates, StepImprove, StepDocUpdate, StepMemorySave}
 	for _, step := range remaining {
 		if err := pm.Advance(taskID, step); err != nil && pm.strictness == StrictnessStrict {
 			return nil, err
