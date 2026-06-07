@@ -27,6 +27,7 @@ import (
 	orchestrator "neuralgentics-orchestrator/src/neuralgentics/orchestrator"
 
 	"neuralgentics-broker/src/neuralgentics/broker"
+	"neuralgentics-broker/src/neuralgentics/broker/catalog"
 	"neuralgentics-broker/src/neuralgentics/broker/types"
 )
 
@@ -196,6 +197,26 @@ type brokerActivateMCPServerParams struct {
 	Description    string                      `json:"description,omitempty"`
 	Capabilities   []string                    `json:"capabilities,omitempty"`
 	TransportIndex int                         `json:"transportIndex,omitempty"`
+}
+
+// ─── Broker Curated Catalog Request Structs (T-CATALOG-001) ──────────────────────
+
+type brokerDiscoverCatalogParams struct {
+	Role string `json:"role,omitempty"`
+}
+
+type brokerActivateFromCatalogParams struct {
+	Name           string `json:"name"`
+	TransportIndex int    `json:"transportIndex,omitempty"`
+	Role           string `json:"role,omitempty"`
+}
+
+type brokerDeactivateMCPServerParams struct {
+	Name string `json:"name"`
+}
+
+type brokerListTransportsParams struct {
+	Name string `json:"name"`
 }
 
 // ─── Peer Request/Response Structs ─────────────────────────────────────────────
@@ -834,6 +855,16 @@ func handleRequest(
 	case "broker.activateMCPServer":
 		return handleBrokerActivateMCPServer(req, brk)
 
+	// Broker Curated Catalog (T-CATALOG-001)
+	case "broker.discoverCatalog":
+		return handleBrokerDiscoverCatalog(req, brk)
+	case "broker.activateFromCatalog":
+		return handleBrokerActivateFromCatalog(req, brk)
+	case "broker.deactivateMCPServer":
+		return handleBrokerDeactivateMCPServer(req, brk)
+	case "broker.listTransports":
+		return handleBrokerListTransports(req, brk)
+
 	// Peer/Multi-Peer
 	case "peer.listPeers":
 		return handlePeerListPeers(ctx, req, memSys)
@@ -1252,6 +1283,106 @@ func handleBrokerActivateMCPServer(req jsonrpcRequest, brk *broker.Broker) jsonr
 	}
 
 	return successResponse(req.ID, map[string]string{"transport": transportType})
+}
+
+// ─── Broker Curated Catalog Handlers (T-CATALOG-001) ────────────────────────────
+
+func handleBrokerDiscoverCatalog(req jsonrpcRequest, brk *broker.Broker) jsonrpcResponse {
+	var params brokerDiscoverCatalogParams
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+		}
+	}
+
+	servers, err := brk.DiscoverCatalog(params.Role)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	// Convert CuratedServer to a JSON-friendly format.
+	type curatedServerJSON struct {
+		Name            string                     `json:"name"`
+		Description     string                     `json:"description"`
+		Category        string                     `json:"category"`
+		Capabilities    []string                   `json:"capabilities"`
+		TransportsCount int                        `json:"transports_count"`
+		Transports      []catalog.CuratedTransport `json:"transports"`
+		RequiredEnv     []string                   `json:"required_env,omitempty"`
+	}
+
+	result := make([]curatedServerJSON, len(servers))
+	for i, s := range servers {
+		result[i] = curatedServerJSON{
+			Name:            s.Name,
+			Description:     s.Description,
+			Category:        s.Category,
+			Capabilities:    s.Capabilities,
+			TransportsCount: len(s.Transports),
+			Transports:      s.Transports,
+			RequiredEnv:     s.RequiredEnv,
+		}
+	}
+
+	return successResponse(req.ID, map[string]interface{}{
+		"servers": result,
+	})
+}
+
+func handleBrokerActivateFromCatalog(req jsonrpcRequest, brk *broker.Broker) jsonrpcResponse {
+	var params brokerActivateFromCatalogParams
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	if params.Name == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: name is required")
+	}
+
+	transportType, err := brk.ActivateFromCatalog(params.Role, params.Name, params.TransportIndex)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	return successResponse(req.ID, map[string]string{"transport": transportType})
+}
+
+func handleBrokerDeactivateMCPServer(req jsonrpcRequest, brk *broker.Broker) jsonrpcResponse {
+	var params brokerDeactivateMCPServerParams
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	if params.Name == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: name is required")
+	}
+
+	if err := brk.DeactivateMCPServer(params.Name); err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	return successResponse(req.ID, map[string]string{"status": "ok"})
+}
+
+func handleBrokerListTransports(req jsonrpcRequest, brk *broker.Broker) jsonrpcResponse {
+	var params brokerListTransportsParams
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	if params.Name == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: name is required")
+	}
+
+	transports, unavailable, err := brk.ListTransports(params.Name)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	return successResponse(req.ID, map[string]interface{}{
+		"transports":  transports,
+		"unavailable": unavailable,
+	})
 }
 
 // ─── Peer Handlers ─────────────────────────────────────────────────────────────

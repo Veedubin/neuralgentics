@@ -252,6 +252,73 @@ export interface ActivateMCPServerResult {
   transport: string; // The transport.Type that succeeded
 }
 
+// ─── Broker Curated Catalog Types (T-CATALOG-001) ─────────────────────────────
+
+/** A single transport option in a curated catalog server */
+export interface CuratedTransport {
+  type: string;
+  package?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  default?: boolean;
+  description?: string;
+}
+
+/** A single server entry from the curated catalog */
+export interface CuratedServer {
+  name: string;
+  description: string;
+  homepage?: string;
+  category: string;
+  capabilities: string[];
+  transports: CuratedTransport[];
+  required_env?: string[];
+}
+
+/** Params for broker.discoverCatalog */
+export interface DiscoverCatalogParams {
+  role?: string;
+}
+
+/** Result for broker.discoverCatalog */
+export interface DiscoverCatalogResult {
+  servers: CuratedServer[];
+}
+
+/** Params for broker.activateFromCatalog */
+export interface ActivateFromCatalogParams {
+  name: string;
+  transportIndex?: number;
+  role?: string;
+}
+
+/** Result for broker.activateFromCatalog */
+export interface ActivateFromCatalogResult {
+  transport: string;
+}
+
+/** Params for broker.deactivateMCPServer */
+export interface DeactivateMCPServerParams {
+  name: string;
+}
+
+/** Result for broker.deactivateMCPServer */
+export interface DeactivateMCPServerResult {
+  // Empty on success
+}
+
+/** Params for broker.listTransports */
+export interface ListTransportsParams {
+  name: string;
+}
+
+/** Result for broker.listTransports */
+export interface ListTransportsResult {
+  transports: CuratedTransport[];
+  unavailable: string[];
+}
+
 export interface MethodRegistry {
   // Lifecycle
   "ping": { params: Record<string, never>; result: PingResult };
@@ -387,6 +454,12 @@ export interface MethodRegistry {
   // Broker Multi-Transport (T-TRANSPORT-ABSTRACTION)
   "broker.registerMCPServer": { params: RegisterMCPServerParams; result: { status: string } };
   "broker.activateMCPServer": { params: ActivateMCPServerParams; result: ActivateMCPServerResult };
+
+  // Broker Curated Catalog (T-CATALOG-001)
+  "broker.discoverCatalog": { params: DiscoverCatalogParams; result: DiscoverCatalogResult };
+  "broker.activateFromCatalog": { params: ActivateFromCatalogParams; result: ActivateFromCatalogResult };
+  "broker.deactivateMCPServer": { params: DeactivateMCPServerParams; result: DeactivateMCPServerResult };
+  "broker.listTransports": { params: ListTransportsParams; result: ListTransportsResult };
 
   // Peer
   "peer.listPeers": { params: Record<string, unknown>; result: Record<string, unknown>[] };
