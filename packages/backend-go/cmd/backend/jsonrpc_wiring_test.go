@@ -991,6 +991,10 @@ func TestAllNewMethods_WithRequiredParams_Recognized(t *testing.T) {
 
 		// Dual-Model RRF Elevation (T-ELEVATE-001)
 		{"memory.elevateMemoryTo1024", `{"memoryId":""}`},
+
+		// Broker Multi-Transport (T-TRANSPORT-ABSTRACTION)
+		{"broker.registerMCPServer", `{"name":"","transports":[{"type":"npx","package":"x"}]}`},
+		{"broker.activateMCPServer", `{"name":"","transports":[{"type":"npx","package":"x"}],"transportIndex":-1}`},
 	}
 
 	for _, tt := range methodsWithMissingParamTests {
@@ -1307,5 +1311,168 @@ func TestParamUnmarshaling_ReviseThought(t *testing.T) {
 	}
 	if params.RevisedText != "updated thought text" {
 		t.Errorf("revisedThought: got %q, want %q", params.RevisedText, "updated thought text")
+	}
+}
+
+// ─── Broker Multi-Transport Handler Tests (T-TRANSPORT-ABSTRACTION) ──────────
+
+func TestBrokerRegisterMCPServer_Wiring(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing name returns error", func(t *testing.T) {
+		t.Parallel()
+		req := jsonrpcRequest{
+			JSONRPC: "2.0",
+			ID:      jsonRawID("brmcp1"),
+			Method:  "broker.registerMCPServer",
+			Params:  json.RawMessage(`{"transports":[{"type":"npx","package":"@org/mcp-server"}]}`),
+		}
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
+		if resp.Error == nil {
+			t.Fatal("expected error for missing name")
+		}
+		if resp.Error.Code != -32602 {
+			t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
+		}
+	})
+
+	t.Run("missing transports returns error", func(t *testing.T) {
+		t.Parallel()
+		req := jsonrpcRequest{
+			JSONRPC: "2.0",
+			ID:      jsonRawID("brmcp2"),
+			Method:  "broker.registerMCPServer",
+			Params:  json.RawMessage(`{"name":"test-server"}`),
+		}
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
+		if resp.Error == nil {
+			t.Fatal("expected error for missing transports")
+		}
+		if resp.Error.Code != -32602 {
+			t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
+		}
+	})
+
+	t.Run("recognized method (invalid params)", func(t *testing.T) {
+		t.Parallel()
+		req := jsonrpcRequest{
+			JSONRPC: "2.0",
+			ID:      jsonRawID("brmcp3"),
+			Method:  "broker.registerMCPServer",
+			Params:  json.RawMessage(`{invalid}`),
+		}
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
+		if resp.Error == nil {
+			t.Fatal("expected error for invalid params")
+		}
+		if resp.Error.Code == -32601 {
+			t.Error("broker.registerMCPServer should be recognized (got method not found)")
+		}
+	})
+}
+
+func TestBrokerActivateMCPServer_Wiring(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing name returns error", func(t *testing.T) {
+		t.Parallel()
+		req := jsonrpcRequest{
+			JSONRPC: "2.0",
+			ID:      jsonRawID("bamcp1"),
+			Method:  "broker.activateMCPServer",
+			Params:  json.RawMessage(`{"transports":[{"type":"npx","package":"@org/mcp-server"}],"transportIndex":-1}`),
+		}
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
+		if resp.Error == nil {
+			t.Fatal("expected error for missing name")
+		}
+		if resp.Error.Code != -32602 {
+			t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
+		}
+	})
+
+	t.Run("missing transports returns error", func(t *testing.T) {
+		t.Parallel()
+		req := jsonrpcRequest{
+			JSONRPC: "2.0",
+			ID:      jsonRawID("bamcp2"),
+			Method:  "broker.activateMCPServer",
+			Params:  json.RawMessage(`{"name":"test-server","transportIndex":-1}`),
+		}
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
+		if resp.Error == nil {
+			t.Fatal("expected error for missing transports")
+		}
+		if resp.Error.Code != -32602 {
+			t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
+		}
+	})
+
+	t.Run("recognized method (invalid params)", func(t *testing.T) {
+		t.Parallel()
+		req := jsonrpcRequest{
+			JSONRPC: "2.0",
+			ID:      jsonRawID("bamcp3"),
+			Method:  "broker.activateMCPServer",
+			Params:  json.RawMessage(`{invalid}`),
+		}
+		resp := handleRequest(nil, req, nil, nil, nil, nil)
+		if resp.Error == nil {
+			t.Fatal("expected error for invalid params")
+		}
+		if resp.Error.Code == -32601 {
+			t.Error("broker.activateMCPServer should be recognized (got method not found)")
+		}
+	})
+}
+
+// TestParamUnmarshaling_BrokerRegisterMCPServer verifies the param struct for the
+// new broker.registerMCPServer method correctly unmarshals from JSON.
+func TestParamUnmarshaling_BrokerRegisterMCPServer(t *testing.T) {
+	t.Parallel()
+
+	var params brokerRegisterMCPServerParams
+	raw := `{"name":"github-mcp","transports":[{"type":"npx","package":"@modelcontextprotocol/server-github","args":["-y"],"env":{"GITHUB_TOKEN":"abc"},"default":true,"description":"GitHub MCP via NPX"}],"description":"GitHub server","capabilities":["filesystem"]}`
+	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if params.Name != "github-mcp" {
+		t.Errorf("name: got %q, want %q", params.Name, "github-mcp")
+	}
+	if len(params.Transports) != 1 {
+		t.Fatalf("transports length: got %d, want 1", len(params.Transports))
+	}
+	if params.Transports[0].Type != "npx" {
+		t.Errorf("transport type: got %q, want %q", params.Transports[0].Type, "npx")
+	}
+	if params.Transports[0].Package != "@modelcontextprotocol/server-github" {
+		t.Errorf("transport package: got %q, want %q", params.Transports[0].Package, "@modelcontextprotocol/server-github")
+	}
+	if params.Transports[0].Default != true {
+		t.Error("transport default: got false, want true")
+	}
+	if params.Description != "GitHub server" {
+		t.Errorf("description: got %q, want %q", params.Description, "GitHub server")
+	}
+}
+
+// TestParamUnmarshaling_BrokerActivateMCPServer verifies the param struct for the
+// new broker.activateMCPServer method correctly unmarshals from JSON.
+func TestParamUnmarshaling_BrokerActivateMCPServer(t *testing.T) {
+	t.Parallel()
+
+	var params brokerActivateMCPServerParams
+	raw := `{"name":"github-mcp","transports":[{"type":"npx","package":"@org/mcp-server"}],"transportIndex":-1}`
+	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if params.Name != "github-mcp" {
+		t.Errorf("name: got %q, want %q", params.Name, "github-mcp")
+	}
+	if len(params.Transports) != 1 {
+		t.Fatalf("transports length: got %d, want 1", len(params.Transports))
+	}
+	if params.TransportIndex != -1 {
+		t.Errorf("transportIndex: got %d, want -1", params.TransportIndex)
 	}
 }

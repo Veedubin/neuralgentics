@@ -27,6 +27,7 @@ import (
 	orchestrator "neuralgentics-orchestrator/src/neuralgentics/orchestrator"
 
 	"neuralgentics-broker/src/neuralgentics/broker"
+	"neuralgentics-broker/src/neuralgentics/broker/types"
 )
 
 // version is set at build time via -ldflags="-X main.version=...".
@@ -168,6 +169,33 @@ type brokerCallParams struct {
 type brokerMatchIntentParams struct {
 	Role   string `json:"role"`
 	Intent string `json:"intent"`
+}
+
+// ─── Broker Multi-Transport Request Structs (T-TRANSPORT-ABSTRACTION) ────────
+
+type brokerRegisterMCPServerParams struct {
+	Name         string                      `json:"name"`
+	Transports   []brokerTransportConfigJSON `json:"transports"`
+	Description  string                      `json:"description,omitempty"`
+	Capabilities []string                    `json:"capabilities,omitempty"`
+}
+
+type brokerTransportConfigJSON struct {
+	Type        string            `json:"type"`
+	Package     string            `json:"package,omitempty"`
+	Args        []string          `json:"args,omitempty"`
+	Env         map[string]string `json:"env,omitempty"`
+	URL         string            `json:"url,omitempty"`
+	Default     bool              `json:"default,omitempty"`
+	Description string            `json:"description,omitempty"`
+}
+
+type brokerActivateMCPServerParams struct {
+	Name           string                      `json:"name"`
+	Transports     []brokerTransportConfigJSON `json:"transports"`
+	Description    string                      `json:"description,omitempty"`
+	Capabilities   []string                    `json:"capabilities,omitempty"`
+	TransportIndex int                         `json:"transportIndex,omitempty"`
 }
 
 // ─── Peer Request/Response Structs ─────────────────────────────────────────────
@@ -801,6 +829,10 @@ func handleRequest(
 		return handleBrokerCall(req, brk)
 	case "broker.matchIntent":
 		return handleBrokerMatchIntent(req, brk)
+	case "broker.registerMCPServer":
+		return handleBrokerRegisterMCPServer(req, brk)
+	case "broker.activateMCPServer":
+		return handleBrokerActivateMCPServer(req, brk)
 
 	// Peer/Multi-Peer
 	case "peer.listPeers":
@@ -1137,6 +1169,89 @@ func handleBrokerMatchIntent(req jsonrpcRequest, brk *broker.Broker) jsonrpcResp
 	}
 
 	return successResponse(req.ID, backend.FromIntentToolMatch(match))
+}
+
+func handleBrokerRegisterMCPServer(req jsonrpcRequest, brk *broker.Broker) jsonrpcResponse {
+	var params brokerRegisterMCPServerParams
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	if params.Name == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: name is required")
+	}
+
+	if len(params.Transports) == 0 {
+		return errorResponse(req.ID, -32602, "Invalid params: at least one transport is required")
+	}
+
+	transports := make([]types.TransportConfig, len(params.Transports))
+	for i, tc := range params.Transports {
+		transports[i] = types.TransportConfig{
+			Type:        types.TransportType(tc.Type),
+			Package:     tc.Package,
+			Args:        tc.Args,
+			Env:         tc.Env,
+			URL:         tc.URL,
+			Default:     tc.Default,
+			Description: tc.Description,
+		}
+	}
+
+	config := types.MCPServerConfig{
+		Name:         params.Name,
+		Transports:   transports,
+		Description:  params.Description,
+		Capabilities: params.Capabilities,
+	}
+
+	if err := brk.RegisterMCPServer(config); err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	return successResponse(req.ID, map[string]string{"status": "ok"})
+}
+
+func handleBrokerActivateMCPServer(req jsonrpcRequest, brk *broker.Broker) jsonrpcResponse {
+	var params brokerActivateMCPServerParams
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	if params.Name == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: name is required")
+	}
+
+	if len(params.Transports) == 0 {
+		return errorResponse(req.ID, -32602, "Invalid params: at least one transport is required")
+	}
+
+	transports := make([]types.TransportConfig, len(params.Transports))
+	for i, tc := range params.Transports {
+		transports[i] = types.TransportConfig{
+			Type:        types.TransportType(tc.Type),
+			Package:     tc.Package,
+			Args:        tc.Args,
+			Env:         tc.Env,
+			URL:         tc.URL,
+			Default:     tc.Default,
+			Description: tc.Description,
+		}
+	}
+
+	config := types.MCPServerConfig{
+		Name:         params.Name,
+		Transports:   transports,
+		Description:  params.Description,
+		Capabilities: params.Capabilities,
+	}
+
+	transportType, err := brk.ActivateMCPServerWithTransport(params.Name, config, params.TransportIndex)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	return successResponse(req.ID, map[string]string{"transport": transportType})
 }
 
 // ─── Peer Handlers ─────────────────────────────────────────────────────────────
