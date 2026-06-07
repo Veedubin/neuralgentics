@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-06-07
+
+Patch release: backward-compatible internal IMPROVE handler enhancements.
+
+### Added
+
+- **AGENTS.md fingerprinting (T-IMPROVE-003)** — `ImproveResult.ConfigFingerprint` now contains SHA-256 hashes of `AGENTS.md`, `opencode.json`, the 5 `SKILL.md` files, and the 8 `agents/*.md` persona files. If two consecutive IMPROVE calls return different hashes, the user edited config mid-session and a restart is needed. Surfaces the "I forgot to restart" problem that bit us in Sessions 14 and 30.
+- **Token budget tracking (T-IMPROVE-004)** — `ImproveResult.ContextBudget` now includes `TaskInputTokens`, `TaskOutputTokens`, `ContextWindowTokens` (default 200K, override via `SetContextWindow()`), and `RecommendPrecompress` (true if session budget >= 70%). Lets the orchestrator trigger `memini-ai-dev_precompress_extraction` before compaction hits.
+
+### Quality gates (v0.3.1)
+
+- `go vet` — 4/4 Go modules clean
+- `go test -short` — 4/4 Go modules PASS
+- 21 IMPROVE-related unit tests pass (6 original + 6 fingerprint + 9 token budget)
+- `tsc --noEmit` — TUI + overlay both clean
+- `bun test` — TUI 744 pass / 0 fail + SDK pass / 0 fail
+- `mkdocs build --strict` — 0 warnings
+- Pre-existing: store + orchestrator E2E tests fail with "no Docker provider" (testcontainers init issue, not a regression)
+
 ## [0.3.0] - 2026-06-07
 
 Minor release: TUI command coverage, IMPROVE phase implementation, broker exposure fixes, dual-model memory elevation.
