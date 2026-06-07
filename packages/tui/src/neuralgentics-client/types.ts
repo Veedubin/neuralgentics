@@ -199,6 +199,21 @@ export interface ChallengeMemoryParams {
   challengeText: string;
 }
 
+/** memory.elevateMemoryTo1024 params (T-ELEVATE-001) */
+export interface ElevateMemoryTo1024Params {
+  memoryId: string;
+  vector1024?: number[];
+  trustBoost?: number;
+}
+
+/** memory.elevateMemoryTo1024 result (T-ELEVATE-001) */
+export interface ElevateMemoryTo1024Result {
+  memoryId: string;
+  elevated: boolean;
+  trustScore: number;
+  vectorDim: number;
+}
+
 export interface MethodRegistry {
   // Lifecycle
   "ping": { params: Record<string, never>; result: PingResult };
@@ -288,6 +303,10 @@ export interface MethodRegistry {
   "memory.challengeMemory": { params: ChallengeMemoryParams; result: Record<string, unknown> };
   // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.getDialecticHistory": { params: Record<string, unknown>; result: Record<string, unknown>[] };
+
+  // Memory Dual-Model RRF Elevation (T-ELEVATE-001)
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
+  "memory.elevateMemoryTo1024": { params: ElevateMemoryTo1024Params; result: ElevateMemoryTo1024Result };
 
   // User Profile
   // [NOT WIRED] — exposed by Go backend but no TUI slash command yet

@@ -902,6 +902,44 @@ func TestHandleRequest_GetDialecticHistory_MissingID(t *testing.T) {
 	}
 }
 
+// ─── Dual-Model RRF Elevation Tests (T-ELEVATE-001) ──────────────────────────
+
+func TestHandleRequest_ElevateMemoryTo1024_MissingMemoryID(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("elev1"),
+		Method:  "memory.elevateMemoryTo1024",
+		Params:  json.RawMessage(`{"memoryId":""}`),
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	if resp.Error == nil {
+		t.Fatal("expected error for empty memoryId")
+	}
+	if resp.Error.Code != -32602 {
+		t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
+	}
+}
+
+func TestHandleRequest_ElevateMemoryTo1024_NilParams(t *testing.T) {
+	t.Parallel()
+
+	req := jsonrpcRequest{
+		JSONRPC: "2.0",
+		ID:      jsonRawID("elev2"),
+		Method:  "memory.elevateMemoryTo1024",
+		Params:  nil,
+	}
+	resp := handleRequest(nil, req, nil, nil, nil, nil)
+	if resp.Error == nil {
+		t.Fatal("expected error for nil params")
+	}
+	if resp.Error.Code != -32602 {
+		t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
+	}
+}
+
 // ─── Comprehensive Method Routing Tests ────────────────────────────────────────
 // Verify that all new methods are recognized (not "method not found").
 // Only methods that have required params can be tested with nil memSys,
@@ -950,6 +988,9 @@ func TestAllNewMethods_WithRequiredParams_Recognized(t *testing.T) {
 		{"memory.resolveContradiction", `{"contradictionId":""}`},
 		{"memory.challengeMemory", `{"memoryId":"","challengeText":"x"}`},
 		{"memory.getDialecticHistory", `{"memoryId":""}`},
+
+		// Dual-Model RRF Elevation (T-ELEVATE-001)
+		{"memory.elevateMemoryTo1024", `{"memoryId":""}`},
 	}
 
 	for _, tt := range methodsWithMissingParamTests {
