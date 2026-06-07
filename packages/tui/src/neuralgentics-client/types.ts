@@ -1,10 +1,12 @@
 /**
- * TypeScript type definitions for all 46 Neuralgentics JSON-RPC methods.
+ * TypeScript type definitions for all 68 Neuralgentics JSON-RPC methods.
  *
  * Core 6 methods (ping, initialize, memory.add, memory.query, memory.get,
  * memory.delete) have fully typed request params and response results.
- * Remaining 40 methods use generic Record<string, unknown> params/results
- * and can be typed later when needed.
+ * 25 entries are actively called or reserved for upcoming TUI commands
+ * (T-WIRE-001, T-ALIGN-PARAMS). The remaining 43 are comment-marked with
+ * [NOT WIRED] — they are exposed by the Go backend but have no TUI
+ * slash command yet. No entries are deleted.
  */
 
 // ─── Core Method Types ────────────────────────────────────────────────────────
@@ -160,6 +162,7 @@ export interface GetRelationshipSummaryResult {
 // ─── Method Registry ──────────────────────────────────────────────────────────
 // Maps each JSON-RPC method name to its param and result types.
 // Core 6 are fully typed; the rest use generic types for now.
+// Entries marked [NOT WIRED] have no TUI slash command yet (T-CLEANUP-DEAD-49).
 
 export interface MethodRegistry {
   // Lifecycle
@@ -176,21 +179,27 @@ export interface MethodRegistry {
   "memory.queryBySourceType": { params: MemoryQueryBySourceTypeParams; result: MemoryQueryBySourceTypeResult };
 
   // Memory Status
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.status": { params: Record<string, never>; result: Record<string, unknown> };
   "memory.count": { params: Record<string, never>; result: { count: number } };
 
   // Memory Audit
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.logAuditEvent": { params: Record<string, unknown>; result: { id: string } };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.getAuditLog": { params: Record<string, unknown>; result: Record<string, unknown>[] };
 
   // Memory Trust
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.getTrustScore": { params: { memoryId: string }; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.listArchived": { params: Record<string, unknown>; result: Record<string, unknown>[] };
 
   // Memory Decay
   "memory.getDecayStatus": { params: Record<string, never>; result: Record<string, unknown> };
   "memory.adjustDecayRate": { params: { memoryId: string; rate: number }; result: Record<string, never> };
   "memory.triggerConsolidation": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.listFadingMemories": { params: Record<string, unknown>; result: Record<string, unknown>[] };
 
   // Memory Tiered Summaries
@@ -203,71 +212,108 @@ export interface MethodRegistry {
 
   // Memory Knowledge Graph
   "memory.extractEntities": { params: { text: string }; result: { entityIds: string[] } };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.queryKG": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.searchEntities": { params: { name: string; limit?: number }; result: Record<string, unknown>[] };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.getEntitiesByType": { params: { entityType: string; limit?: number }; result: Record<string, unknown>[] };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.createEntityRelationship": { params: Record<string, unknown>; result: { id: string } };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.getEntityGraph": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.renderGraphHTML": { params: Record<string, unknown>; result: { html: string } };
   "memory.getRelationshipSummary": { params: GetRelationshipSummaryParams; result: GetRelationshipSummaryResult };
 
   // Memory Thought Chains
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.startThoughtChain": { params: Record<string, unknown>; result: { id: string } };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.addThought": { params: Record<string, unknown>; result: { id: string } };
   "memory.getThoughtChain": { params: { chainId: string }; result: Record<string, unknown> };
   "memory.getRelatedThoughtChains": { params: Record<string, unknown>; result: Record<string, unknown>[] };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.reviseThought": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.branchThought": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.pauseThoughtChain": { params: { chainId: string }; result: Record<string, never> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.resumeThoughtChain": { params: { chainId: string }; result: Record<string, never> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.abandonThoughtChain": { params: { chainId: string }; result: Record<string, never> };
 
   // Memory Dialectic
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.findContradictions": { params: Record<string, unknown>; result: Record<string, unknown>[] };
   "memory.resolveContradiction": { params: Record<string, unknown>; result: Record<string, unknown> };
   "memory.challengeMemory": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.getDialecticHistory": { params: Record<string, unknown>; result: Record<string, unknown>[] };
 
   // User Profile
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "user.getProfile": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "user.updateProfile": { params: Record<string, unknown>; result: Record<string, unknown> };
 
   // Audit
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "audit.getSecuritySummary": { params: Record<string, unknown>; result: Record<string, unknown> };
 
   // Indexer
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "indexer.search": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "indexer.index": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "indexer.getFileContents": { params: Record<string, unknown>; result: Record<string, unknown> };
 
   // Orchestrator
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "orchestrator.handleTask": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "orchestrator.handleStateless": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "orchestrator.completeCycle": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "orchestrator.dispatch": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "orchestrator.route": { params: { taskType: string }; result: { agent: string } };
 
   // Broker
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "broker.buildCatalog": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "broker.call": { params: Record<string, unknown>; result: Record<string, unknown> };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "broker.matchIntent": { params: Record<string, unknown>; result: Record<string, unknown> };
 
   // Peer
   "peer.listPeers": { params: Record<string, unknown>; result: Record<string, unknown>[] };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "peer.addPeer": { params: Record<string, unknown>; result: { id: string } };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "peer.shareMemory": { params: Record<string, unknown>; result: { id: string } };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "peer.getPeerMemories": { params: Record<string, unknown>; result: Record<string, unknown>[] };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "peer.getSharedMemories": { params: Record<string, unknown>; result: Record<string, unknown>[] };
   "peer.switchContext": { params: { peerId: string }; result: SwitchContextResult };
 
   // Agent Tools (Lazy Tool Exposure)
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "agent.recordToolRequest": { params: Record<string, unknown>; result: { status: string } };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "agent.incrementToolUse": { params: Record<string, unknown>; result: { useCount: number; bypassBroker: boolean } };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "agent.getTools": { params: Record<string, unknown>; result: Record<string, unknown>[] };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "agent.getInitialToolSet": { params: Record<string, unknown>; result: { peerId: string; tools: unknown[] } };
 }
 
-/** All known method names (46 total). */
+/** All known method names (68 total). */
 export type MethodName = keyof MethodRegistry;
 
 /** Get the params type for a method. */
