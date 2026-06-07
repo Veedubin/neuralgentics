@@ -214,6 +214,44 @@ export interface ElevateMemoryTo1024Result {
   vectorDim: number;
 }
 
+// ─── Broker Multi-Transport Types (T-TRANSPORT-ABSTRACTION) ─────────────────
+
+/** Transport type for MCP server launch */
+export type TransportType = 'npx' | 'uvx' | 'local' | 'docker' | 'http';
+
+/** A single transport option for an MCP server */
+export interface TransportConfig {
+  type: TransportType;
+  package?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  default?: boolean;
+  description?: string;
+}
+
+/** Params for broker.registerMCPServer */
+export interface RegisterMCPServerParams {
+  name: string;
+  transports: TransportConfig[];
+  description?: string;
+  capabilities?: string[];
+}
+
+/** Params for broker.activateMCPServer */
+export interface ActivateMCPServerParams {
+  name: string;
+  transports: TransportConfig[];
+  description?: string;
+  capabilities?: string[];
+  transportIndex?: number; // -1 = use default
+}
+
+/** Result for broker.activateMCPServer */
+export interface ActivateMCPServerResult {
+  transport: string; // The transport.Type that succeeded
+}
+
 export interface MethodRegistry {
   // Lifecycle
   "ping": { params: Record<string, never>; result: PingResult };
@@ -345,6 +383,10 @@ export interface MethodRegistry {
   "broker.call": { params: Record<string, unknown>; result: Record<string, unknown> };
   // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "broker.matchIntent": { params: Record<string, unknown>; result: Record<string, unknown> };
+
+  // Broker Multi-Transport (T-TRANSPORT-ABSTRACTION)
+  "broker.registerMCPServer": { params: RegisterMCPServerParams; result: { status: string } };
+  "broker.activateMCPServer": { params: ActivateMCPServerParams; result: ActivateMCPServerResult };
 
   // Peer
   "peer.listPeers": { params: Record<string, unknown>; result: Record<string, unknown>[] };
