@@ -95,6 +95,9 @@ Ideal for isolated development or CI environments.
 
 This brings up PostgreSQL 18 + pgvector, the embedding sidecar, the Go backend, and the TUI (commented out by default; uncomment in `docker-compose.yml` to enable).
 
+Users can browse and activate from a curated catalog of populares MCP servers using the `/catalog` command in the TUI.
+
+
 Images are published to `ghcr.io/veedubin/neuralgentics-{postgres,sidecar,backend,tui}:vX.Y.Z`.
 
 ---

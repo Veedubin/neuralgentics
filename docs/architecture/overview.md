@@ -47,6 +47,9 @@ The Broker is the most critical security component. It implements **Role-Based A
 - **Token Reduction:** Instead of sending a 100-tool catalog to every agent, the Broker filters the catalog based on the agent's role.
 - **Intent Matching:** Uses Jaccard similarity to map agent intents to the most relevant tools.
 
+#### v0.4.0 — Multi-Transport & Catalog
+The Broker now supports a **multi-transport abstraction**, allowing MCP servers to declare multiple launch options (e.g., npx, uvx, local binary, docker, http) with automatic fallback chains. To simplify onboarding, the Broker ships with a curated catalog of 20 popular MCP servers embedded in the binary. Additionally, the system now supports runtime LLM provider switching between Ollama Cloud, Docker Model Runner (DMR), and OpenRouter.
+
 ### 3. The Brain (Memini-AI)
 Memini-AI is a semantic memory server. Unlike standard RAG, it uses a **Trust Engine**:
 - Every memory begins with a trust score of $0.5$.
