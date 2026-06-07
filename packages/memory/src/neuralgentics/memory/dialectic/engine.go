@@ -126,6 +126,25 @@ func (e *Engine) ResolveContradiction(ctx context.Context, contradictionID strin
 		return nil, fmt.Errorf("parse contradiction ID: %w", err)
 	}
 
+	return e.resolveContradictionByIDs(ctx, memAID, memBID)
+}
+
+// ResolveContradictionByIDs resolves a contradiction between two memories
+// identified by their IDs directly. This aligns with the memini-ai Python
+// source-of-truth which takes memory_id_a and memory_id_b parameters.
+func (e *Engine) ResolveContradictionByIDs(ctx context.Context, memoryIDA, memoryIDB string) (*core.Resolution, error) {
+	if memoryIDA == "" {
+		return nil, fmt.Errorf("memory ID A must not be empty")
+	}
+	if memoryIDB == "" {
+		return nil, fmt.Errorf("memory ID B must not be empty")
+	}
+	return e.resolveContradictionByIDs(ctx, memoryIDA, memoryIDB)
+}
+
+// resolveContradictionByIDs is the shared implementation that fetches both memories,
+// generates arguments, and synthesizes a resolution.
+func (e *Engine) resolveContradictionByIDs(ctx context.Context, memAID, memBID string) (*core.Resolution, error) {
 	memA, err := e.store.GetMemory(ctx, memAID, true)
 	if err != nil {
 		return nil, fmt.Errorf("get memory A (%s): %w", memAID, err)
@@ -141,6 +160,7 @@ func (e *Engine) ResolveContradiction(ctx context.Context, contradictionID strin
 		return nil, fmt.Errorf("generate arguments: %w", err)
 	}
 
+	contradictionID := memAID + "|" + memBID
 	contradiction := &core.Contradiction{
 		ID:      contradictionID,
 		MemoryA: memAID,

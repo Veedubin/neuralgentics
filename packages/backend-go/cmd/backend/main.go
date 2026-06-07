@@ -283,7 +283,13 @@ type memoryPrecompressExtractionParams struct {
 // ─── Knowledge Graph Request Structs ──────────────────────────────────────────
 
 type memoryExtractEntitiesParams struct {
-	Text string `json:"text"`
+	MemoryID string `json:"memoryId"`
+}
+
+type memoryGetInferenceChainParams struct {
+	StartEntity string `json:"startEntity"`
+	EndEntity   string `json:"endEntity"`
+	MaxDepth    *int   `json:"maxDepth,omitempty"`
 }
 
 type memoryQueryKGParams struct {
@@ -385,12 +391,12 @@ type memoryFindContradictionsParams struct {
 }
 
 type memoryResolveContradictionParams struct {
-	ContradictionID string `json:"contradictionId"`
+	MemoryIDA string `json:"memoryIdA"`
+	MemoryIDB string `json:"memoryIdB"`
 }
 
 type memoryChallengeMemoryParams struct {
 	MemoryID      string `json:"memoryId"`
-	ChallengerID  string `json:"challengerId,omitempty"`
 	ChallengeText string `json:"challengeText"`
 }
 
@@ -699,6 +705,8 @@ func handleRequest(
 	// Memory — Knowledge Graph
 	case "memory.extractEntities":
 		return handleMemoryExtractEntities(ctx, req, memSys)
+	case "memory.getInferenceChain":
+		return handleMemoryGetInferenceChain(ctx, req, memSys)
 	case "memory.queryKG":
 		return handleMemoryQueryKG(ctx, req, memSys)
 	case "memory.searchEntities":
@@ -1624,16 +1632,48 @@ func handleMemoryExtractEntities(ctx context.Context, req jsonrpcRequest, memSys
 		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
 	}
 
-	if params.Text == "" {
-		return errorResponse(req.ID, -32602, "Invalid params: text is required")
+	if params.MemoryID == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: memoryId is required")
 	}
 
-	ids, err := memSys.ExtractEntities(ctx, params.Text)
+	// Fetch the memory by ID, then extract entities from its content
+	mem, err := memSys.GetMemory(ctx, params.MemoryID)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: memory not found: "+err.Error())
+	}
+
+	ids, err := memSys.ExtractEntities(ctx, mem.Content)
 	if err != nil {
 		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
 	}
 
 	return successResponse(req.ID, map[string]interface{}{"entityIds": ids})
+}
+
+func handleMemoryGetInferenceChain(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem) jsonrpcResponse {
+	var params memoryGetInferenceChainParams
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	if params.StartEntity == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: startEntity is required")
+	}
+	if params.EndEntity == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: endEntity is required")
+	}
+
+	maxDepth := 3
+	if params.MaxDepth != nil && *params.MaxDepth > 0 {
+		maxDepth = *params.MaxDepth
+	}
+
+	result, err := memSys.GetInferenceChain(ctx, params.StartEntity, params.EndEntity, maxDepth)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
+	}
+
+	return successResponse(req.ID, result)
 }
 
 func handleMemoryQueryKG(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem) jsonrpcResponse {
@@ -2026,11 +2066,14 @@ func handleMemoryResolveContradiction(ctx context.Context, req jsonrpcRequest, m
 		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
 	}
 
-	if params.ContradictionID == "" {
-		return errorResponse(req.ID, -32602, "Invalid params: contradictionId is required")
+	if params.MemoryIDA == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: memoryIdA is required")
+	}
+	if params.MemoryIDB == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: memoryIdB is required")
 	}
 
-	resolution, err := memSys.ResolveContradiction(ctx, params.ContradictionID)
+	resolution, err := memSys.ResolveContradiction(ctx, params.MemoryIDA, params.MemoryIDB)
 	if err != nil {
 		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
 	}
@@ -2051,7 +2094,7 @@ func handleMemoryChallengeMemory(ctx context.Context, req jsonrpcRequest, memSys
 		return errorResponse(req.ID, -32602, "Invalid params: challengeText is required")
 	}
 
-	event, err := memSys.ChallengeMemory(ctx, params.MemoryID, params.ChallengerID, params.ChallengeText)
+	event, err := memSys.ChallengeMemory(ctx, params.MemoryID, params.ChallengeText)
 	if err != nil {
 		return errorResponse(req.ID, -32603, "Internal error: "+err.Error())
 	}

@@ -16,7 +16,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { EventEmitter } from "node:events";
 import { resolveBackendPath, resolveDbUrl } from "./resolver.js";
-import type { MethodName, MethodParams, MethodResult, SwitchContextResult, Tier0SummaryParams, Tier1SummaryParams, TierSummaryResult, TriggerExtractionParams, TriggerExtractionResult, PrecompressExtractionParams, PrecompressExtractionResult, GetRelationshipSummaryParams, GetRelationshipSummaryResult } from "./types.js";
+import type { MethodName, MethodParams, MethodResult, SwitchContextResult, Tier0SummaryParams, Tier1SummaryParams, TierSummaryResult, TriggerExtractionParams, TriggerExtractionResult, PrecompressExtractionParams, PrecompressExtractionResult, GetRelationshipSummaryParams, GetRelationshipSummaryResult, GetInferenceChainParams, GetInferenceChainResult } from "./types.js";
 
 /** Online/offline status for the health-check layer (T-081a). */
 export type ClientStatus = "online" | "offline";
@@ -302,6 +302,25 @@ export class NeuralgenticsClient {
   async getRelationshipSummary(memoryId: string): Promise<GetRelationshipSummaryResult> {
     const params: GetRelationshipSummaryParams = { memoryId };
     return (await this.call("memory.getRelationshipSummary", params)) as GetRelationshipSummaryResult;
+  }
+
+  // ─── Inference Chain (T-ALIGN-PARAMS) ────────────────────────────────────────
+
+  /**
+   * Find the shortest inference chain between two entities in the knowledge graph.
+   * Uses BFS traversal up to the specified max depth.
+   *
+   * @param startEntity - The entity ID to start from.
+   * @param endEntity - The entity ID to find a path to.
+   * @param maxDepth - Maximum traversal depth (default 3).
+   * @returns The inference chain result with entities and relationships along the path.
+   */
+  async getInferenceChain(startEntity: string, endEntity: string, maxDepth?: number): Promise<GetInferenceChainResult> {
+    const params: GetInferenceChainParams = { startEntity, endEntity };
+    if (maxDepth !== undefined) {
+      params.maxDepth = maxDepth;
+    }
+    return (await this.call("memory.getInferenceChain", params)) as GetInferenceChainResult;
   }
 
   // ─── Offline Detection (T-081a) ──────────────────────────────────────────

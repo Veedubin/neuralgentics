@@ -403,6 +403,19 @@ func (m *MemorySystem) GetEntityGraph(ctx context.Context, entityID string, dept
 	return kg.GetEntityGraph(ctx, m.store, entityID, depth)
 }
 
+// GetInferenceChain finds the shortest inference chain between two entities
+// in the knowledge graph using BFS traversal up to maxDepth.
+func (m *MemorySystem) GetInferenceChain(ctx context.Context, startEntity, endEntity string, maxDepth int) (*kg.QueryResult, error) {
+	if maxDepth <= 0 {
+		maxDepth = 3
+	}
+	return m.kgQuery.Query(ctx, kg.QueryParams{
+		StartEntity: startEntity,
+		EndEntity:   endEntity,
+		MaxDepth:    maxDepth,
+	})
+}
+
 // RenderGraphHTML produces a self-contained HTML visualization of the knowledge graph
 // surrounding the given entity.
 func (m *MemorySystem) RenderGraphHTML(ctx context.Context, entityID string, depth int) (string, error) {
@@ -513,15 +526,16 @@ func (m *MemorySystem) FindContradictions(ctx context.Context, query string, lim
 	return m.dialecticEngine.FindContradictions(ctx, query, limit)
 }
 
-// ResolveContradiction resolves a contradiction by generating arguments and
-// synthesizing a resolution via LLM.
-func (m *MemorySystem) ResolveContradiction(ctx context.Context, contradictionID string) (*core.Resolution, error) {
-	return m.dialecticEngine.ResolveContradiction(ctx, contradictionID)
+// ResolveContradiction resolves a contradiction between two memories by generating
+// arguments and synthesizing a resolution via LLM.
+func (m *MemorySystem) ResolveContradiction(ctx context.Context, memoryIDA, memoryIDB string) (*core.Resolution, error) {
+	return m.dialecticEngine.ResolveContradictionByIDs(ctx, memoryIDA, memoryIDB)
 }
 
 // ChallengeMemory submits a challenge against a memory and generates a response.
-func (m *MemorySystem) ChallengeMemory(ctx context.Context, memoryID, challengerID, challengeText string) (*core.ChallengeEvent, error) {
-	return m.dialecticEngine.ChallengeMemory(ctx, memoryID, challengerID, challengeText)
+// The challengerID parameter is no longer used (aligned with memini-ai Python source-of-truth).
+func (m *MemorySystem) ChallengeMemory(ctx context.Context, memoryID, challengeText string) (*core.ChallengeEvent, error) {
+	return m.dialecticEngine.ChallengeMemory(ctx, memoryID, "", challengeText)
 }
 
 // GetDialecticHistory returns the dialectic event history for a memory.

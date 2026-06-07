@@ -164,6 +164,41 @@ export interface GetRelationshipSummaryResult {
 // Core 6 are fully typed; the rest use generic types for now.
 // Entries marked [NOT WIRED] have no TUI slash command yet (T-CLEANUP-DEAD-49).
 
+/** memory.getInferenceChain params (T-ALIGN-PARAMS) */
+export interface GetInferenceChainParams {
+  startEntity: string;
+  endEntity: string;
+  maxDepth?: number;
+}
+
+/** A single relationship in an inference chain */
+export interface InferenceChainRelationship {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  relationshipType: string;
+  confidence: number;
+}
+
+/** memory.getInferenceChain result (T-ALIGN-PARAMS) */
+export interface GetInferenceChainResult {
+  entities: Record<string, unknown>[];
+  relationships: InferenceChainRelationship[];
+  inferenceChain: InferenceChainRelationship[];
+}
+
+/** memory.resolveContradiction params (T-ALIGN-PARAMS) */
+export interface ResolveContradictionParams {
+  memoryIdA: string;
+  memoryIdB: string;
+}
+
+/** memory.challengeMemory params (T-ALIGN-PARAMS) */
+export interface ChallengeMemoryParams {
+  memoryId: string;
+  challengeText: string;
+}
+
 export interface MethodRegistry {
   // Lifecycle
   "ping": { params: Record<string, never>; result: PingResult };
@@ -211,7 +246,9 @@ export interface MethodRegistry {
   "memory.precompressExtraction": { params: PrecompressExtractionParams; result: PrecompressExtractionResult };
 
   // Memory Knowledge Graph
-  "memory.extractEntities": { params: { text: string }; result: { entityIds: string[] } };
+  "memory.extractEntities": { params: { memoryId: string }; result: { entityIds: string[] } };
+  // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
+  "memory.getInferenceChain": { params: GetInferenceChainParams; result: GetInferenceChainResult };
   // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.queryKG": { params: Record<string, unknown>; result: Record<string, unknown> };
   // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
@@ -247,8 +284,8 @@ export interface MethodRegistry {
   // Memory Dialectic
   // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.findContradictions": { params: Record<string, unknown>; result: Record<string, unknown>[] };
-  "memory.resolveContradiction": { params: Record<string, unknown>; result: Record<string, unknown> };
-  "memory.challengeMemory": { params: Record<string, unknown>; result: Record<string, unknown> };
+  "memory.resolveContradiction": { params: ResolveContradictionParams; result: Record<string, unknown> };
+  "memory.challengeMemory": { params: ChallengeMemoryParams; result: Record<string, unknown> };
   // [NOT WIRED] — exposed by Go backend but no TUI slash command yet
   "memory.getDialecticHistory": { params: Record<string, unknown>; result: Record<string, unknown>[] };
 
