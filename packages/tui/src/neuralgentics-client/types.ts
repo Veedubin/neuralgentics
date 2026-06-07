@@ -214,6 +214,20 @@ export interface ElevateMemoryTo1024Result {
   vectorDim: number;
 }
 
+// ─── Provider Preference Types (T-SMALL-MODEL) ──────────────────────────────────
+
+/** Provider preference stored in ~/.config/neuralgentics/provider-pref.json.
+ *
+ * v0.4.0 shape: { activeProvider, updatedAt } — smallModel/smallModelProvider
+ * are optional for backward compatibility. readProviderPref() fills them in
+ * from SMALL_MODEL_BY_PROVIDER when absent. */
+export interface ProviderPref {
+  activeProvider: string;
+  smallModel?: string;           // NEW: v0.5.0 — provider-aware small model
+  smallModelProvider?: string;   // NEW: v0.5.0 — which provider the small model belongs to
+  updatedAt: string;
+}
+
 // ─── Provider Status Types (T-DUAL-PROVIDER) ──────────────────────────────────
 
 /** A single provider health check result. */

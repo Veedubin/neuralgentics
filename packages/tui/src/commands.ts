@@ -47,6 +47,7 @@ import type {
   CuratedTransport,
   DiscoverCatalogResult,
   ListTransportsResult,
+  ProviderPref,
   ProviderStatusEntry,
 } from "./neuralgentics-client/types.js";
 import type { OfflineState } from "./panels/status.js";
@@ -1927,10 +1928,23 @@ export async function handleMCPCommand(
 // ─── /provider Command (Async, T-DUAL-PROVIDER) ──────────────────────────────────
 
 /** Known provider names for validation. */
-const KNOWN_PROVIDERS = ["ollama-cloud", "dmr-local", "openrouter"] as const;
+export const KNOWN_PROVIDERS = ["ollama-cloud", "dmr-local", "openrouter"] as const;
 
 /** Default provider name. */
-const DEFAULT_PROVIDER = "ollama-cloud";
+export const DEFAULT_PROVIDER = "ollama-cloud";
+
+/** Provider-aware small model catalog.
+ *
+ * When the user switches providers via /provider, the TUI also writes the
+ * equivalent small model for that provider. Each provider's "small" model
+ * is the cheapest/fastest model in their catalog that's still useful for
+ * sub-tasks like summarization, code review, and short completions.
+ */
+export const SMALL_MODEL_BY_PROVIDER: Record<string, string> = {
+  'ollama-cloud': 'ollama-cloud/devstral-small-2:24b-cloud',
+  'dmr-local': 'dmr-local/ai/devstral-small-2:24b',
+  'openrouter': 'openrouter/meta-llama/llama-3.1-8b-instruct',
+};
 
 /**
  * Get the path to the provider preference file.
@@ -1938,45 +1952,64 @@ const DEFAULT_PROVIDER = "ollama-cloud";
  * Respects XDG_CONFIG_HOME environment variable.
  * Default: `~/.config/neuralgentics/provider-pref.json`
  */
-function getProviderPrefPath(): string {
+export function getProviderPrefPath(): string {
   const xdgConfig = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
   return join(xdgConfig, "neuralgentics", "provider-pref.json");
 }
 
 /**
- * Read the current active provider from the preference file.
- * Returns the default provider if the file doesn't exist or can't be parsed.
+ * Read the provider preference file and return a full ProviderPref object.
+ * Returns a default preference if the file doesn't exist or can't be parsed.
+ * Backward compatible: v0.4.0 prefs (without smallModel) get defaults filled in
+ * from SMALL_MODEL_BY_PROVIDER.
  */
-function readActiveProvider(): string {
+export function readProviderPref(): ProviderPref {
   const prefPath = getProviderPrefPath();
   if (existsSync(prefPath)) {
     try {
-      const pref = JSON.parse(readFileSync(prefPath, "utf-8"));
+      const pref = JSON.parse(readFileSync(prefPath, "utf-8")) as ProviderPref;
       if (typeof pref.activeProvider === "string" && pref.activeProvider) {
-        return pref.activeProvider;
+        // Backward compat: v0.4.0 prefs don't have smallModel
+        if (!pref.smallModel) {
+          pref.smallModel = SMALL_MODEL_BY_PROVIDER[pref.activeProvider] ?? SMALL_MODEL_BY_PROVIDER[DEFAULT_PROVIDER];
+          pref.smallModelProvider = pref.activeProvider;
+        }
+        return {
+          activeProvider: pref.activeProvider,
+          smallModel: pref.smallModel,
+          smallModelProvider: pref.smallModelProvider ?? pref.activeProvider,
+          updatedAt: pref.updatedAt ?? new Date().toISOString(),
+        };
       }
     } catch {
       // Fall through to default
     }
   }
-  return DEFAULT_PROVIDER;
+  return {
+    activeProvider: DEFAULT_PROVIDER,
+    smallModel: SMALL_MODEL_BY_PROVIDER[DEFAULT_PROVIDER],
+    smallModelProvider: DEFAULT_PROVIDER,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 /**
- * Write the active provider to the preference file.
+ * Write the active provider and small model to the preference file.
  * Creates parent directories if needed.
+ * Returns the written ProviderPref object.
  */
-function writeActiveProvider(name: string): void {
+export function writeActiveProvider(name: string): ProviderPref {
+  const smallModel = SMALL_MODEL_BY_PROVIDER[name] ?? SMALL_MODEL_BY_PROVIDER[DEFAULT_PROVIDER];
+  const pref: ProviderPref = {
+    activeProvider: name,
+    smallModel,
+    smallModelProvider: name,
+    updatedAt: new Date().toISOString(),
+  };
   const prefPath = getProviderPrefPath();
   mkdirSync(join(prefPath, ".."), { recursive: true });
-  writeFileSync(
-    prefPath,
-    JSON.stringify(
-      { activeProvider: name, updatedAt: new Date().toISOString() },
-      null,
-      2,
-    ),
-  );
+  writeFileSync(prefPath, JSON.stringify(pref, null, 2));
+  return pref;
 }
 
 /**
@@ -2020,10 +2053,10 @@ export async function handleProviderCommand(
   try {
     // No args: show current provider
     if (!sub) {
-      const active = readActiveProvider();
+      const pref = readProviderPref();
       return {
         command: "provider",
-        message: `Active provider: ${active}\n(To switch: /provider <name>. List: /provider list. Status: /provider status)`,
+        message: `Active provider: ${pref.activeProvider}\nSmall model: ${pref.smallModel}\n(To switch: /provider <name>. List: /provider list. Status: /provider status)`,
         refreshKanban: false,
       };
     }
@@ -2041,10 +2074,10 @@ export async function handleProviderCommand(
 
     // /provider <name> — switch provider
     if ((KNOWN_PROVIDERS as readonly string[]).includes(sub)) {
-      writeActiveProvider(sub);
+      const pref = writeActiveProvider(sub);
       return {
         command: "provider",
-        message: `Switched active provider to: ${sub}\n(Restart opencode TUI session to apply the change to agent dispatch.)`,
+        message: `Switched active provider to: ${sub}\nSmall model: ${pref.smallModel}\n(Restart opencode TUI session to apply the change to agent dispatch.)`,
         refreshKanban: false,
       };
     }
