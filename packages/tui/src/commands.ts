@@ -20,8 +20,14 @@
 
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import type { CompactionOrchestrator, CompactionResult } from "./compaction/index.js";
-import { handleSpendCommand, handleSpendHistoryCommand } from "./observability/token-counter.js";
+import type {
+  CompactionOrchestrator,
+  CompactionResult,
+} from "./compaction/index.js";
+import {
+  handleSpendCommand,
+  handleSpendHistoryCommand,
+} from "./observability/token-counter.js";
 import type { TokenCounter } from "./observability/token-counter.js";
 import {
   OpportunityDetector,
@@ -74,7 +80,12 @@ export interface CommandResult {
   /** Whether this command should report session resume status (T-080). */
   resumeStatus?: ResumeStatus | null;
   /** Offline status diagnostic from /offline command (T-081b). */
-  offlineStatus?: { opencode: "online" | "offline"; neuralgentics: "online" | "offline"; lastCheck: string; writeCommandsBlocked: boolean };
+  offlineStatus?: {
+    opencode: "online" | "offline";
+    neuralgentics: "online" | "offline";
+    lastCheck: string;
+    writeCommandsBlocked: boolean;
+  };
 }
 
 /** All supported slash commands. */
@@ -93,12 +104,18 @@ const COMMANDS = [
   "theme",
   "model",
   "offline",
+  "tier0",
+  "tier1",
+  "peer",
+  "relationships",
+  "decay",
+  "extract",
 ] as const;
 
 export type CommandName = (typeof COMMANDS)[number];
 
 /** Available commands string for `/help` display. */
-const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume [card-id], /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light], /model [name|reset], /offline`;
+const COMMAND_LIST = `/compact, /spend, /memory [query], /board, /chain [chain-id], /harness, /resume [card-id], /review, /diff, /scaffold <title>, /opportunities, /theme [dark|light], /model [name|reset], /offline, /tier0 [force], /tier1 [force], /peer [list|switch <id>], /relationships <id>, /decay, /extract [convo]`;
 
 /** Write commands that should be blocked when offline (T-081b). */
 const WRITE_COMMANDS: ReadonlySet<string> = new Set([
@@ -108,6 +125,8 @@ const WRITE_COMMANDS: ReadonlySet<string> = new Set([
   "memory",
   "chain",
   "model",
+  "peer",
+  "extract",
 ]);
 
 // ─── Dependency injection container ──────────────────────────────────────────────
@@ -188,7 +207,8 @@ export function handleSlashCommand(
         const theirs = _args[3] ?? "// theirs version (proposed)";
         return {
           command: "diff",
-          message: "Opening 3-way merge viewer... (Tab: cycle pane, 1/2/3: jump, y: accept, n: reject, q: close)",
+          message:
+            "Opening 3-way merge viewer... (Tab: cycle pane, 1/2/3: jump, y: accept, n: reject, q: close)",
           refreshKanban: false,
           showDiffThreeWay: true,
           threeWayData: { base, ours, theirs },
@@ -196,7 +216,8 @@ export function handleSlashCommand(
       }
       return {
         command: "diff",
-        message: "Opening diff verification panel... (press y to accept, n to reject, q to close)",
+        message:
+          "Opening diff verification panel... (press y to accept, n to reject, q to close)",
         refreshKanban: false,
         showDiffPanel: true,
       };
@@ -277,7 +298,8 @@ export function handleSlashCommand(
       if (!deps?.opportunityDetector) {
         return {
           command: "opportunities",
-          message: "/opportunities — opportunity detector not available (no OpportunityDetector)",
+          message:
+            "/opportunities — opportunity detector not available (no OpportunityDetector)",
           refreshKanban: false,
         };
       }
@@ -327,6 +349,19 @@ export function handleSlashCommand(
       };
     }
 
+    case "tier0":
+    case "tier1":
+    case "peer":
+    case "relationships":
+    case "decay":
+    case "extract":
+      // Async commands — signal that caller should use the dedicated async handler
+      return {
+        command: cmd,
+        message: `/${cmd} requires an async handler. Use handle${cmd.charAt(0).toUpperCase() + cmd.slice(1)}Command().`,
+        refreshKanban: false,
+      };
+
     default:
       return {
         command: "unknown",
@@ -357,7 +392,10 @@ export function isSlashCommand(input: string): boolean {
  * @param args - Command arguments.
  * @param circuitBreaker - CircuitBreaker instance (optional — graceful degradation).
  */
-function handleResumeCommand(args: string[], circuitBreaker?: CircuitBreaker): CommandResult {
+function handleResumeCommand(
+  args: string[],
+  circuitBreaker?: CircuitBreaker,
+): CommandResult {
   // No args: signal TUI to call sessionManager.resume() and show status
   if (args.length === 0) {
     return {
@@ -411,8 +449,10 @@ export async function handleResumeSessionCommand(
 
     if (!result.resumed) {
       const reasons: Record<string, string> = {
-        "no-checkpoint": "No checkpoint found — starting fresh session. Use /compact to create one.",
-        offline: "OpenCode client offline — cannot resume. Run /compact after reconnecting.",
+        "no-checkpoint":
+          "No checkpoint found — starting fresh session. Use /compact to create one.",
+        offline:
+          "OpenCode client offline — cannot resume. Run /compact after reconnecting.",
         "already-resumed": "Session already resumed from checkpoint.",
         error: "Resume failed due to an error. Check logs for details.",
       };
@@ -473,7 +513,9 @@ function handleHarnessCommand(projectRoot?: string): CommandResult {
 
   if (skills.length > 0) {
     for (const skill of skills) {
-      lines.push(`  • ${skill.name}${skill.description ? ` — ${skill.description}` : ""}`);
+      lines.push(
+        `  • ${skill.name}${skill.description ? ` — ${skill.description}` : ""}`,
+      );
     }
   } else {
     lines.push("  No skills found in .opencode/skills/");
@@ -499,7 +541,9 @@ function detectRole(projectRoot: string): string {
     try {
       const content = readFileSync(agentsFile, "utf-8");
       // Look for a role definition in the first 500 chars
-      const roleMatch = content.slice(0, 500).match(/(?:role|agent|config)[\s:]+([^\n]+)/i);
+      const roleMatch = content
+        .slice(0, 500)
+        .match(/(?:role|agent|config)[\s:]+([^\n]+)/i);
       if (roleMatch) return roleMatch[1]!.trim();
     } catch {
       // Fall through
@@ -578,15 +622,13 @@ function handleReviewCommand(kanbanBoard?: KanbanBoard): CommandResult {
   if (!kanbanBoard) {
     return {
       command: "review",
-      message: "/review — kanban board not loaded yet. Try /board first to parse TASKS.md.",
+      message:
+        "/review — kanban board not loaded yet. Try /board first to parse TASKS.md.",
       refreshKanban: true,
     };
   }
 
-  const lines: string[] = [
-    "═══ Kanban Review ═══",
-    "",
-  ];
+  const lines: string[] = ["═══ Kanban Review ═══", ""];
 
   const statusLabels: Record<KanbanStatus, string> = {
     triage: "📥 Triage",
@@ -623,7 +665,9 @@ function handleReviewCommand(kanbanBoard?: KanbanBoard): CommandResult {
   const archived = kanbanBoard.columns.find((c) => c.status === "archived");
   if (blocked && blocked.cards.length > 0) {
     lines.push("");
-    lines.push(`⚠ Blocked cards: ${blocked.cards.map((c) => `${c.id} (${c.title.slice(0, 30)})`).join(", ")}`);
+    lines.push(
+      `⚠ Blocked cards: ${blocked.cards.map((c) => `${c.id} (${c.title.slice(0, 30)})`).join(", ")}`,
+    );
   }
   if (archived && archived.cards.length > 0) {
     lines.push(`📦 Archived cards: ${archived.cards.length}`);
@@ -657,7 +701,8 @@ function handleScaffoldCommand(args: string[]): CommandResult {
   if (!title) {
     return {
       command: "scaffold",
-      message: "/scaffold <title> — specify a card title.\nExample: /scaffold Implement WebSocket transport",
+      message:
+        "/scaffold <title> — specify a card title.\nExample: /scaffold Implement WebSocket transport",
       refreshKanban: false,
     };
   }
@@ -749,7 +794,9 @@ export function handleModelCommand(
     }
 
     lines.push("");
-    lines.push("Commands: /model <name> to switch, /model reset to restore default");
+    lines.push(
+      "Commands: /model <name> to switch, /model reset to restore default",
+    );
     lines.push("════════════════════════════");
 
     return {
@@ -773,9 +820,10 @@ export function handleModelCommand(
   const modelName = action; // case-sensitive model ID
 
   if (!isValidModelName(modelName)) {
-    const available = availableModels.length > 0
-      ? availableModels.join(", ")
-      : "(none found in provider registry)";
+    const available =
+      availableModels.length > 0
+        ? availableModels.join(", ")
+        : "(none found in provider registry)";
     return {
       command: "model",
       message: `⚠ Model '${modelName}' not found in provider registry. Falling back to default.\nAvailable: ${available}`,
@@ -899,7 +947,8 @@ export async function handleMemoryCommand(
     if (!query) {
       return {
         command: "memory",
-        message: "/memory <query> — search memories\n/memory get <id> — fetch a memory by ID\n/memory count — show total count",
+        message:
+          "/memory <query> — search memories\n/memory get <id> — fetch a memory by ID\n/memory count — show total count",
         refreshKanban: false,
       };
     }
@@ -919,10 +968,7 @@ export async function handleMemoryCommand(
       };
     }
 
-    const lines = [
-      `Found ${memories.length} memories for: "${query}"`,
-      "",
-    ];
+    const lines = [`Found ${memories.length} memories for: "${query}"`, ""];
 
     for (const mem of memories) {
       const id = String(mem.id ?? "???").slice(0, 8);
@@ -976,7 +1022,8 @@ export async function handleChainCommand(
     if (!sub) {
       return {
         command: "chain",
-        message: "/chain <chain-id> — show a specific thought chain\n/chain recent — show the most recent thought chain",
+        message:
+          "/chain <chain-id> — show a specific thought chain\n/chain recent — show the most recent thought chain",
         refreshKanban: false,
       };
     }
@@ -1067,7 +1114,8 @@ export async function handleCompactCommand(
   if (orchestrator.isCompacting) {
     return {
       command: "compact",
-      message: "Compaction already in progress. Please wait for the current cycle to complete.",
+      message:
+        "Compaction already in progress. Please wait for the current cycle to complete.",
       refreshKanban: false,
     };
   }
@@ -1078,7 +1126,8 @@ export async function handleCompactCommand(
     if (result === null) {
       return {
         command: "compact",
-        message: "Compaction skipped — no content to compact or already at optimal size.",
+        message:
+          "Compaction skipped — no content to compact or already at optimal size.",
         refreshKanban: false,
       };
     }
@@ -1129,9 +1178,14 @@ export function isWriteCommand(cmd: string): boolean {
  * @param offlineState - The current offline state for both clients.
  * @returns True if write commands should be blocked.
  */
-export function isWriteBlocked(offlineState: OfflineState | undefined): boolean {
+export function isWriteBlocked(
+  offlineState: OfflineState | undefined,
+): boolean {
   if (!offlineState) return false;
-  return offlineState.opencode === "offline" || offlineState.neuralgentics === "offline";
+  return (
+    offlineState.opencode === "offline" ||
+    offlineState.neuralgentics === "offline"
+  );
 }
 
 /**
@@ -1152,7 +1206,8 @@ export async function handleOfflineCommand(
   };
 
   const writeBlocked = isWriteBlocked(offlineState);
-  const bothOffline = opencodeStatus === "offline" && neuralgenticsStatus === "offline";
+  const bothOffline =
+    opencodeStatus === "offline" && neuralgenticsStatus === "offline";
 
   const lines: string[] = [
     "═══ Offline Diagnostics ═══",
@@ -1167,8 +1222,12 @@ export async function handleOfflineCommand(
 
   if (bothOffline) {
     lines.push("🟧 Both services OFFLINE — local operations only.");
-    lines.push("  Available: /help, /board, /review, /diff, /theme, /spend, /offline");
-    lines.push("  Blocked: /compact, /scaffold, /resume, /memory, /chain, /model");
+    lines.push(
+      "  Available: /help, /board, /review, /diff, /theme, /spend, /offline",
+    );
+    lines.push(
+      "  Blocked: /compact, /scaffold, /resume, /memory, /chain, /model",
+    );
   } else if (writeBlocked) {
     if (opencodeStatus === "offline") {
       lines.push("⚠ LLM (OpenCode) offline — agent loop unavailable.");
@@ -1196,4 +1255,371 @@ export async function handleOfflineCommand(
       writeCommandsBlocked: writeBlocked,
     },
   };
+}
+
+// ─── /tier0 Command (Async) ──────────────────────────────────────────────────────
+
+/**
+ * Handle the `/tier0 [force]` command (async).
+ *
+ * Fetches the L0 project summary (~100 tokens) from high-trust memories.
+ *
+ * @param client - NeuralgenticsClient instance.
+ * @param input - The raw input string (e.g. "/tier0" or "/tier0 force").
+ */
+export async function handleTier0Command(
+  client: NeuralgenticsClient,
+  input: string,
+): Promise<CommandResult> {
+  const trimmed = input.trim();
+  const parts = trimmed.slice(1).split(/\s+/);
+  const forceArg = parts[1]?.toLowerCase() ?? "";
+  const forceRefresh = forceArg === "force";
+
+  try {
+    const result = await client.getTier0Summary(forceRefresh);
+
+    const lines = [
+      `═══ Tier 0 Summary (L0) ═══`,
+      "",
+      `${result.content}`,
+      "",
+      `Tier: ${result.tier}`,
+      `Tokens: ${result.tokenCount}`,
+      `Generated: ${result.generatedAt}`,
+      "",
+      "════════════════════════════",
+    ];
+
+    return {
+      command: "tier0",
+      message: lines.join("\n"),
+      refreshKanban: false,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      command: "tier0",
+      message: `/tier0 failed: ${msg}`,
+      refreshKanban: false,
+    };
+  }
+}
+
+// ─── /tier1 Command (Async) ──────────────────────────────────────────────────────
+
+/**
+ * Handle the `/tier1 [force]` command (async).
+ *
+ * Fetches the L1 key decisions summary (~2K tokens) from highest-trust memories.
+ *
+ * @param client - NeuralgenticsClient instance.
+ * @param input - The raw input string (e.g. "/tier1" or "/tier1 force").
+ */
+export async function handleTier1Command(
+  client: NeuralgenticsClient,
+  input: string,
+): Promise<CommandResult> {
+  const trimmed = input.trim();
+  const parts = trimmed.slice(1).split(/\s+/);
+  const forceArg = parts[1]?.toLowerCase() ?? "";
+  const forceRefresh = forceArg === "force";
+
+  try {
+    const result = await client.getTier1Summary(forceRefresh);
+
+    const lines = [
+      `═══ Tier 1 Summary (L1) ═══`,
+      "",
+      `${result.content}`,
+      "",
+      `Tier: ${result.tier}`,
+      `Tokens: ${result.tokenCount}`,
+      `Generated: ${result.generatedAt}`,
+      "",
+      "════════════════════════════",
+    ];
+
+    return {
+      command: "tier1",
+      message: lines.join("\n"),
+      refreshKanban: false,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      command: "tier1",
+      message: `/tier1 failed: ${msg}`,
+      refreshKanban: false,
+    };
+  }
+}
+
+// ─── /peer Command (Async) ───────────────────────────────────────────────────────
+
+/**
+ * Handle the `/peer [list|switch <id>]` command (async).
+ *
+ * Sub-commands:
+ * - `/peer list` — list all known peers
+ * - `/peer switch <id>` — switch the active peer context
+ * - `/peer` — show help
+ *
+ * @param client - NeuralgenticsClient instance.
+ * @param input - The raw input string.
+ */
+export async function handlePeerCommand(
+  client: NeuralgenticsClient,
+  input: string,
+): Promise<CommandResult> {
+  const trimmed = input.trim();
+  const parts = trimmed.slice(1).split(/\s+/);
+  // parts[0] is "peer", parts[1] is sub-command
+  const subCmd = parts[1]?.toLowerCase() ?? "";
+
+  try {
+    if (subCmd === "list" || subCmd === "") {
+      const result = await client.call("peer.listPeers", {});
+      const peers = result as Record<string, unknown>[];
+
+      if (!peers || peers.length === 0) {
+        return {
+          command: "peer",
+          message: "No peers registered.",
+          refreshKanban: false,
+        };
+      }
+
+      const lines = [`═══ Peer List (${peers.length}) ═══`, ""];
+
+      for (const peer of peers) {
+        const id = String(peer.peerId ?? peer.id ?? "???").slice(0, 16);
+        const name = String(peer.name ?? "unnamed");
+        const role = String(peer.role ?? "guest");
+        lines.push(`  • ${id} — ${name} (${role})`);
+      }
+
+      lines.push("");
+      lines.push("════════════════════════════");
+
+      return {
+        command: "peer",
+        message: lines.join("\n"),
+        refreshKanban: false,
+      };
+    }
+
+    if (subCmd === "switch") {
+      const peerId = parts[2];
+      if (!peerId) {
+        return {
+          command: "peer",
+          message: "/peer switch <id> — specify a peer ID to switch to.",
+          refreshKanban: false,
+        };
+      }
+
+      const result = await client.switchPeerContext(peerId);
+
+      return {
+        command: "peer",
+        message: `✓ Switched peer context: ${result.previousPeerId} → ${result.newPeerId}\n  Switched at: ${result.switchedAt}`,
+        refreshKanban: false,
+      };
+    }
+
+    return {
+      command: "peer",
+      message: `Unknown /peer subcommand: ${subCmd}\nUse: /peer list, /peer switch <id>`,
+      refreshKanban: false,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      command: "peer",
+      message: `/peer failed: ${msg}`,
+      refreshKanban: false,
+    };
+  }
+}
+
+// ─── /relationships Command (Async) ──────────────────────────────────────────────
+
+/**
+ * Handle the `/relationships <id>` command (async).
+ *
+ * Shows a summary of all relationships for a memory.
+ *
+ * @param client - NeuralgenticsClient instance.
+ * @param input - The raw input string (e.g. "/relationships mem-456").
+ */
+export async function handleRelationshipsCommand(
+  client: NeuralgenticsClient,
+  input: string,
+): Promise<CommandResult> {
+  const trimmed = input.trim();
+  const parts = trimmed.slice(1).split(/\s+/);
+  const memoryId = parts[1]?.trim() ?? "";
+
+  if (!memoryId) {
+    return {
+      command: "relationships",
+      message:
+        "/relationships <id> — specify a memory ID to view its relationships.",
+      refreshKanban: false,
+    };
+  }
+
+  try {
+    const result = await client.getRelationshipSummary(memoryId);
+
+    const lines = [
+      `═══ Relationships: ${memoryId.slice(0, 12)}... ═══`,
+      "",
+      `Total: ${result.totalRelationships}`,
+    ];
+
+    if (result.byType && Object.keys(result.byType).length > 0) {
+      lines.push("");
+      lines.push("By type:");
+      for (const [type, count] of Object.entries(result.byType)) {
+        lines.push(`  • ${type}: ${count}`);
+      }
+    }
+
+    if (result.related && result.related.length > 0) {
+      lines.push("");
+      lines.push("Related memories:");
+      for (const rel of result.related) {
+        const id = String(rel.id).slice(0, 8);
+        lines.push(
+          `  [${id}] ${rel.relationshipType} (confidence: ${rel.confidence})`,
+        );
+      }
+    }
+
+    lines.push("");
+    lines.push("══════════════════════════════");
+
+    return {
+      command: "relationships",
+      message: lines.join("\n"),
+      refreshKanban: false,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      command: "relationships",
+      message: `/relationships failed: ${msg}`,
+      refreshKanban: false,
+    };
+  }
+}
+
+// ─── /decay Command (Async) ───────────────────────────────────────────────────────
+
+/**
+ * Handle the `/decay` command (async).
+ *
+ * Shows the current decay engine status and statistics.
+ *
+ * @param client - NeuralgenticsClient instance.
+ */
+export async function handleDecayCommand(
+  client: NeuralgenticsClient,
+): Promise<CommandResult> {
+  try {
+    const result = await client.call("memory.getDecayStatus", {});
+    const status = result as Record<string, unknown>;
+
+    const lines = [
+      "═══ Decay Status ═══",
+      "",
+      `Enabled: ${String(status.enabled ?? "N/A")}`,
+      `Total memories: ${String(status.totalMemories ?? "N/A")}`,
+      `Fading memories: ${String(status.fadingMemories ?? "N/A")}`,
+      `Archived memories: ${String(status.archivedMemories ?? "N/A")}`,
+    ];
+
+    if (status.stats) {
+      const stats = status.stats as Record<string, unknown>;
+      lines.push("");
+      lines.push("Stats:");
+      for (const [key, val] of Object.entries(stats)) {
+        lines.push(`  ${key}: ${String(val)}`);
+      }
+    }
+
+    lines.push("");
+    lines.push("═══════════════════");
+
+    return {
+      command: "decay",
+      message: lines.join("\n"),
+      refreshKanban: false,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      command: "decay",
+      message: `/decay failed: ${msg}`,
+      refreshKanban: false,
+    };
+  }
+}
+
+// ─── /extract Command (Async) ─────────────────────────────────────────────────────
+
+/**
+ * Handle the `/extract [convo]` command (async).
+ *
+ * Triggers memory extraction. If a conversation string is provided,
+ * extracts from that text. Otherwise, uses the server's buffered conversation.
+ *
+ * @param client - NeuralgenticsClient instance.
+ * @param input - The raw input string (e.g. "/extract" or "/extract some text").
+ */
+export async function handleExtractCommand(
+  client: NeuralgenticsClient,
+  input: string,
+): Promise<CommandResult> {
+  const trimmed = input.trim();
+  const parts = trimmed.slice(1).split(/\s+/);
+  // Everything after "/extract" is the optional conversation text
+  const conversation = parts.slice(1).join(" ").trim() || undefined;
+
+  try {
+    const result = await client.triggerExtraction(conversation);
+
+    const lines = [
+      "═══ Extraction Result ═══",
+      "",
+      `Extracted: ${result.extracted} memories`,
+      `Triggered at: ${result.triggeredAt}`,
+    ];
+
+    if (result.memoryIds && result.memoryIds.length > 0) {
+      lines.push("");
+      lines.push("Memory IDs:");
+      for (const id of result.memoryIds) {
+        lines.push(`  • ${id.slice(0, 12)}...`);
+      }
+    }
+
+    lines.push("");
+    lines.push("═════════════════════════");
+
+    return {
+      command: "extract",
+      message: lines.join("\n"),
+      refreshKanban: false,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      command: "extract",
+      message: `/extract failed: ${msg}`,
+      refreshKanban: false,
+    };
+  }
 }
