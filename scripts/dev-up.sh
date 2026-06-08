@@ -21,7 +21,7 @@ set -euo pipefail
 # ─── Configuration ──────────────────────────────────────────────────────────
 
 CONTAINER_NAME="neuralgentics-test-pg"
-CONTAINER_IMAGE="docker.io/pgvector/pgvector:pg17"
+CONTAINER_IMAGE="docker.io/pgvector/pgvector:pg18"
 DB_PORT=6000
 DB_USER="postgres"
 DB_PASS="testpassword"

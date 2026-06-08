@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-hotfix1] - 2026-06-07
+
+Post-release pin fix. v0.5.0 release artifacts (Dockerfile, GHCR images) already used `pgvector/pgvector:pg18`, but a handful of install/CI/bench references were still on `pg17`. This hotfix pins everything to `pg18` so a fresh install gets the same version the release artifacts expect.
+
+### Fixed
+
+- `scripts/install.sh` (line 987 dry-run, line 1001 install payload) — `pg17` → `pg18`
+- `scripts/dev-up.sh` (line 24 `CONTAINER_IMAGE`) — `pg17` → `pg18`
+- `.github/workflows/ci.yml` (lines 19, 82, 178 service containers) — `pg17` → `pg18`
+- `packages/memory/src/neuralgentics/memory/bench/pgvector_test.go` (line 34 testcontainers) — `pg17` → `pg18`
+- `docs/getting-started/quickstart.md` Verification Checklist row 2 — `Returns v0.1.0` → `Returns v0.5.0 (or whatever you installed)`
+
+### Notes
+
+- `docker/postgres.Dockerfile` was already `pg18` (this is what the v0.5.0 release images bake from). No change there.
+- Historical design docs (`docs/design/session-22-*`, `docs/design/session-29-*`) retain `pg17` references because they describe the planning process and the rationale for the pg17→pg18 migration. Not retroactively edited.
+- All 9 active `pg18` references are now consistent: install payload, dev script, CI, bench, and Dockerfile.
+- No code logic changed. No new tests. No new features. Pure pinning + doc correction.
+
 ## [0.5.0] - 2026-06-07
 
 Minor release: HTTP/SSE transport for hosted MCPs, OCI-shareable profile export/import, provider-aware small_model, and CI short-test fix.
