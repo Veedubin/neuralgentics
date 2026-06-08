@@ -984,7 +984,7 @@ _start_fresh_db() {
             log "Creating PostgreSQL container '$container_name' on port $db_port..."
 
             if $DRY_RUN; then
-                printf "  ${MUTED}[dry-run]${NC} podman run -d --name %s -e POSTGRES_USER=%s -e POSTGRES_PASSWORD=*** -e POSTGRES_DB=%s -p %s:5432 docker.io/pgvector/pgvector:pg17\n" \
+                printf "  ${MUTED}[dry-run]${NC} podman run -d --name %s -e POSTGRES_USER=%s -e POSTGRES_PASSWORD=*** -e POSTGRES_DB=%s -p %s:5432 docker.io/pgvector/pgvector:pg18\n" \
                     "$container_name" "$db_user" "$db_name" "$db_port" >&2
                 log "Container '$container_name' created on port $db_port"
                 generate_env_file "127.0.0.1" "$db_port" "$db_user" "$db_password" "$db_name"
@@ -998,7 +998,7 @@ _start_fresh_db() {
                 -e POSTGRES_PASSWORD="$db_password" \
                 -e POSTGRES_DB="$db_name" \
                 -p "$db_port:5432" \
-                docker.io/pgvector/pgvector:pg17 \
+                docker.io/pgvector/pgvector:pg18 \
             || { err "Failed to create container '$container_name'"; return 1; }
 
             log "Container '$container_name' created on port $db_port"

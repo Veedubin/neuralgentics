@@ -31,7 +31,7 @@ func setupBenchDB(b *testing.B) (*store.PostgresStore, func()) {
 	ctx := context.Background()
 
 	pgContainer, err := postgres.Run(ctx,
-		"pgvector/pgvector:pg17",
+		"pgvector/pgvector:pg18",
 		postgres.WithDatabase("benchdb"),
 		postgres.WithUsername("bench"),
 		postgres.WithPassword("benchpass"),
