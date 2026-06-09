@@ -15,7 +15,7 @@
 set -euo pipefail
 
 APP="neuralgentics"
-DEFAULT_VERSION="0.5.0"
+DEFAULT_VERSION="0.6.0"
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -1006,6 +1006,8 @@ _start_fresh_db() {
 
             # Generate a self-signed SSL cert so the Go backend can use
             # sslmode=require without warnings (Bug #7).
+            # Ensure the data dir exists before mktemp (Bug #9 from install-test v0.6.1).
+            mkdir -p "$NEURALGENTICS_DATA_DIR"
             local ssl_cert_dir
             ssl_cert_dir="$(mktemp -d "${NEURALGENTICS_DATA_DIR:-/tmp}/pgssl.XXXXXX")"
             local ssl_cert="$ssl_cert_dir/server.crt"
@@ -1030,13 +1032,19 @@ _start_fresh_db() {
             fi
 
             if $DRY_RUN; then
-                printf "  ${MUTED}[dry-run]${NC} podman run -d --name %s -e POSTGRES_USER=%s -e POSTGRES_PASSWORD=*** -e POSTGRES_DB=%s -p %s:5432 -v %s:/var/lib/postgresql/server.crt:ro -v %s:/var/lib/postgresql/server.key:ro docker.io/pgvector/pgvector:pg18 bash -c 'chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key && chmod 600 /var/lib/postgresql/server.key && docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key'\n" \
+                printf "  ${MUTED}[dry-run]${NC} chown 999:999 %s %s\n" "$ssl_cert" "$ssl_key" >&2
+                printf "  ${MUTED}[dry-run]${NC} podman run -d --name %s -e POSTGRES_USER=%s -e POSTGRES_PASSWORD=*** -e POSTGRES_DB=%s -p %s:5432 -v %s:/var/lib/postgresql/server.crt:ro -v %s:/var/lib/postgresql/server.key:ro docker.io/pgvector/pgvector:pg18 docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key\n" \
                     "$container_name" "$db_user" "$db_name" "$db_port" "$ssl_cert" "$ssl_key" >&2
                 log "Container '$container_name' created on port $db_port (SSL enabled)"
                 generate_env_file "127.0.0.1" "$db_port" "$db_user" "$db_password" "$db_name"
                 log "Database configured. Connection details in $NEURALGENTICS_DATA_DIR/.env"
                 return 0
             fi
+
+            # Pre-set ownership to UID 999 (postgres user in the image) BEFORE mounting
+            # read-only, so the chown inside the entrypoint is a no-op and the :ro mount
+            # doesn't fail with "Read-only file system" (Bug #8 from install-test v0.6.0).
+            chown 999:999 "$ssl_cert" "$ssl_key" 2>/dev/null || true
 
             podman run -d \
                 --name "$container_name" \
@@ -1047,7 +1055,7 @@ _start_fresh_db() {
                 -v "$ssl_cert:/var/lib/postgresql/server.crt:ro" \
                 -v "$ssl_key:/var/lib/postgresql/server.key:ro" \
                 docker.io/pgvector/pgvector:pg18 \
-                bash -c "chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key && chmod 600 /var/lib/postgresql/server.key && docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key" \
+                docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key \
             || { err "Failed to create container '$container_name'"; rm -rf "$ssl_cert_dir"; return 1; }
 
             log "Container '$container_name' created on port $db_port (SSL enabled)"
