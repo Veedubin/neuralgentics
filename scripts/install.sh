@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# neuralgentics v0.1.0 — binary release installer
+# neuralgentics v0.5.0 — binary release installer
 # "HACK THE PLANET!" — Hackers (1995)
 #
 # Downloads pre-built binaries from GitHub Releases.
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 APP="neuralgentics"
-DEFAULT_VERSION="0.1.0"
+DEFAULT_VERSION="0.5.0"
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
 
