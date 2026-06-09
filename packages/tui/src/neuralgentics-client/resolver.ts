@@ -5,12 +5,18 @@
  * 1. $PATH lookup (`neuralgentics-backend`)
  * 2. $NEURALGENTICS_BACKEND_PATH environment variable
  * 3. Relative path from TUI cwd: `../neuralgentics/packages/backend-go/neuralgentics-backend`
+ * 4. $NEURALGENTICS_INSTALL_PREFIX/bin/neuralgentics-backend (or ~/.neuralgentics/bin/ fallback)
+ * 5. $HOME/.neuralgentics/bin/neuralgentics-backend (explicit fallback for installed prefix)
+ *
+ * Steps 4–5 handle the standard install paths created by scripts/install.sh,
+ * which places the binary at ~/.neuralgentics/bin/neuralgentics-backend.
  *
  * This is inlined per T-020 scope (T-024 may refactor it later).
  */
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 /** Resolve the path to the neuralgentics-backend binary. Throws a descriptive error if not found. */
@@ -50,6 +56,25 @@ export function resolveBackendPath(): string {
     return relativePath;
   }
   checked.push(`../neuralgentics/packages/backend-go/neuralgentics-backend (not found)`);
+
+  // 4. $NEURALGENTICS_INSTALL_PREFIX/bin/neuralgentics-backend
+  const installPrefix = process.env.NEURALGENTICS_INSTALL_PREFIX;
+  if (installPrefix) {
+    const prefixPath = resolve(join(installPrefix, "bin", "neuralgentics-backend"));
+    if (existsSync(prefixPath)) {
+      return prefixPath;
+    }
+    checked.push(`$NEURALGENTICS_INSTALL_PREFIX/bin/neuralgentics-backend (${prefixPath})`);
+  } else {
+    checked.push("$NEURALGENTICS_INSTALL_PREFIX (unset)");
+  }
+
+  // 5. $HOME/.neuralgentics/bin/neuralgentics-backend (default install prefix)
+  const homeBinPath = resolve(join(homedir(), ".neuralgentics", "bin", "neuralgentics-backend"));
+  if (existsSync(homeBinPath)) {
+    return homeBinPath;
+  }
+  checked.push(`~/.neuralgentics/bin/neuralgentics-backend (${homeBinPath})`);
 
   throw new Error(
     `Cannot find neuralgentics-backend. Checked: ${checked.join(", ")}`,
