@@ -1206,7 +1206,7 @@ main() {
     detect_repo
 
     # 3. Build download URL
-    local archive_name="neuralgentics-v${VERSION}-${DETECTED_OS}-${DETECTED_ARCH}"
+    local archive_name="neuralgentics-${VERSION}-${DETECTED_OS}-${DETECTED_ARCH}"
     if [[ "$DETECTED_OS" == "windows" ]]; then
         archive_name="${archive_name}.zip"
     else
