@@ -1032,8 +1032,7 @@ _start_fresh_db() {
             fi
 
             if $DRY_RUN; then
-                printf "  ${MUTED}[dry-run]${NC} chown 999:999 %s %s\n" "$ssl_cert" "$ssl_key" >&2
-                printf "  ${MUTED}[dry-run]${NC} podman run -d --name %s -e POSTGRES_USER=%s -e POSTGRES_PASSWORD=*** -e POSTGRES_DB=%s -p %s:5432 -v %s:/var/lib/postgresql/server.crt:ro -v %s:/var/lib/postgresql/server.key:ro docker.io/pgvector/pgvector:pg18 docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key\n" \
+                printf "  ${MUTED}[dry-run]${NC} podman run -d --name %s -e POSTGRES_USER=%s -e POSTGRES_PASSWORD=*** -e POSTGRES_DB=%s -p %s:5432 -v %s:/var/lib/postgresql/server.crt:z -v %s:/var/lib/postgresql/server.key:z docker.io/pgvector/pgvector:pg18 bash -c 'chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key'\n" \
                     "$container_name" "$db_user" "$db_name" "$db_port" "$ssl_cert" "$ssl_key" >&2
                 log "Container '$container_name' created on port $db_port (SSL enabled)"
                 generate_env_file "127.0.0.1" "$db_port" "$db_user" "$db_password" "$db_name"
@@ -1041,10 +1040,17 @@ _start_fresh_db() {
                 return 0
             fi
 
-            # Pre-set ownership to UID 999 (postgres user in the image) BEFORE mounting
-            # read-only, so the chown inside the entrypoint is a no-op and the :ro mount
-            # doesn't fail with "Read-only file system" (Bug #8 from install-test v0.6.0).
-            chown 999:999 "$ssl_cert" "$ssl_key" 2>/dev/null || true
+            # Use :z mount option (shared SELinux relabel) WITHOUT :ro, so the
+            # chown in the bash wrapper can succeed. Then chown the certs to
+            # postgres:postgres before exec'ing the entrypoint (which drops to
+            # the postgres user via gosu).
+            #
+            # Previous attempts failed in rootless podman:
+            #   - chown 999:999 on host (Bug #8): fails for non-root users
+            #   - :U,ro mount: chowns to image's User (root), not postgres
+            #   - plain :ro: files appear as root:root, postgres can't read
+            # The :z + chown-in-wrapper pattern is the canonical rootless
+            # solution. (Bug #10 from install-test v0.6.1.)
 
             podman run -d \
                 --name "$container_name" \
@@ -1052,10 +1058,10 @@ _start_fresh_db() {
                 -e POSTGRES_PASSWORD="$db_password" \
                 -e POSTGRES_DB="$db_name" \
                 -p "$db_port:5432" \
-                -v "$ssl_cert:/var/lib/postgresql/server.crt:ro" \
-                -v "$ssl_key:/var/lib/postgresql/server.key:ro" \
+                -v "$ssl_cert:/var/lib/postgresql/server.crt:z" \
+                -v "$ssl_key:/var/lib/postgresql/server.key:z" \
                 docker.io/pgvector/pgvector:pg18 \
-                docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key \
+                bash -c "chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key" \
             || { err "Failed to create container '$container_name'"; rm -rf "$ssl_cert_dir"; return 1; }
 
             log "Container '$container_name' created on port $db_port (SSL enabled)"

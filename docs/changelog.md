@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-06-09
+
+Patch release: 1 install-script follow-up fix + CI workflow modernization.
+
+### Fixed
+
+- **SSL cert permission in rootless podman (Bug #10)** — The v0.6.0/v0.6.1 SSL setup mounted the certs as `:ro` and tried to `chown` them to UID 999 on the host (Bug #8 fix), which silently fails for non-root users in rootless podman. The certs ended up as `root:root` inside the container, and the postgres user (which the entrypoint drops to via gosu) couldn't read them. Fix: use `:z` mount (no `:ro`) and chown inside a bash wrapper before exec'ing the entrypoint. This is the canonical rootless-podman pattern.
+
+### CI Modernization
+
+- **Bump all actions to Node.js 24 majors** (silences GitHub's Node 20 deprecation warnings; required by September 16, 2026 when Node 20 is removed from runners)
+  - `actions/checkout` v4 → v5
+  - `actions/setup-go` v5 → v6
+  - `actions/setup-node` v4 → v5
+  - `actions/cache` v4 → v5
+  - `actions/upload-artifact` v4 → v5
+  - `actions/download-artifact` v4 → v5
+  - `softprops/action-gh-release` v2 → v3
+  - `docker/login-action` v3 → v4
+  - `docker/setup-buildx-action` v3 → v4
+  - `docker/build-push-action` v6 → v7
+  - Plus `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` env var in all 3 workflows to force any third-party actions onto Node 24
+- **Fix `go.sum` cache restore bug** — `hashFiles('**/go.sum')` at repo root never matches because `go.sum` lives in `packages/*/`. Changed to `hashFiles('packages/*/go.sum')` so the Go module cache actually restores between CI runs.
+- **Pin `windows-latest` to `windows-2022`** — `windows-latest` is being redirected to `windows-2025-vs2026` on June 15, 2026. Pin explicitly to avoid surprises.
+
 ## [0.6.1] - 2026-06-09
 
 Patch release: 3 install-script follow-up fixes found when re-testing the v0.6.0 install.
