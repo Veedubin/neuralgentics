@@ -46,23 +46,28 @@ describe("resolveBackendPath", () => {
     // Temporarily override internal resolution to force all paths to fail
     const originalPath = process.env.PATH;
     const originalEnv = process.env.NEURALGENTICS_BACKEND_PATH;
+    const originalInstallPrefix = process.env.NEURALGENTICS_INSTALL_PREFIX;
     const originalCwd = process.cwd;
 
     try {
       // Set up an environment where binary can't be found
       process.env.PATH = "/nonexistent_path_12345";
       delete process.env.NEURALGENTICS_BACKEND_PATH;
+      // Set install prefix to a nonexistent path so step 4 is exercised
+      process.env.NEURALGENTICS_INSTALL_PREFIX = "/tmp/nonexistent_prefix_12345";
       process.cwd = () => "/tmp/nonexistent_cwd_12345";
 
       try {
         resolveBackendPath();
         // If it doesn't throw (because the binary might be at a relative path
-        // that exists), that's also fine — just skip this assertion
+        // or in the real ~/.neuralgentics/bin/), that's also fine — skip this assertion
       } catch (err) {
         const message = (err as Error).message;
-        // The error message must include all 3 resolution strategies
+        // The error message must include all 5 resolution strategies
         expect(message).toContain("$PATH");
         expect(message).toContain("$NEURALGENTICS_BACKEND_PATH");
+        expect(message).toContain("$NEURALGENTICS_INSTALL_PREFIX");
+        expect(message).toContain(".neuralgentics/bin");
         expect(message).toContain("neuralgentics-backend");
       }
     } finally {
@@ -71,6 +76,11 @@ describe("resolveBackendPath", () => {
         process.env.NEURALGENTICS_BACKEND_PATH = originalEnv;
       } else {
         delete process.env.NEURALGENTICS_BACKEND_PATH;
+      }
+      if (originalInstallPrefix !== undefined) {
+        process.env.NEURALGENTICS_INSTALL_PREFIX = originalInstallPrefix;
+      } else {
+        delete process.env.NEURALGENTICS_INSTALL_PREFIX;
       }
       process.cwd = originalCwd;
     }
