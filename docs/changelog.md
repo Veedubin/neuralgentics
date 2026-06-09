@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-06-09
+
+Patch release: 3 install-script follow-up fixes found when re-testing the v0.6.0 install.
+
+### Fixed
+
+- **DEFAULT_VERSION not bumped in v0.6.0 install.sh (Bug #1-again)** — The T-DOCS-V060 card bumped package.json to 0.6.0 but missed install.sh's DEFAULT_VERSION, which still said 0.5.0. Result: the v0.6.0 install.sh downloaded the v0.5.0 binaries (without the 5 fixes). Bump to 0.6.0.
+- **SSL cert :ro mount chown failure (Bug #8)** — The v0.6.0 SSL setup mounted certs as :ro then tried to chown inside the entrypoint, which fails with "Read-only file system" and kills the container. Fix: chown 999:999 on the host before mounting :ro, drop the chown from the entrypoint.
+- **mktemp failed when data dir didn't exist (Bug #9)** — The SSL cert mktemp needed the data dir to exist. Add mkdir -p before mktemp.
+
 ## [0.6.0] - 2026-06-09
 
 Minor release: 5 install-script and TUI-runtime bug fixes for a complete 100% working install. The canonical `curl -fsSL .../install.sh | bash` one-liner now works for the first time since v0.1.0.
