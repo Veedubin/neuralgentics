@@ -5,7 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0-hotfix1] - 2026-06-07
+## [0.6.0] - 2026-06-09
+
+Minor release: 5 install-script and TUI-runtime bug fixes for a complete 100% working install. The canonical `curl -fsSL .../install.sh | bash` one-liner now works for the first time since v0.1.0.
+
+### Added
+
+- **TUI graceful sidecar fallback (Bug #4)** — The TUI no longer hangs or logs warnings when the Python embedding sidecar isn't available. New `docs/sidecar-setup.md` covers manual setup for users who want real BGE-Large embeddings. Memory operations work fine with noop embeddings by default.
+
+### Fixed
+
+- **Install script archive name 'v' prefix bug (Bug #2, CRITICAL)** — `scripts/install.sh` constructed `neuralgentics-v0.5.0-...` but GH release assets are `neuralgentics-0.5.0-...` (no v). The canonical one-liner has been broken since v0.1.0.
+- **DEFAULT_VERSION hardcoded to 0.1.0** — Install script was hardcoded to install v0.1.0 unless the user passed `--version`. Bumped to v0.5.0.
+- **TUI backend path resolver didn't know install prefix (Bug #3)** — `resolveBackendPath()` only checked $PATH, $NEURALGENTICS_BACKEND_PATH, and a source-tree relative path. Added 2 new steps: `$NEURALGENTICS_INSTALL_PREFIX/bin/...` and `$HOME/.neuralgentics/bin/...` as fallback.
+- **Backend env var drift MEMINI_DB_URL → NEURALGENTICS_DB_URL (Bug #5)** — Go binary was reading `MEMINI_DB_URL` (legacy from Session 25's rename) but TUI sets `NEURALGENTICS_DB_URL`. Backend fell back to hardcoded localhost:5434 (off-limits prod). Now reads both with NEURALGENTICS_DB_URL taking precedence.
+- **Install verify_install TUI version check hung (Bug #6)** — `neuralgentics --version` opened a TUI render (no --version mode), hanging the install script forever. Replaced with a size+executable check.
+- **Install-spawned pg18 container had no SSL (Bug #7)** — Backend defaulted to `sslmode=require` and warned "SSL is not enabled on the server" on every startup. Now generates a self-signed cert at install time, mounts it into the container, and starts postgres with `-c ssl=on`.
+
+### Discovery
+
+This release was the result of a real-world install test in session 2026-06-09. The 5 install-script bugs had been shipping since v0.1.0 because Session 20's release-pipeline tests only ran `bash -n`, `--dry-run`, `--help`, and fish detection — never an actual download. **Lesson:** test scripts MUST exercise the real I/O path.
+
+### Verification
+
+After installing v0.6.0, `neuralgentics` should:
+- Launch without hanging
+- Show the install banner with env hint
+- Connect to the install-spawned pg18 container on 6000 with SSL
+- Work with noop embeddings (sidecar optional)
+
+
 
 Post-release pin fix. v0.5.0 release artifacts (Dockerfile, GHCR images) already used `pgvector/pgvector:pg18`, but a handful of install/CI/bench references were still on `pg17`. This hotfix pins everything to `pg18` so a fresh install gets the same version the release artifacts expect.
 
