@@ -3,11 +3,14 @@ package core
 import (
 	"context"
 	"errors"
+	"os"
 	"time"
 )
 
 // ErrMissingDatabaseURL is returned when the required database URL is not configured.
-var ErrMissingDatabaseURL = errors.New("MEMINI_DB_URL environment variable is required")
+// The Go backend reads NEURALGENTICS_DB_URL first (what the TUI sets) and falls
+// back to MEMINI_DB_URL (legacy from the memini rename) for backward compat.
+var ErrMissingDatabaseURL = errors.New("NEURALGENTICS_DB_URL (or legacy MEMINI_DB_URL) environment variable is required")
 
 // EmbeddingMode defines which embedding pipeline to use for memory operations.
 // Mirrors Python memoryManager v0.7.0 EMBEDDING_MODE.
@@ -23,7 +26,7 @@ const (
 // It maps 1:1 to the Python memoryManager environment variables.
 type Config struct {
 	// Core
-	DatabaseURL   string `envconfig:"MEMINI_DB_URL" required:"true"`
+	DatabaseURL   string `envconfig:"NEURALGENTICS_DB_URL" required:"true"`
 	ProjectID     string `envconfig:"MEMINI_PROJECT_ID" default:"neuralgentics-default"`
 	EmbeddingAddr string `envconfig:"MEMINI_EMBEDDING_ADDR" default:"unix:///tmp/neuralgentics-embed.sock"`
 
@@ -106,4 +109,58 @@ func SuiteWithTimeout(ctx context.Context, cfg *Config, timeout time.Duration) *
 		Cancel:    cancel,
 		StartTime: time.Now(),
 	}
+}
+
+// ResolveDatabaseURL returns the database URL from the environment.
+// It checks NEURALGENTICS_DB_URL first (what the TUI sets), then falls
+// back to MEMINI_DB_URL (legacy from the memini rename) for backward
+// compatibility. Returns empty string if neither is set.
+func ResolveDatabaseURL() string {
+	if url := os.Getenv("NEURALGENTICS_DB_URL"); url != "" {
+		return url
+	}
+	return os.Getenv("MEMINI_DB_URL")
+}
+
+// LoadConfigFromEnv builds a Config from environment variables.
+// Database URL resolution uses ResolveDatabaseURL (NEURALGENTICS_DB_URL
+// takes precedence over legacy MEMINI_DB_URL). The returned Config
+// still needs Validate() called if you want range checks.
+func LoadConfigFromEnv() *Config {
+	return &Config{
+		DatabaseURL:   ResolveDatabaseURL(),
+		ProjectID:     envOr("MEMINI_PROJECT_ID", "neuralgentics-default"),
+		EmbeddingAddr: envOr("MEMINI_EMBEDDING_ADDR", "unix:///tmp/neuralgentics-embed.sock"),
+		EmbeddingMode: EmbeddingMode(envOr("EMBEDDING_MODE", "auto")),
+		RRFK:          envIntOr("RRF_K", 60),
+		LLMBaseURL:    envOr("NEURAL_LLM_BASE_URL", "http://localhost:8903/v1"),
+		LLMAPIKey:     os.Getenv("NEURAL_LLM_API_KEY"),
+		LLMModel:      envOr("NEURAL_LLM_MODEL", "qwen3-0.6b"),
+		LogLevel:      envOr("MEMINI_LOG_LEVEL", "info"),
+		SchemaVersion: envOr("MEMINI_SCHEMA_VERSION", "1"),
+	}
+}
+
+// envOr returns the env var value or the fallback.
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// envIntOr returns the env var value parsed as int, or the fallback.
+func envIntOr(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n := 0
+	for _, c := range v {
+		if c < '0' || c > '9' {
+			return fallback
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
 }
