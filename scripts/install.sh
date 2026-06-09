@@ -1337,7 +1337,13 @@ EOF
 
     cat <<EOF >&2
 ${MUTED}  Docs:          https://github.com/${REPO}${NC}
+${MUTED}  Sidecar:       https://github.com/${REPO}/blob/main/docs/sidecar-setup.md${NC}
 ${BRIGHT_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+
+${ORANGE}  Sidecar (advanced):${NC} To enable real BGE-Large embeddings, run:
+${MUTED}    git clone https://github.com/${REPO}.git && cd neuralgentics${NC}
+${MUTED}    ./scripts/sidecar.sh start${NC}
+${MUTED}  Or skip — memory operations work fine with noop embeddings.${NC}
 EOF
 }
 

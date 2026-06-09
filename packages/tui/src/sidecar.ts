@@ -21,16 +21,59 @@ const SOCKET_PATH = process.env.NEURAL_EMBED_ADDR?.startsWith("unix://")
   ? process.env.NEURAL_EMBED_ADDR.replace("unix://", "")
   : process.env.NEURAL_EMBED_ADDR ?? "/tmp/neuralgentics-embed.sock";
 
-const SIDECAR_DIR = pathResolve(
-  import.meta.dir,
-  "../../../../memory/cmd/embedding-sidecar",
-);
+// ─── Sidecar Directory Resolution ───────────────────────────────────────────
+// The sidecar dir is where the Python embedding sidecar source + venv live.
+// Resolution order:
+//   1. $NEURALGENTICS_SIDECAR_DIR (explicit override)
+//   2. $NEURALGENTICS_INSTALL_PREFIX/share/neuralgentics/sidecar/ (installed)
+//   3. Relative to source tree (dev only)
+// If none resolve to an existing directory, returns null (sidecar not configured).
+
+export function resolveSidecarDir(): string | null {
+  // 1. Explicit env var override
+  const envDir = process.env.NEURALGENTICS_SIDECAR_DIR;
+  if (envDir && existsSync(envDir)) {
+    return pathResolve(envDir);
+  }
+
+  // 2. Install prefix (standard shared data location)
+  const installPrefix =
+    process.env.NEURALGENTICS_INSTALL_PREFIX ??
+    process.env.NEURALGENTICS_PREFIX;
+  if (installPrefix) {
+    const installedDir = pathResolve(
+      installPrefix,
+      "share/neuralgentics/sidecar",
+    );
+    if (existsSync(installedDir)) {
+      return installedDir;
+    }
+  }
+
+  // 3. Source-tree relative (dev mode — works when running from packages/tui/src/)
+  const sourceTreeDir = pathResolve(
+    import.meta.dir,
+    "../../../../memory/cmd/embedding-sidecar",
+  );
+  if (existsSync(sourceTreeDir)) {
+    return sourceTreeDir;
+  }
+
+  // No sidecar dir found — sidecar is not configured
+  return null;
+}
+
+const SIDECAR_DIR: string | null = resolveSidecarDir();
+
 const SIDECAR_PIDFILE = "/tmp/neuralgentics-embed.pid";
 const SIDECAR_LOGFILE = "/tmp/neuralgentics-embed.log";
 
 const SOCKET_WAIT_RETRIES = 30;
 const SOCKET_WAIT_INTERVAL_MS = 100;
 const HEALTH_CHECK_TIMEOUT_MS = 2000;
+
+const SIDECAR_SETUP_URL =
+  "https://github.com/Veedubin/neuralgentics/blob/main/docs/sidecar-setup.md";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -117,12 +160,17 @@ async function waitForSocket(
  * Returns the child process if successful, null otherwise.
  */
 function spawnSidecar(): ChildProcess | null {
+  // Guard: cannot spawn without a sidecar directory
+  if (!SIDECAR_DIR) {
+    return null;
+  }
+
+  const sidecarDir = SIDECAR_DIR; // Non-null after guard
   const embedDevice = process.env.NEURALGENTICS_EMBED_DEVICE ?? "cpu";
   const embedAddr = process.env.NEURAL_EMBED_ADDR ?? `unix://${SOCKET_PATH}`;
 
   // Prefer the sidecar venv Python, fall back to system Python
-  const venvPython = pathResolve(SIDECAR_DIR, ".venv/bin/python");
-  // Check if venv Python exists (Bun.file().size > 0 check)
+  const venvPython = pathResolve(sidecarDir, ".venv/bin/python");
   let pythonBin: string;
   try {
     if (existsSync(venvPython)) {
@@ -140,13 +188,13 @@ function spawnSidecar(): ChildProcess | null {
 
   const env = {
     ...process.env,
-    PYTHONPATH: SIDECAR_DIR,
+    PYTHONPATH: sidecarDir,
     NEURALGENTICS_EMBED_DEVICE: embedDevice,
     NEURAL_EMBED_ADDR: embedAddr,
   };
 
   const child = spawn(pythonBin, ["-m", "embedding_sidecar.main"], {
-    cwd: SIDECAR_DIR,
+    cwd: sidecarDir,
     env,
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
@@ -200,6 +248,37 @@ function spawnSidecar(): ChildProcess | null {
 export async function initSidecar(
   autoSpawn: boolean = false,
 ): Promise<SidecarStatus> {
+  // Step 0: If sidecar directory is not configured, return gracefully
+  if (!SIDECAR_DIR) {
+    console.log("[sidecar] Python embedding sidecar not configured.");
+    console.log(
+      "[sidecar] Memory will use noop embeddings (works fine for most operations).",
+    );
+    console.log(`[sidecar] To enable real BGE-Large embeddings, see: ${SIDECAR_SETUP_URL}`);
+    return {
+      available: false,
+      socketPath: SOCKET_PATH,
+      spawnedByTUI: false,
+      error: "sidecar not configured",
+    };
+  }
+
+  // Check if the sidecar dir has a venv — if not, also skip auto-spawn
+  const venvPython = pathResolve(SIDECAR_DIR, ".venv/bin/python");
+  if (!existsSync(venvPython) && !existsSync(pathResolve(SIDECAR_DIR, "main.py"))) {
+    console.log("[sidecar] Python embedding sidecar not configured.");
+    console.log(
+      "[sidecar] Memory will use noop embeddings (works fine for most operations).",
+    );
+    console.log(`[sidecar] To enable real BGE-Large embeddings, see: ${SIDECAR_SETUP_URL}`);
+    return {
+      available: false,
+      socketPath: SOCKET_PATH,
+      spawnedByTUI: false,
+      error: "sidecar not configured",
+    };
+  }
+
   // Step 1: Check if socket exists
   if (socketExists(SOCKET_PATH)) {
     const responsive = await verifySocketResponsive(SOCKET_PATH);
