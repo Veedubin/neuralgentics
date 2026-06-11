@@ -1,5 +1,9 @@
 # Multi-Agent Orchestration, Permissions-based MCP Server Broker, Context Continuity Across Sessions
 
+<p align="center">
+  <img src="../assets/neuralgentics-logo.png" alt="Neuralgentics logo" width="600">
+</p>
+
 > An open-source agent runtime, built for engineers who ship.
 
 Neuralgentics is the **harness** for AI agents - the execution environment, permission broker, and persistent memory that turns a language model into a reliable, debuggable, and trustworthy agent.

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/neuralgentics-logo.png" alt="Neuralgentics logo" width="600">
+</p>
+
 # Neuralgentics
 
 > An open-source agent runtime, built for engineers who ship.
