@@ -9,6 +9,7 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
+      - "assets/**"
   workflow_dispatch:
 
 permissions:
