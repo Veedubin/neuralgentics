@@ -1,7 +1,7 @@
 # Multi-Agent Orchestration, Permissions-based MCP Server Broker, Context Continuity Across Sessions
 
 <p align="center">
-  <img src="../assets/neuralgentics-logo.png" alt="Neuralgentics logo" width="600">
+  <img src="assets/neuralgentics-logo.png" alt="Neuralgentics logo" width="600">
 </p>
 
 > An open-source agent runtime, built for engineers who ship.
