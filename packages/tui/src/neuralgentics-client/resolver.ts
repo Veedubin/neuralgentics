@@ -6,10 +6,12 @@
  * 2. $NEURALGENTICS_BACKEND_PATH environment variable
  * 3. Relative path from TUI cwd: `../neuralgentics/packages/backend-go/neuralgentics-backend`
  * 4. $NEURALGENTICS_INSTALL_PREFIX/bin/neuralgentics-backend (or ~/.neuralgentics/bin/ fallback)
- * 5. $HOME/.neuralgentics/bin/neuralgentics-backend (explicit fallback for installed prefix)
+ * 5. $PWD/.neuralgentics/bin/neuralgentics-backend (project-local install, v0.6.4+ default)
+ * 6. $HOME/.neuralgentics/bin/neuralgentics-backend (legacy global install)
  *
- * Steps 4–5 handle the standard install paths created by scripts/install.sh,
- * which places the binary at ~/.neuralgentics/bin/neuralgentics-backend.
+ * Steps 4–6 handle the standard install paths created by scripts/install.sh.
+ * The default install since v0.6.4 is project-local ($PWD/.neuralgentics/),
+ * so step 5 is the most common resolution for a fresh install.
  *
  * This is inlined per T-020 scope (T-024 may refactor it later).
  */
@@ -69,7 +71,22 @@ export function resolveBackendPath(): string {
     checked.push("$NEURALGENTICS_INSTALL_PREFIX (unset)");
   }
 
-  // 5. $HOME/.neuralgentics/bin/neuralgentics-backend (default install prefix)
+  // 5. $PWD/.neuralgentics/bin/neuralgentics-backend (v0.6.4+ default
+  //    project-local install). This is where a fresh `curl|bash` from a
+  //    project directory puts the binary. Try the CWD first, then the
+  //    parent dir (in case the TUI is being run from a subdirectory).
+  for (const candidate of [
+    join(process.cwd(), ".neuralgentics", "bin", "neuralgentics-backend"),
+    join(process.cwd(), "..", ".neuralgentics", "bin", "neuralgentics-backend"),
+  ]) {
+    if (existsSync(candidate)) {
+      return resolve(candidate);
+    }
+    checked.push(`$PWD/.neuralgentics/bin/neuralgentics-backend (${candidate})`);
+  }
+
+  // 6. $HOME/.neuralgentics/bin/neuralgentics-backend (legacy global install
+  //    path, used by v0.6.3 and earlier when --prefix=$HOME was the default).
   const homeBinPath = resolve(join(homedir(), ".neuralgentics", "bin", "neuralgentics-backend"));
   if (existsSync(homeBinPath)) {
     return homeBinPath;

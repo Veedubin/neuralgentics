@@ -50,7 +50,7 @@ A harness provides the structural scaffolding that a raw model lacks. It wraps t
 curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash
 ```
 
-The install script handles Go, Node, container runtimes (docker or podman), and SSL certs. It detects WSL2, prompts for the install prefix, and supports `--dry-run` and `--yes` flags. The one-liner above works end-to-end: it auto-detects an existing `neuralgentics-pg` container and recovers its credentials, or auto-starts a fresh one. See the [installation guide](https://veedubin.github.io/neuralgentics/getting-started/installation/) for the full option list.
+The install script handles Go, Node, container runtimes (docker or podman), and SSL certs. It detects WSL2, defaults to a project-local install at `$PWD/.neuralgentics` (so it never pollutes `$HOME` unless you ask), and supports `--dry-run` and `--yes` flags. The one-liner above works end-to-end: it auto-detects an existing `neuralgentics-pg` container and recovers its credentials, or auto-starts a fresh one. See the [installation guide](https://veedubin.github.io/neuralgentics/getting-started/installation/) for the full option list.
 
 ---
 

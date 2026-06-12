@@ -29,9 +29,9 @@ NC='\033[0m'
 
 # ─── Defaults ────────────────────────────────────────────────────────────────
 
-PREFIX="${NEURALGENTICS_PREFIX:-$HOME/.neuralgentics}"
-NEURALGENTICS_DATA_DIR="${NEURALGENTICS_DATA_DIR:-$HOME/.local/share/neuralgentics}"
-BIN_LINK_DIR="$HOME/.local/bin"
+PREFIX="${NEURALGENTICS_PREFIX:-$PWD/.neuralgentics}"
+NEURALGENTICS_DATA_DIR="${NEURALGENTICS_DATA_DIR:-$PWD/.neuralgentics}"
+BIN_LINK_DIR="$PWD/.neuralgentics/bin"
 VERSION="${DEFAULT_VERSION}"
 REPO=""
 NO_PATH=false
@@ -72,7 +72,7 @@ Options:
         --no-path           Don't modify shell rc files
         --no-verify         Skip SHA256 verification
         --dry-run           Show what would be done without executing
-        --prefix <dir>      Install root (default: ~/.neuralgentics,
+        --prefix <dir>      Install root (default: $PWD/.neuralgentics,
                             env: NEURALGENTICS_PREFIX)
         --version <v>       Version to install (default: ${DEFAULT_VERSION})
         --repo <owner/repo> GitHub repo (default: auto-detect or
@@ -565,20 +565,28 @@ ENVEOF
         printf "  ${MUTED}[dry-run]${NC} write %s/install.env\n" "$NEURALGENTICS_DATA_DIR" >&2
     fi
 
-    # Symlink ~/.local/bin/neuralgentics -> ~/.neuralgentics/bin/neuralgentics
+    # Symlink $BIN_LINK_DIR/neuralgentics -> $INSTALL_BIN/neuralgentics.
+    # Skip when BIN_LINK_DIR == INSTALL_BIN (PWD-local installs): the
+    # binary is already in the right place, no symlink needed.
     local target="$INSTALL_BIN/neuralgentics"
     local link="$BIN_LINK_DIR/neuralgentics"
+    local link_dir
+    link_dir="$(dirname "$link")"
 
-    run mkdir -p "$BIN_LINK_DIR"
-
-    if [[ -e "$link" && ! -L "$link" ]]; then
-        warn "$link exists and is not a symlink — leaving in place"
+    if [[ "$link_dir" == "$INSTALL_BIN" ]]; then
+        verbose "Skip symlink: $BIN_LINK_DIR == \$INSTALL_BIN (PWD-local install)"
     else
-        if $DRY_RUN; then
-            printf "  ${MUTED}[dry-run]${NC} ln -sf %s %s\n" "$target" "$link" >&2
+        run mkdir -p "$link_dir"
+
+        if [[ -e "$link" && ! -L "$link" ]]; then
+            warn "$link exists and is not a symlink — leaving in place"
         else
-            ln -sf "$target" "$link"
-            log "Symlinked: $link -> $target"
+            if $DRY_RUN; then
+                printf "  ${MUTED}[dry-run]${NC} ln -sf %s %s\n" "$target" "$link" >&2
+            else
+                ln -sf "$target" "$link"
+                log "Symlinked: $link -> $target"
+            fi
         fi
     fi
 }
@@ -604,6 +612,14 @@ add_to_path() {
 setup_path() {
     if $NO_PATH; then
         log "Skipping PATH modification (--no-path)"
+        return 0
+    fi
+
+    # PWD-local install: BIN_LINK_DIR == INSTALL_BIN, the binary is already
+    # in place at $PREFIX/bin/. No symlink, no PATH-add. Just print a tip.
+    if [[ "$BIN_LINK_DIR" == "$INSTALL_BIN" ]]; then
+        log "Project-local install at $PREFIX — invoke with: $PREFIX/bin/neuralgentics"
+        log "Or add to your shell: export PATH=\"$PREFIX/bin:\$PATH\""
         return 0
     fi
 
@@ -783,15 +799,24 @@ detect_real_home() {
 prompt_install_location() {
     # If --prefix was explicitly passed or NON_INTERACTIVE, skip the prompt
     if [[ -n "${_PREFIX_EXPLICIT:-}" ]] || $NON_INTERACTIVE; then
-        # Compute DATA_DIR from PREFIX for non-interactive/default path
-        if [[ "$PREFIX" == "$HOME/.neuralgentics" || "$PREFIX" == "$(detect_real_home)/.neuralgentics" ]]; then
+        # Compute DATA_DIR from PREFIX for non-interactive/default path.
+        # Default prefix is PWD-local ($PWD/.neuralgentics). HOME-local
+        # ($HOME/.neuralgentics) is only used when --prefix=$HOME/... was
+        # passed explicitly.
+        if [[ "$PREFIX" == "$PWD/.neuralgentics" ]]; then
+            NEURALGENTICS_DATA_DIR="$PREFIX"
+            BIN_LINK_DIR="$PREFIX/bin"
+        elif [[ "$PREFIX" == "$HOME/.neuralgentics" || "$PREFIX" == "$(detect_real_home)/.neuralgentics" ]]; then
             local real_home
             real_home="$(detect_real_home)"
-            NEURALGENTICS_DATA_DIR="${NEURALGENTICS_DATA_DIR:-$real_home/.local/share/neuralgentics}"
-        elif [[ "$PREFIX" == "$PWD/.neuralgentics" ]]; then
-            NEURALGENTICS_DATA_DIR="$PREFIX"
+            # BIN_LINK_DIR and NEURALGENTICS_DATA_DIR may have been set at the
+            # top of the file (PWD-local defaults). Override them now that
+            # we know the user wants a HOME-local install.
+            BIN_LINK_DIR="$real_home/.local/bin"
+            NEURALGENTICS_DATA_DIR="$real_home/.local/share/neuralgentics"
         else
-            NEURALGENTICS_DATA_DIR="${NEURALGENTICS_DATA_DIR:-$PREFIX}"
+            NEURALGENTICS_DATA_DIR="$PREFIX"
+            BIN_LINK_DIR="$PREFIX/bin"
         fi
         export NEURALGENTICS_PREFIX="$PREFIX"
         export NEURALGENTICS_DATA_DIR
@@ -816,7 +841,7 @@ prompt_install_location() {
 
     printf '\n' >&2
     printf "${CYAN}Where should Neuralgentics install?${NC}\n" >&2
-    printf "  1) Local to this project (%s)\n" "$PWD" >&2
+    printf "  1) Local to this project (%s) ${GREEN}<-- default${NC}\n" "$PWD" >&2
     printf "  2) Home directory (%s)\n" "$real_home" >&2
     printf "  3) Custom path\n" >&2
 
@@ -825,12 +850,12 @@ prompt_install_location() {
     fi
 
     while true; do
-        printf "Choice [1/2/3] (default: 2): " >&2
+        printf "Choice [1/2/3] (default: 1): " >&2
         local choice
         read -r choice || choice=""
 
-        # Default to 2 (home dir)
-        [[ -z "$choice" ]] && choice="2"
+        # Default to 1 (PWD-local)
+        [[ -z "$choice" ]] && choice="1"
 
         case "$choice" in
             1)
@@ -990,6 +1015,7 @@ _recover_container_creds() {
     # Attempt 2: search common backup locations for an existing .env
     if [[ -z "$db_password" ]]; then
         local search_paths=(
+            "$PREFIX/.env"
             "$HOME/.neuralgentics/.env"
             "$HOME/.config/neuralgentics/.env"
             "$HOME/.local/share/neuralgentics/.env"
@@ -1484,7 +1510,7 @@ _projects_registry_path() {
 }
 
 # Register the current working directory as a project.
-# Writes to ~/.neuralgentics/projects.toml (TOML format, human-editable).
+# Writes to $PREFIX/projects.toml (TOML format, human-editable).
 # Idempotent: re-runs from the same directory update the existing entry.
 register_project() {
     local registry_path
