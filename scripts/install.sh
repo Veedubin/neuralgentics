@@ -85,6 +85,12 @@ Examples:
     $0 --repo myorg/neuralgentics   # custom GitHub repo
     $0 --dry-run                    # preview without changes
     curl -fsSL .../install.sh | bash
+    curl -fsSL .../install.sh | bash -s -- --yes      # non-interactive (all defaults)
+    curl -fsSL .../install.sh | bash -s -- --prefix /opt/neuralgentics --yes
+
+Note: piping the script into bash without --yes is refused. The installer
+is interactive by design — Enter accepts each default, but a real human
+must be at the keyboard. To run unattended, pass --yes explicitly.
 EOF
 }
 
@@ -116,6 +122,35 @@ while [[ $# -gt 0 ]]; do
 done
 
 INSTALL_BIN="$PREFIX/bin"
+
+# ─── TTY guard ────────────────────────────────────────────────────────────────
+# If stdin is not a TTY (e.g. `curl ... | bash` or running in CI) AND the
+# user did not pass --yes, we cannot prompt for answers and we MUST NOT
+# silently auto-install. Bail out with a clear instruction.
+#
+# Hitting Enter on a prompt is fine — that's "accept the default", which is
+# user-driven. But an EOF (no TTY at all) is a different beast: it means
+# no human is actually present, and the install would proceed without
+# consent. That has caused real user pain (sneak-installed into $HOME).
+if [[ ! -t 0 ]] && ! $NON_INTERACTIVE; then
+    err "Refusing to install: stdin is not a TTY and --yes was not passed."
+    err ""
+    err "Why: this installer is interactive by design. The 'next, next, next'"
+    err "     flow is meant for a human sitting at a terminal, not for"
+    err "     piped/redirected input. Running with no TTY used to silently"
+    err "     skip prompts and install to a default location the user"
+    err "     didn't choose."
+    err ""
+    err "Pick one of these instead:"
+    err "  1. Save the script and run it from a real terminal:"
+    err "       curl -fsSL .../install.sh -o install.sh && bash install.sh"
+    err "  2. Accept all defaults non-interactively (explicit opt-in):"
+    err "       curl -fsSL .../install.sh | bash -s -- --yes"
+    err "  3. Pin a specific install root non-interactively:"
+    err "       curl -fsSL .../install.sh | bash -s -- --prefix /opt/neuralgentics --yes"
+    err ""
+    exit 1
+fi
 
 # ─── Banner ──────────────────────────────────────────────────────────────────
 
@@ -851,10 +886,20 @@ prompt_install_location() {
 
     while true; do
         printf "Choice [1/2/3] (default: 1): " >&2
-        local choice
-        read -r choice || choice=""
+        local choice=""
+        # `read` returns non-zero on EOF (no TTY) or on signal interrupt.
+        # Treat that as "no answer yet" — keep prompting. NEVER silently
+        # fall through to a default; an install op is destructive.
+        if ! read -r choice; then
+            printf "\n" >&2
+            err "No input received (stdin not a TTY?)."
+            err "To accept all defaults non-interactively, re-run with --yes."
+            err "To pick a specific prefix, re-run with --prefix <dir>."
+            err "Aborting — no changes made."
+            exit 1
+        fi
 
-        # Default to 1 (PWD-local)
+        # Default to 1 (PWD-local) when user just hit Enter
         [[ -z "$choice" ]] && choice="1"
 
         case "$choice" in
@@ -870,8 +915,11 @@ prompt_install_location() {
                 ;;
             3)
                 printf "Enter custom path: " >&2
-                local custom_path
-                read -r custom_path || custom_path=""
+                local custom_path=""
+                if ! read -r custom_path; then
+                    err "No input received. Aborting."
+                    exit 1
+                fi
                 if [[ -z "$custom_path" ]]; then
                     err "Path cannot be empty"
                     continue
@@ -894,8 +942,11 @@ prompt_install_location() {
                     warn "Linux binaries on /mnt/ may have permission issues."
                     warn "Consider a path inside the WSL filesystem (e.g. ~/.neuralgentics)."
                     printf "Continue anyway? [y/N] " >&2
-                    local mnt_answer
-                    read -r mnt_answer || mnt_answer=""
+                    local mnt_answer=""
+                    if ! read -r mnt_answer; then
+                        err "No input received. Aborting."
+                        exit 1
+                    fi
                     if [[ ! "$mnt_answer" =~ ^[Yy] ]]; then
                         continue
                     fi
@@ -1143,8 +1194,13 @@ prompt_database() {
 
     while true; do
         printf "Start one now using %s? [Y/n] (default: Y): " "$CONTAINER_CMD" >&2
-        local answer
-        read -r answer || answer=""
+        local answer=""
+        if ! read -r answer; then
+            err "No input received (stdin not a TTY?)."
+            err "To accept all defaults non-interactively, re-run with --yes."
+            err "Aborting — no changes made."
+            exit 1
+        fi
 
         # Default to Y
         if [[ -z "$answer" || "$answer" =~ ^[Yy] ]]; then
@@ -1167,8 +1223,11 @@ prompt_database() {
 
     while true; do
         printf "Choice [1/2] (default: 1): " >&2
-        local sub_choice
-        read -r sub_choice || sub_choice=""
+        local sub_choice=""
+        if ! read -r sub_choice; then
+            err "No input received. Aborting."
+            exit 1
+        fi
         [[ -z "$sub_choice" ]] && sub_choice="1"
 
         case "$sub_choice" in
@@ -1340,8 +1399,11 @@ _start_fresh_db() {
         return 1
     fi
     printf "Enter the PostgreSQL password used when creating '%s': " "$container_name" >&2
-    local db_password
-    read -r db_password || db_password=""
+    local db_password=""
+    if ! read -r db_password; then
+        err "No input received. Aborting."
+        exit 1
+    fi
     if [[ -z "$db_password" ]]; then
         err "Password cannot be empty"
         return 1
@@ -1372,20 +1434,37 @@ _start_fresh_db() {
 _prompt_connection_details() {
     local db_host db_port db_user db_password db_name
 
+    # These 4 fields have sensible defaults. If the user just hits Enter we
+    # accept the default. But if EOF/no-TTY, we ABORT — never silently
+    # silently pick a default for an install op.
     printf "  Host [127.0.0.1]: " >&2
-    read -r db_host || db_host=""
+    if ! read -r db_host; then
+        err "No input received. Aborting."
+        exit 1
+    fi
     [[ -z "$db_host" ]] && db_host="127.0.0.1"
 
     printf "  Port [5432]: " >&2
-    read -r db_port || db_port=""
+    if ! read -r db_port; then
+        err "No input received. Aborting."
+        exit 1
+    fi
     [[ -z "$db_port" ]] && db_port="5432"
 
     printf "  User [postgres]: " >&2
-    read -r db_user || db_user=""
+    if ! read -r db_user; then
+        err "No input received. Aborting."
+        exit 1
+    fi
     [[ -z "$db_user" ]] && db_user="postgres"
 
+    # Password MUST be entered — no default, no EOF fallback.
     printf "  Password (hidden): " >&2
-    read -rs db_password || db_password=""
+    if ! read -rs db_password; then
+        printf '\n' >&2
+        err "No input received. Aborting."
+        exit 1
+    fi
     printf '\n' >&2
     if [[ -z "$db_password" ]]; then
         err "Password cannot be empty"
@@ -1393,7 +1472,10 @@ _prompt_connection_details() {
     fi
 
     printf "  Database [neuralgentics]: " >&2
-    read -r db_name || db_name=""
+    if ! read -r db_name; then
+        err "No input received. Aborting."
+        exit 1
+    fi
     [[ -z "$db_name" ]] && db_name="neuralgentics"
 
     # Validate connection with psql if available
@@ -1419,8 +1501,11 @@ _prompt_connection_details() {
 _prompt_env_file() {
     while true; do
         printf "  Path to .env file: " >&2
-        local env_file_path
-        read -r env_file_path || env_file_path=""
+        local env_file_path=""
+        if ! read -r env_file_path; then
+            err "No input received. Aborting."
+            exit 1
+        fi
 
         if [[ -z "$env_file_path" ]]; then
             err "Path cannot be empty"
@@ -1531,8 +1616,11 @@ register_project() {
             return 0
         fi
         printf "\n${CYAN}Register this directory as a project?${NC} [%s] [Y/n]: " "$project_name" >&2
-        local answer
-        read -r answer || answer=""
+        local answer=""
+        if ! read -r answer; then
+            err "No input received. Aborting."
+            exit 1
+        fi
         # Default to Y
         if [[ -n "$answer" ]] && [[ ! "$answer" =~ ^[Yy] ]]; then
             log "Skipping project registration"
