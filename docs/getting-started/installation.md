@@ -58,8 +58,18 @@ This is the fastest way to get started. We provide pre-built binaries for Linux,
    ```
 
 ### Customization
-You can customize the installation root using the `--prefix` flag:
+The installer defaults to a **project-local install at `$PWD/.neuralgentics`** — binaries, data, and the projects registry all live inside your project, so the install never touches `$HOME` unless you ask. If you're running in an interactive terminal the installer will still prompt you with options:
+
+  1. Local to this project (`$PWD/.neuralgentics`) — default
+  2. Home directory (`$HOME/.neuralgentics`)
+  3. Custom path
+
+You can also override the default non-interactively:
 ```bash
+# Force home-dir install
+./scripts/install.sh --prefix $HOME/.neuralgentics
+
+# Or any absolute path
 ./scripts/install.sh --prefix /opt/neuralgentics
 ```
 

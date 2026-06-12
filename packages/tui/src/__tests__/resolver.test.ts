@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { resolveBackendPath } from "../neuralgentics-client/resolver.js";
 
 /**
- * Tests for install-prefix resolution steps 4 & 5 of resolveBackendPath().
+ * Tests for install-prefix resolution steps 4–6 of resolveBackendPath().
  *
  * These tests create real temp directories with a fake binary to verify
  * that the resolver finds the binary at the expected install paths.
@@ -12,8 +12,9 @@ import { resolveBackendPath } from "../neuralgentics-client/resolver.js";
  * NOTE: We cannot directly mock os.homedir() in the resolver module
  * because it's a frozen namespace import. Instead, we create real temp
  * directories in /tmp and use NEURALGENTICS_INSTALL_PREFIX to control
- * step 4. For step 5, we place the binary in the actual ~/.neuralgentics/bin/
- * or test the error message paths.
+ * step 4. For step 5, we mock process.cwd() and create a fake binary
+ * in the mocked CWD's .neuralgentics/bin/. For step 6, we place the
+ * binary in the actual ~/.neuralgentics/bin/.
  */
 
 const TMP_BASE = "/tmp/neuralgentics_resolver_test_" + process.pid;
@@ -30,9 +31,10 @@ describe("resolveBackendPath install-prefix resolution", () => {
     originalInstallPrefix = process.env.NEURALGENTICS_INSTALL_PREFIX;
     originalCwd = process.cwd;
 
-    // Neutralize steps 1–3 so only steps 4–5 can resolve
+    // Neutralize steps 1–4 so only steps 5–6 can resolve
     process.env.PATH = "/nonexistent_path_resolver_test";
     delete process.env.NEURALGENTICS_BACKEND_PATH;
+    delete process.env.NEURALGENTICS_INSTALL_PREFIX;
     process.cwd = () => "/tmp/nonexistent_cwd_resolver_test";
   });
 
@@ -114,5 +116,24 @@ describe("resolveBackendPath install-prefix resolution", () => {
       expect(message).toContain(".neuralgentics/bin");
       expect(message).toContain("neuralgentics-backend");
     }
+  });
+
+  test("resolves via $PWD/.neuralgentics/bin/neuralgentics-backend (v0.6.4 default)", () => {
+    // The install script defaults to $PWD/.neuralgentics/ since v0.6.4.
+    // Place a fake binary in the mocked CWD's install dir and verify the
+    // resolver picks it up before falling through to the HOME fallback.
+    const projectRoot = join(TMP_BASE, "project-local");
+    const projectBin = join(projectRoot, ".neuralgentics", "bin");
+    mkdirSync(projectBin, { recursive: true });
+    const fakeBinary = join(projectBin, "neuralgentics-backend");
+    writeFileSync(fakeBinary, "#!/bin/sh\necho fake\n");
+
+    // Re-mock CWD to point at our temp project so the resolver's step 5
+    // finds the binary. The beforeEach already set CWD to a non-existent
+    // path; we override it here.
+    process.cwd = () => projectRoot;
+
+    const result = resolveBackendPath();
+    expect(result).toBe(resolve(fakeBinary));
   });
 });
