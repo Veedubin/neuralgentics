@@ -15,7 +15,7 @@
 set -euo pipefail
 
 APP="neuralgentics"
-DEFAULT_VERSION="0.6.3"
+DEFAULT_VERSION="0.6.4"
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -937,31 +937,99 @@ ENVEOF
     verbose "Wrote .env to $env_path"
 }
 
-prompt_database() {
-    # Bug #2 guard: detect non-TTY stdin (e.g., curl | bash).
-    # The password prompts below require interactive stdin. If stdin is a pipe,
-    # read returns EOF immediately and the script bails with "Password cannot be empty."
-    # Give the user a clear remediation message instead.
-    if [[ ! -t 0 ]]; then
-        # Non-interactive mode is OK — it auto-creates a fresh DB.
-        if ! $NON_INTERACTIVE; then
-            err "This installer needs to ask for the PostgreSQL password, but stdin is not a terminal."
-            err "This usually happens when piping: curl ... | bash"
-            err ""
-            err "Save the installer and re-run interactively:"
-            err "  curl -fsSL https://github.com/${REPO:-Veedubin/neuralgentics}/releases/latest/download/install.sh -o install.sh"
-            err "  bash install.sh"
-            err ""
-            err "Or use non-interactive mode to auto-create a database:"
-            err "  bash install.sh --yes"
-            exit 1
-        fi
+# Detect an available container runtime. Prefers docker (broader install base
+# and what GH Actions ships by default) and falls back to podman. Sets the
+# global $CONTAINER_CMD variable on success. Returns 0 on success, 1 on
+# failure (caller decides how to bail).
+CONTAINER_CMD=""
+_detect_container_runtime() {
+    if [[ -n "$CONTAINER_CMD" ]]; then
+        # Already detected earlier in this run
+        command -v "$CONTAINER_CMD" >/dev/null 2>&1 && return 0
+    fi
+    if command -v docker >/dev/null 2>&1; then
+        CONTAINER_CMD="docker"
+        verbose "Using container runtime: docker"
+        return 0
+    fi
+    if command -v podman >/dev/null 2>&1; then
+        CONTAINER_CMD="podman"
+        verbose "Using container runtime: podman"
+        return 0
+    fi
+    CONTAINER_CMD=""
+    return 1
+}
+
+# Try to recover database credentials from an existing running container.
+# Used by prompt_database() to make `curl | bash` re-runs work when a
+# neuralgentics-pg container already exists but no .env file does.
+# Returns 0 on success (env written), 1 on failure (caller falls back to
+# prompt or auto-start).
+_recover_container_creds() {
+    local container_name="$1"
+
+    local db_password=""
+    local db_user=""
+    local db_name=""
+    local db_port=""
+
+    # Attempt 1: extract from container's runtime environment (works for
+    # containers created by THIS installer or by any other means that set
+    # POSTGRES_PASSWORD via -e at run time).
+    local container_env
+    container_env="$($CONTAINER_CMD exec "$container_name" printenv 2>/dev/null || true)"
+    if [[ -n "$container_env" ]]; then
+        db_password="$(printf '%s\n' "$container_env" | grep '^POSTGRES_PASSWORD=' | head -1 | cut -d= -f2-)"
+        db_user="$(printf '%s\n' "$container_env" | grep '^POSTGRES_USER=' | head -1 | cut -d= -f2-)"
+        db_name="$(printf '%s\n' "$container_env" | grep '^POSTGRES_DB=' | head -1 | cut -d= -f2-)"
+        # Port from inspect — more robust than regex on HostConfig
+        db_port="$($CONTAINER_CMD inspect "$container_name" --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' 2>/dev/null || true)"
     fi
 
-    # If .env already exists with valid config, skip
+    # Attempt 2: search common backup locations for an existing .env
+    if [[ -z "$db_password" ]]; then
+        local search_paths=(
+            "$HOME/.neuralgentics/.env"
+            "$HOME/.config/neuralgentics/.env"
+            "$HOME/.local/share/neuralgentics/.env"
+        )
+        for spath in "${search_paths[@]}"; do
+            if [[ -f "$spath" ]]; then
+                local candidate_pw
+                candidate_pw="$(grep '^POSTGRES_PASSWORD=' "$spath" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+                if [[ -n "$candidate_pw" ]]; then
+                    db_password="$candidate_pw"
+                    db_user="$(grep '^POSTGRES_USER=' "$spath" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+                    db_name="$(grep '^POSTGRES_DB=' "$spath" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+                    db_port="$(grep '^POSTGRES_PORT=' "$spath" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+                    log "Recovered database credentials from $spath"
+                    break
+                fi
+            fi
+        done
+    fi
+
+    # If we still need a password, we can't recover — return failure
+    if [[ -z "$db_password" ]]; then
+        return 1
+    fi
+
+    # Fill in defaults for anything still missing
+    [[ -z "$db_user" ]] && db_user="neuralgentics"
+    [[ -z "$db_name" ]] && db_name="neuralgentics"
+    [[ -z "$db_port" ]] && db_port="6000"
+
+    generate_env_file "127.0.0.1" "$db_port" "$db_user" "$db_password" "$db_name"
+    log "Database configured from existing container. Connection details in $NEURALGENTICS_DATA_DIR/.env"
+    return 0
+}
+
+prompt_database() {
+    # Step 1: If .env already exists with valid config, return immediately.
+    # This must come BEFORE the TTY guard so curl | bash re-runs work.
     local env_file="$NEURALGENTICS_DATA_DIR/.env"
     if [[ -f "$env_file" ]]; then
-        # Check for all 5 required keys
         local missing=0
         for key in POSTGRES_HOST POSTGRES_PORT POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB; do
             if ! grep -q "^${key}=" "$env_file" 2>/dev/null; then
@@ -974,6 +1042,70 @@ prompt_database() {
         fi
     fi
 
+    # Step 2: Detect a container runtime. Prefer docker (broader install base);
+    # fall back to podman. Both are interchangeable for our purposes.
+    if ! _detect_container_runtime; then
+        # No runtime available — TTY-aware error
+        if [[ ! -t 0 ]] && ! $NON_INTERACTIVE; then
+            err "Neither docker nor podman was found on this system."
+            err "Install one first: https://docs.docker.com/get-docker/ or https://podman.io/getting-started/installation"
+            err "Then re-run: bash install.sh"
+            exit 1
+        fi
+        err "Neither docker nor podman was found. Install one first:"
+        err "  https://docs.docker.com/get-docker/"
+        err "  https://podman.io/getting-started/installation"
+        return 1
+    fi
+
+    # Step 3: Try to recover credentials from an existing container before
+    # falling back to the TTY prompt. This is reachable under non-TTY now.
+    # Covers: existing container + no .env (most common re-install case).
+    local container_name="neuralgentics-pg"
+    if $CONTAINER_CMD inspect "$container_name" >/dev/null 2>&1; then
+        # Container exists (running or stopped). Try to start it if stopped,
+        # then try to recover creds from its env.
+        local state
+        state="$($CONTAINER_CMD inspect "$container_name" --format '{{.State.Running}}' 2>/dev/null || echo "false")"
+        if [[ "$state" != "true" ]]; then
+            log "Container '$container_name' exists but is stopped. Starting it..."
+            if $DRY_RUN; then
+                printf "  ${MUTED}[dry-run]${NC} %s start %s\n" "$CONTAINER_CMD" "$container_name" >&2
+            else
+                if ! $CONTAINER_CMD start "$container_name" >/dev/null 2>&1; then
+                    warn "Failed to start existing container '$container_name' — will create a fresh one"
+                fi
+            fi
+        fi
+        # If we can recover creds (or we just started it successfully), skip the prompt
+        if $CONTAINER_CMD inspect "$container_name" --format '{{.State.Running}}' 2>/dev/null | grep -q true; then
+            if _recover_container_creds "$container_name"; then
+                # _recover_container_creds writes the .env on success
+                return 0
+            fi
+        fi
+    fi
+
+    # Step 4: TTY guard as a last resort. If we got here under non-TTY and
+    # couldn't auto-recover, we either need to auto-start fresh (--yes or
+    # implicit when truly broken) or fail with a clear message.
+    if [[ ! -t 0 ]] && ! $NON_INTERACTIVE; then
+        err "This installer needs to ask a question, but stdin is not a terminal."
+        err "This usually happens when piping: curl ... | bash"
+        err ""
+        err "Save the installer and re-run interactively:"
+        err "  curl -fsSL https://github.com/${REPO:-Veedubin/neuralgentics}/releases/latest/download/install.sh -o install.sh"
+        err "  bash install.sh"
+        err ""
+        err "Or use non-interactive mode to auto-create a database:"
+        err "  bash install.sh --yes"
+        err ""
+        err "If you have an existing '$container_name' container that's stopped:"
+        err "  $CONTAINER_CMD start $container_name"
+        err "Then re-run the installer."
+        exit 1
+    fi
+
     # Non-interactive: default to starting a fresh container
     if $NON_INTERACTIVE; then
         _start_fresh_db
@@ -984,7 +1116,7 @@ prompt_database() {
     printf "${CYAN}Neuralgentics needs a PostgreSQL database with the pgvector extension.${NC}\n" >&2
 
     while true; do
-        printf "Start one now using podman-compose? [Y/n] (default: Y): " >&2
+        printf "Start one now using %s? [Y/n] (default: Y): " "$CONTAINER_CMD" >&2
         local answer
         read -r answer || answer=""
 
@@ -1031,30 +1163,32 @@ prompt_database() {
 }
 
 _start_fresh_db() {
-    # Check for podman
-    if ! command -v podman >/dev/null 2>&1; then
-        err "podman not found. Install it first: https://podman.io/getting-started/installation"
-        err "Skipping database setup. Run 'neuralgentics db setup' later to configure."
+    # Make sure we have a runtime; the caller (prompt_database) should have
+    # already called _detect_container_runtime, but be defensive.
+    if [[ -z "$CONTAINER_CMD" ]] && ! _detect_container_runtime; then
+        err "Neither docker nor podman was found. Install one first:"
+        err "  https://docs.docker.com/get-docker/"
+        err "  https://podman.io/getting-started/installation"
         return 1
     fi
 
     # Check for existing container
     local container_name="neuralgentics-pg"
     local is_running
-    is_running="$(podman inspect "$container_name" --format '{{.State.Running}}' 2>/dev/null || echo "false")"
+    is_running="$($CONTAINER_CMD inspect "$container_name" --format '{{.State.Running}}' 2>/dev/null || echo "false")"
 
     if [[ "$is_running" == "true" ]]; then
         log "Container '$container_name' is already running"
     else
         local container_exists
-        container_exists="$(podman inspect "$container_name" >/dev/null 2>&1 && echo "true" || echo "false")"
+        container_exists="$($CONTAINER_CMD inspect "$container_name" >/dev/null 2>&1 && echo "true" || echo "false")"
 
         if [[ "$container_exists" == "true" ]]; then
             log "Starting existing container '$container_name'..."
             if $DRY_RUN; then
-                printf "  ${MUTED}[dry-run]${NC} podman start %s\n" "$container_name" >&2
+                printf "  ${MUTED}[dry-run]${NC} %s start %s\n" "$CONTAINER_CMD" "$container_name" >&2
             else
-                podman start "$container_name" || { err "Failed to start container '$container_name'"; return 1; }
+                $CONTAINER_CMD start "$container_name" || { err "Failed to start container '$container_name'"; return 1; }
             fi
         else
             # Generate a password for the fresh database
@@ -1064,7 +1198,7 @@ _start_fresh_db() {
             local db_name="neuralgentics"
             local db_port=6000
 
-            log "Creating PostgreSQL container '$container_name' on port $db_port..."
+            log "Creating PostgreSQL container '$container_name' on port $db_port (using $CONTAINER_CMD)..."
 
             # Generate a self-signed SSL cert so the Go backend can use
             # sslmode=require without warnings (Bug #7).
@@ -1094,8 +1228,8 @@ _start_fresh_db() {
             fi
 
             if $DRY_RUN; then
-                printf "  ${MUTED}[dry-run]${NC} podman run -d --name %s -e POSTGRES_USER=%s -e POSTGRES_PASSWORD=*** -e POSTGRES_DB=%s -p %s:5432 -v %s:/var/lib/postgresql/server.crt:z -v %s:/var/lib/postgresql/server.key:z docker.io/pgvector/pgvector:pg18 bash -c 'chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key'\n" \
-                    "$container_name" "$db_user" "$db_name" "$db_port" "$ssl_cert" "$ssl_key" >&2
+                printf "  ${MUTED}[dry-run]${NC} %s run -d --name %s -e POSTGRES_USER=%s -e POSTGRES_PASSWORD=*** -e POSTGRES_DB=%s -p %s:5432 -v %s:/var/lib/postgresql/server.crt:z -v %s:/var/lib/postgresql/server.key:z docker.io/pgvector/pgvector:pg18 bash -c 'chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key'\n" \
+                    "$CONTAINER_CMD" "$container_name" "$db_user" "$db_name" "$db_port" "$ssl_cert" "$ssl_key" >&2
                 log "Container '$container_name' created on port $db_port (SSL enabled)"
                 generate_env_file "127.0.0.1" "$db_port" "$db_user" "$db_password" "$db_name"
                 log "Database configured. Connection details in $NEURALGENTICS_DATA_DIR/.env"
@@ -1113,8 +1247,11 @@ _start_fresh_db() {
             #   - plain :ro: files appear as root:root, postgres can't read
             # The :z + chown-in-wrapper pattern is the canonical rootless
             # solution. (Bug #10 from install-test v0.6.1.)
+            # NOTE: :z is a podman-ism. Docker accepts it but treats it the
+            # same as a normal bind mount with no SELinux relabeling. Both
+            # runtimes work with this invocation.
 
-            podman run -d \
+            $CONTAINER_CMD run -d \
                 --name "$container_name" \
                 -e POSTGRES_USER="$db_user" \
                 -e POSTGRES_PASSWORD="$db_password" \
@@ -1133,7 +1270,7 @@ _start_fresh_db() {
             local attempt=0
             log "Waiting for PostgreSQL to accept connections..."
             while [[ $attempt -lt $max_attempts ]]; do
-                if podman exec "$container_name" pg_isready -U "$db_user" -d "$db_name" >/dev/null 2>&1; then
+                if $CONTAINER_CMD exec "$container_name" pg_isready -U "$db_user" -d "$db_name" >/dev/null 2>&1; then
                     log "PostgreSQL is ready"
                     break
                 fi
@@ -1159,74 +1296,47 @@ _start_fresh_db() {
         return 0
     fi
 
-    # No .env yet — try to recover credentials from the running container first
+    # No .env yet — try to recover credentials from the running container
     # (Bug #3: auto-extract from container env when .env is missing).
     warn "Container '$container_name' is running but no .env file found."
 
-    local db_password=""
-    local db_user=""
-    local db_name=""
-    local db_port=""
-
-    # Attempt 1: extract from container's runtime environment
-    if command -v podman >/dev/null 2>&1; then
-        local container_env
-        container_env="$(podman exec "$container_name" printenv 2>/dev/null || true)"
-        if [[ -n "$container_env" ]]; then
-            db_password="$(printf '%s\n' "$container_env" | grep '^POSTGRES_PASSWORD=' | cut -d= -f2-)"
-            db_user="$(printf '%s\n' "$container_env" | grep '^POSTGRES_USER=' | cut -d= -f2-)"
-            db_name="$(printf '%s\n' "$container_env" | grep '^POSTGRES_DB=' | cut -d= -f2-)"
-            # Extract port from podman inspect (more robust than regex on HostConfig)
-            db_port="$(podman inspect "$container_name" --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' 2>/dev/null || true)"
-        fi
+    if _recover_container_creds "$container_name"; then
+        return 0
     fi
 
-    # Attempt 2: search common backup locations for an existing .env
+    # Fall back to interactive prompt (TTY-only)
+    if [[ ! -t 0 ]]; then
+        err "Cannot recover the PostgreSQL password from the container or any backup location."
+        err "Re-run the installer interactively to enter the password:"
+        err "  bash install.sh"
+        err "Or re-create the database with --yes to auto-generate a new password:"
+        err "  bash install.sh --yes"
+        return 1
+    fi
+    printf "Enter the PostgreSQL password used when creating '%s': " "$container_name" >&2
+    local db_password
+    read -r db_password || db_password=""
     if [[ -z "$db_password" ]]; then
-        local search_paths=(
-            "$HOME/.neuralgentics/.env"
-            "$HOME/.config/neuralgentics/.env"
-            "$HOME/.local/share/neuralgentics/.env"
-        )
-        for spath in "${search_paths[@]}"; do
-            if [[ -f "$spath" ]]; then
-                local candidate_pw
-                candidate_pw="$(grep '^POSTGRES_PASSWORD=' "$spath" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
-                if [[ -n "$candidate_pw" ]]; then
-                    db_password="$candidate_pw"
-                    db_user="$(grep '^POSTGRES_USER=' "$spath" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
-                    db_name="$(grep '^POSTGRES_DB=' "$spath" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
-                    db_port="$(grep '^POSTGRES_PORT=' "$spath" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
-                    log "Recovered database credentials from $spath"
-                    break
-                fi
-            fi
-        done
+        err "Password cannot be empty"
+        return 1
     fi
 
-    # If we still need a password, prompt interactively
-    if [[ -z "$db_password" ]]; then
-        # Guard: refuse to prompt if stdin is not a TTY (Bug #2)
-        if [[ ! -t 0 ]]; then
-            err "Cannot recover the PostgreSQL password from the container or any backup location."
-            err "Re-run the installer interactively to enter the password:"
-            err "  bash install.sh"
-            err "Or re-create the database with --yes to auto-generate a new password:"
-            err "  bash install.sh --yes"
-            return 1
-        fi
-        printf "Enter the PostgreSQL password used when creating '%s': " "$container_name" >&2
-        read -r db_password || db_password=""
-        if [[ -z "$db_password" ]]; then
-            err "Password cannot be empty"
-            return 1
-        fi
+    # Re-recover with the user-provided password
+    local db_user="neuralgentics"
+    local db_name="neuralgentics"
+    local db_port="6000"
+    # Best-effort defaults from container env
+    local container_env
+    container_env="$($CONTAINER_CMD exec "$container_name" printenv 2>/dev/null || true)"
+    if [[ -n "$container_env" ]]; then
+        local u
+        u="$(printf '%s\n' "$container_env" | grep '^POSTGRES_USER=' | head -1 | cut -d= -f2-)"; [[ -n "$u" ]] && db_user="$u"
+        local n
+        n="$(printf '%s\n' "$container_env" | grep '^POSTGRES_DB=' | head -1 | cut -d= -f2-)"; [[ -n "$n" ]] && db_name="$n"
+        local p
+        p="$($CONTAINER_CMD inspect "$container_name" --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' 2>/dev/null || true)"
+        [[ -n "$p" ]] && db_port="$p"
     fi
-
-    # Fill in defaults for anything still missing
-    [[ -z "$db_user" ]] && db_user="neuralgentics"
-    [[ -z "$db_name" ]] && db_name="neuralgentics"
-    [[ -z "$db_port" ]] && db_port="6000"
 
     generate_env_file "127.0.0.1" "$db_port" "$db_user" "$db_password" "$db_name"
     log "Database configured. Connection details in $NEURALGENTICS_DATA_DIR/.env"
