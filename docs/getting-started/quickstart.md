@@ -46,7 +46,7 @@ Once inside the TUI, try a simple orchestrator task:
 | Step | Action | Expected Result |
 | :--- | :--- | :--- |
 | 1 | `neuralgentics status` | All components (Backend, Broker, Memory) show `ONLINE` |
-| 2 | `neuralgentics --version` | Returns `v0.6.2` (or whatever you installed) |
+| 2 | `neuralgentics --version` | Returns `v0.6.3` (or whatever you installed) |
 | 3 | First Task | Task transitions from `triage` $\rightarrow$ `running` $\rightarrow$ `done` |
 
 If you encounter any issues, check the [Troubleshooting Guide](../troubleshooting.md).

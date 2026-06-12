@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-06-12
+
+Patch release: 3 install-script critical fixes (broken symlink, curl|bash stdin trap, container credential recovery) + multi-project registry feature.
+
+### Fixed
+
+- **CRITICAL: Tarball archive prefix bug** — The release pipeline always wraps artifacts in a top-level `neuralgentics/` directory. The install script extracted straight to `$PREFIX`, so binaries landed at `$PREFIX/neuralgentics/bin/...` and the symlink at `~/.local/bin/neuralgentics` was dangling. The published v0.6.0/v0.6.1/v0.6.2 installers all had this bug — every fresh install had a non-functional CLI. Fix: `tar --strip-components=1` so binaries land at `$PREFIX/bin/` directly. The fragile glob-`mv` workaround that was added in v0.6.1 but never shipped is removed.
+- **CRITICAL: `curl | bash` made stdin a pipe, killing the password prompt** — The PostgreSQL password prompt (`read -r db_password`) returned 1 on EOF (curl pipe), set `db_password=""`, and the installer bailed with "Password cannot be empty" before ever asking the user a question. Add a `[[ ! -t 0 ]]` guard that emits a clear "save and re-run" error explaining the workaround.
+- **Container credential recovery** — When a `neuralgentics-pg` container already exists but no `.env` file does, the installer used to either ask for the password (which fails under curl pipe — see above) or give up. Now does 3-tier recovery: `podman exec ... printenv | grep POSTGRES_*` → search backup `.env` paths → interactive prompt (TTY only). Port extraction uses `podman inspect --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}'` instead of the broken HostPort regex.
+
+### Added
+
+- **Multi-project registration** — The installer now writes `~/.neuralgentics/projects.toml` on first run, registering the install directory with name (basename of `$PWD`), path, timestamp, and a `default` flag. Idempotent re-runs update the existing entry instead of duplicating. First registration is marked `default = true`; re-registering a project that was already default preserves its default status. Future: `neuralgentics projects` CLI command and `/projects` TUI slash command will read this file.
+- **`make lint-shell` quality gate** — Runs `bash -n` on all `scripts/*.sh` to catch syntax errors before they hit users. Wired into the `make` aggregate target.
+
+### Verification
+
+Tested end-to-end with the v0.6.0 tarball: `tar --strip-components=1` places binaries correctly, non-TTY stdin exits with helpful error, `--yes` mode auto-detects existing `.env` and registers the project, and 5 sequential register/re-register cycles leave the registry with exactly 1 `default = true` and 0 orphan lines.
+
 ## [0.6.2] - 2026-06-09
 
 Patch release: 1 install-script follow-up fix + CI workflow modernization.
