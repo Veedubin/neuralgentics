@@ -4,7 +4,7 @@
 # adapted for Go modules + TypeScript overlay.
 # ──────────────────────────────────────────────────────────────────────────────
 
-.PHONY: all lint typecheck build test smoke clean help docs-serve docs-build
+.PHONY: all lint lint-shell typecheck build test smoke clean help docs-serve docs-build
 
 # Go modules (must match go.work)
 GO_MODULES := packages/memory packages/orchestrator-go packages/broker-go packages/backend-go
@@ -18,7 +18,7 @@ BINARY := packages/backend-go/neuralgentics-backend
 # ──────────────────────────────────────────────────────────────────────────────
 # Top-level: run every gate, fail fast on first error
 # ──────────────────────────────────────────────────────────────────────────────
-all: lint typecheck build test smoke
+all: lint lint-shell typecheck build test smoke
 	@echo ""
 	@echo "✓ All quality gates passed"
 
@@ -31,6 +31,17 @@ lint:
 		(cd $$m && go vet ./...) || exit 1; \
 	done
 	@echo "✓ Lint passed (4 Go modules)"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Gate 1b — Lint: shell scripts (bash -n syntax check)
+# ──────────────────────────────────────────────────────────────────────────────
+lint-shell:
+	@echo "=== scripts/*.sh (bash -n) ==="
+	@for f in scripts/*.sh; do \
+		echo "  $$f"; \
+		bash -n "$$f" || exit 1; \
+	done
+	@echo "✓ Shell lint passed"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Gate 2 — Typecheck: tsc --noEmit on the overlay
@@ -108,8 +119,9 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  all        Run all quality gates (lint + typecheck + build + test + smoke)"
-	@echo "  lint       Run go vet on all 4 Go modules"
-	@echo "  typecheck  Run tsc --noEmit on the overlay"
+	@echo "  lint         Run go vet on all 4 Go modules"
+	@echo "  lint-shell   Run bash -n on all scripts/*.sh"
+	@echo "  typecheck    Run tsc --noEmit on the overlay"
 	@echo "  build      Build all 4 Go modules + overlay TS"
 	@echo "  test       Run all tests (4 Go modules + overlay)"
 	@echo "  smoke      Run the JSON-RPC smoke test (requires test DB on :6000)"

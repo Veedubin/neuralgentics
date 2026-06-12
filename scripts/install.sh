@@ -457,14 +457,19 @@ verify_sha256() {
 extract_archive() {
     local archive_path="$1"
     local target_dir="$2"
+    local strip_components="${3:-0}"
 
     log "Extracting to $target_dir..."
 
     if $DRY_RUN; then
         if [[ "$archive_path" == *.zip ]]; then
-            printf "  ${MUTED}[dry-run]${NC} unzip -q %s -d %s\n" "$archive_path" "$target_dir" >&2
+            local strip_opt=""
+            [[ "$strip_components" -gt 0 ]] && strip_opt=" (strip $strip_components)"
+            printf "  ${MUTED}[dry-run]${NC} unzip -q %s -d %s%s\n" "$archive_path" "$target_dir" "$strip_opt" >&2
         else
-            printf "  ${MUTED}[dry-run]${NC} tar -xzf %s -C %s\n" "$archive_path" "$target_dir" >&2
+            local strip_flag=""
+            [[ "$strip_components" -gt 0 ]] && strip_flag=" --strip-components=$strip_components"
+            printf "  ${MUTED}[dry-run]${NC} tar -xzf %s -C %s%s\n" "$archive_path" "$target_dir" "$strip_flag" >&2
         fi
         return 0
     fi
@@ -477,9 +482,46 @@ extract_archive() {
             err "Install: apt-get install unzip (or equivalent)"
             exit 1
         fi
-        unzip -q "$archive_path" -d "$target_dir"
+        # .zip archives: unzip doesn't support --strip-components natively,
+        # so extract to a temp dir and move contents up if strip > 0.
+        if [[ "$strip_components" -gt 0 ]]; then
+            local tmp_extract
+            tmp_extract="$(mktemp -d "${TMPDIR:-/tmp}/${APP}_zip_strip_XXXXXX")"
+            unzip -q "$archive_path" -d "$tmp_extract"
+            # Move the inner directory contents up
+            local inner_dir
+            inner_dir="$(find "$tmp_extract" -mindepth 1 -maxdepth 1 -type d | head -1)"
+            if [[ -n "$inner_dir" ]]; then
+                mv "$inner_dir/"* "$target_dir/" 2>/dev/null || true
+                mv "$inner_dir"/.* "$target_dir/" 2>/dev/null || true
+            fi
+            rm -rf "$tmp_extract"
+        else
+            unzip -q "$archive_path" -d "$target_dir"
+        fi
     else
-        tar -xzf "$archive_path" -C "$target_dir"
+        # .tar.gz archives: use --strip-components when available, fallback otherwise.
+        if [[ "$strip_components" -gt 0 ]]; then
+            # Try tar with --strip-components first (GNU tar, busybox tar)
+            if tar --version >/dev/null 2>&1; then
+                # GNU tar — supports --strip-components
+                tar -xzf "$archive_path" -C "$target_dir" --strip-components="$strip_components"
+            else
+                # Fallback: extract normally, then move inner dir contents up
+                local tmp_extract
+                tmp_extract="$(mktemp -d "${TMPDIR:-/tmp}/${APP}_tar_strip_XXXXXX")"
+                tar -xzf "$archive_path" -C "$tmp_extract"
+                local inner_dir
+                inner_dir="$(find "$tmp_extract" -mindepth 1 -maxdepth 1 -type d | head -1)"
+                if [[ -n "$inner_dir" ]]; then
+                    mv "$inner_dir/"* "$target_dir/" 2>/dev/null || true
+                    mv "$inner_dir"/.* "$target_dir/" 2>/dev/null || true
+                fi
+                rm -rf "$tmp_extract"
+            fi
+        else
+            tar -xzf "$archive_path" -C "$target_dir"
+        fi
     fi
 
     log "Extracted to $target_dir"
@@ -896,6 +938,26 @@ ENVEOF
 }
 
 prompt_database() {
+    # Bug #2 guard: detect non-TTY stdin (e.g., curl | bash).
+    # The password prompts below require interactive stdin. If stdin is a pipe,
+    # read returns EOF immediately and the script bails with "Password cannot be empty."
+    # Give the user a clear remediation message instead.
+    if [[ ! -t 0 ]]; then
+        # Non-interactive mode is OK — it auto-creates a fresh DB.
+        if ! $NON_INTERACTIVE; then
+            err "This installer needs to ask for the PostgreSQL password, but stdin is not a terminal."
+            err "This usually happens when piping: curl ... | bash"
+            err ""
+            err "Save the installer and re-run interactively:"
+            err "  curl -fsSL https://github.com/${REPO:-Veedubin/neuralgentics}/releases/latest/download/install.sh -o install.sh"
+            err "  bash install.sh"
+            err ""
+            err "Or use non-interactive mode to auto-create a database:"
+            err "  bash install.sh --yes"
+            exit 1
+        fi
+    fi
+
     # If .env already exists with valid config, skip
     local env_file="$NEURALGENTICS_DATA_DIR/.env"
     if [[ -f "$env_file" ]]; then
@@ -1097,21 +1159,71 @@ _start_fresh_db() {
         return 0
     fi
 
-    # No .env yet — we need to create one. Prompt for the password since
-    # we can't recover it from a running container.
+    # No .env yet — try to recover credentials from the running container first
+    # (Bug #3: auto-extract from container env when .env is missing).
     warn "Container '$container_name' is running but no .env file found."
-    local db_password
-    printf "Enter the PostgreSQL password used when creating '%s': " "$container_name" >&2
-    read -r db_password || db_password=""
-    if [[ -z "$db_password" ]]; then
-        err "Password cannot be empty"
-        return 1
+
+    local db_password=""
+    local db_user=""
+    local db_name=""
+    local db_port=""
+
+    # Attempt 1: extract from container's runtime environment
+    if command -v podman >/dev/null 2>&1; then
+        local container_env
+        container_env="$(podman exec "$container_name" printenv 2>/dev/null || true)"
+        if [[ -n "$container_env" ]]; then
+            db_password="$(printf '%s\n' "$container_env" | grep '^POSTGRES_PASSWORD=' | cut -d= -f2-)"
+            db_user="$(printf '%s\n' "$container_env" | grep '^POSTGRES_USER=' | cut -d= -f2-)"
+            db_name="$(printf '%s\n' "$container_env" | grep '^POSTGRES_DB=' | cut -d= -f2-)"
+            # Extract port from podman inspect (more robust than regex on HostConfig)
+            db_port="$(podman inspect "$container_name" --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' 2>/dev/null || true)"
+        fi
     fi
 
-    local db_user db_name db_port
-    db_user="$(podman inspect "$container_name" --format '{{.Config.Env}}' 2>/dev/null | grep -oP 'POSTGRES_USER=\K[^ ]+' || echo "neuralgentics")"
-    db_name="$(podman inspect "$container_name" --format '{{.Config.Env}}' 2>/dev/null | grep -oP 'POSTGRES_DB=\K[^ ]+' || echo "neuralgentics")"
-    db_port="$(podman inspect "$container_name" --format '{{.HostConfig.PortBindings}}' 2>/dev/null | grep -oP '5432/tcp:\[\{HostPort:\K[0-9]+' || echo "6000")"
+    # Attempt 2: search common backup locations for an existing .env
+    if [[ -z "$db_password" ]]; then
+        local search_paths=(
+            "$HOME/.neuralgentics/.env"
+            "$HOME/.config/neuralgentics/.env"
+            "$HOME/.local/share/neuralgentics/.env"
+        )
+        for spath in "${search_paths[@]}"; do
+            if [[ -f "$spath" ]]; then
+                local candidate_pw
+                candidate_pw="$(grep '^POSTGRES_PASSWORD=' "$spath" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+                if [[ -n "$candidate_pw" ]]; then
+                    db_password="$candidate_pw"
+                    db_user="$(grep '^POSTGRES_USER=' "$spath" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+                    db_name="$(grep '^POSTGRES_DB=' "$spath" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+                    db_port="$(grep '^POSTGRES_PORT=' "$spath" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+                    log "Recovered database credentials from $spath"
+                    break
+                fi
+            fi
+        done
+    fi
+
+    # If we still need a password, prompt interactively
+    if [[ -z "$db_password" ]]; then
+        # Guard: refuse to prompt if stdin is not a TTY (Bug #2)
+        if [[ ! -t 0 ]]; then
+            err "Cannot recover the PostgreSQL password from the container or any backup location."
+            err "Re-run the installer interactively to enter the password:"
+            err "  bash install.sh"
+            err "Or re-create the database with --yes to auto-generate a new password:"
+            err "  bash install.sh --yes"
+            return 1
+        fi
+        printf "Enter the PostgreSQL password used when creating '%s': " "$container_name" >&2
+        read -r db_password || db_password=""
+        if [[ -z "$db_password" ]]; then
+            err "Password cannot be empty"
+            return 1
+        fi
+    fi
+
+    # Fill in defaults for anything still missing
     [[ -z "$db_user" ]] && db_user="neuralgentics"
     [[ -z "$db_name" ]] && db_name="neuralgentics"
     [[ -z "$db_port" ]] && db_port="6000"
@@ -1244,6 +1356,154 @@ _prompt_env_file() {
     return 0
 }
 
+# ─── Project Registration ─────────────────────────────────────────────────────
+
+# Returns the basename of a path, sanitized for use as a project name.
+_get_project_name_from_path() {
+    local path="$1"
+    local name
+    name="$(basename "$path")"
+    # Sanitize: replace non-alphanumeric chars with hyphens, collapse multiples, strip leading/trailing hyphens
+    name="$(printf '%s' "$name" | tr -c '[:alnum:]' '-' | tr -s '-' | sed 's/^-\|-$//g')"
+    printf '%s' "$name"
+}
+
+# Returns the path to the projects registry file.
+_projects_registry_path() {
+    printf '%s/projects.toml' "$PREFIX"
+}
+
+# Register the current working directory as a project.
+# Writes to ~/.neuralgentics/projects.toml (TOML format, human-editable).
+# Idempotent: re-runs from the same directory update the existing entry.
+register_project() {
+    local registry_path
+    registry_path="$(_projects_registry_path)"
+    local project_dir="$PWD"
+    local project_name
+    project_name="$(_get_project_name_from_path "$project_dir")"
+    local timestamp
+    timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+    # In non-interactive mode, auto-register
+    if $NON_INTERACTIVE; then
+        : # skip the prompt, register directly
+    else
+        # Guard: don't prompt if stdin is not a TTY (Bug #2)
+        if [[ ! -t 0 ]]; then
+            verbose "Skipping project registration (non-TTY stdin)"
+            return 0
+        fi
+        printf "\n${CYAN}Register this directory as a project?${NC} [%s] [Y/n]: " "$project_name" >&2
+        local answer
+        read -r answer || answer=""
+        # Default to Y
+        if [[ -n "$answer" ]] && [[ ! "$answer" =~ ^[Yy] ]]; then
+            log "Skipping project registration"
+            return 0
+        fi
+    fi
+
+    # Ensure the directory exists
+    mkdir -p "$PREFIX"
+
+    # Check if this path is already registered
+    local existing_name=""
+    local is_default=false
+    if [[ -f "$registry_path" ]]; then
+        # If the path already exists, capture whether IT was the default.
+        # We have to read this BEFORE the block-removal step wipes the old entry.
+        if grep -q "path = \"${project_dir}\"" "$registry_path" 2>/dev/null; then
+            existing_name="$(grep -B1 "path = \"${project_dir}\"" "$registry_path" | head -1 | sed 's/^name = "//;s/"$//')"
+            verbose "Updating existing project registration: $existing_name ($project_dir)"
+            # Was this path the default? Check the lines after the path line, up
+            # to the next blank/header line.
+            if awk -v p="path = \"${project_dir}\"" '
+                $0 == p { found=1; next }
+                found && /^default = true/ { print "yes"; exit }
+                found && /^default = false/ { exit }
+                found && /^\[\[project\]\]/ { exit }
+            ' "$registry_path" | grep -q yes; then
+                is_default=true   # Preserve default status on re-registration
+            fi
+        fi
+    fi
+
+    # If this is a brand-new registration (no existing path), determine default
+    # based on whether ANY project is currently default in the registry.
+    if [[ -z "$existing_name" ]]; then
+        if [[ -f "$registry_path" ]] && grep -q 'default = true' "$registry_path" 2>/dev/null; then
+            is_default=false  # Another project already holds default
+        else
+            is_default=true   # First ever registration
+        fi
+    fi
+
+    # If the registry is empty (no entries), this must be the first project.
+    if [[ -f "$registry_path" ]]; then
+        local entry_count
+        entry_count="$(grep -c '^\[\[project\]\]' "$registry_path" 2>/dev/null || echo 0)"
+        if [[ "$entry_count" -eq 0 ]]; then
+            is_default=true
+        fi
+    else
+        is_default=true
+    fi
+
+    if $DRY_RUN; then
+        printf "  ${MUTED}[dry-run]${NC} register_project: name=%s path=%s default=%s\n" "$project_name" "$project_dir" "$is_default" >&2
+        return 0
+    fi
+
+    # Remove existing entry for this path (if any) before appending the update.
+    # Each [[project]] block is 5 lines: header + name + path + registered_at + default.
+    # We use awk to skip the block that contains the matching `path = "..."` line.
+    if [[ -f "$registry_path" ]] && grep -q "path = \"${project_dir}\"" "$registry_path"; then
+        local tmp_registry
+        tmp_registry="$(mktemp "${TMPDIR:-/tmp}/${APP}_registry_XXXXXX")"
+        # awk: walk line-by-line, when we see `[[project]]` start collecting
+        # a 5-line block; if the collected block contains our path, drop it;
+        # otherwise emit it. Anything outside a block passes through unchanged.
+        awk -v target="path = \"${project_dir}\"" '
+            /^\[\[project\]\]/ {
+                # Read the next 4 lines (name, path, registered_at, default)
+                l1 = ""; l2 = ""; l3 = ""; l4 = ""
+                if ((getline l1) <= 0) l1 = ""
+                if ((getline l2) <= 0) l2 = ""
+                if ((getline l3) <= 0) l3 = ""
+                if ((getline l4) <= 0) l4 = ""
+                block = $0 "\n" l1 "\n" l2 "\n" l3 "\n" l4 "\n"
+                if (block !~ target) {
+                    printf "%s", block
+                }
+                # else: skip this block entirely
+                next
+            }
+            { print }
+        ' "$registry_path" > "$tmp_registry"
+        mv "$tmp_registry" "$registry_path"
+    fi
+
+    # If this project should be default, un-mark the previous default
+    if $is_default && [[ -f "$registry_path" ]]; then
+        sed -i 's/^default = true/default = false/' "$registry_path" 2>/dev/null || true
+    fi
+
+    # Append the new entry
+    {
+        printf '\n[[project]]\n'
+        printf 'name = "%s"\n' "$project_name"
+        printf 'path = "%s"\n' "$project_dir"
+        printf 'registered_at = "%s"\n' "$timestamp"
+        printf 'default = %s\n' "$is_default"
+    } >> "$registry_path"
+
+    log "Project registered: $project_name ($project_dir)"
+    if $is_default; then
+        log "Marked as default project"
+    fi
+}
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 main() {
@@ -1295,16 +1555,9 @@ main() {
     # 5. Verify SHA256
     verify_sha256 "$archive_name" "$checksums_url" "$archive_path"
 
-    # 6. Extract
-    extract_archive "$archive_path" "$PREFIX"
-
-    # If the archive extracts into a subdirectory (e.g., neuralgentics/), move contents up
-    if ! $DRY_RUN; then
-        if [[ -d "$PREFIX/neuralgentics" && ! -d "$PREFIX/bin" ]]; then
-            mv "$PREFIX/neuralgentics/"* "$PREFIX/" 2>/dev/null || true
-            rmdir "$PREFIX/neuralgentics" 2>/dev/null || true
-        fi
-    fi
+    # 6. Extract — strip the top-level archive directory (e.g., neuralgentics/)
+    #    so binaries land at $PREFIX/bin/ directly instead of $PREFIX/neuralgentics/bin/
+    extract_archive "$archive_path" "$PREFIX" 1
 
     # 7. Post-install
     post_install
@@ -1315,10 +1568,13 @@ main() {
     # 9. Interactive prompt: database (after install, before verification)
     prompt_database
 
-    # 10. Verify
+    # 10. Register project directory
+    register_project
+
+    # 11. Verify
     verify_install
 
-    # 11. Cleanup
+    # 12. Cleanup
     if ! $DRY_RUN && [[ -d "$tmp_dir" ]]; then
         rm -rf "$tmp_dir"
     fi
@@ -1343,6 +1599,17 @@ EOF
     # Show .env path if database was configured
     if [[ -f "$NEURALGENTICS_DATA_DIR/.env" ]]; then
         printf "${MUTED}  DB config:      %s/.env${NC}\n" "$NEURALGENTICS_DATA_DIR" >&2
+    fi
+
+    # Show registered projects count
+    local project_count=0
+    local registry_file
+    registry_file="$(_projects_registry_path)"
+    if [[ -f "$registry_file" ]]; then
+        project_count="$(grep -c '^\[\[project\]\]' "$registry_file" 2>/dev/null || echo 0)"
+        if [[ "$project_count" -gt 0 ]]; then
+            printf "${MUTED}  Projects:      %d registered (%s)${NC}\n" "$project_count" "$registry_file" >&2
+        fi
     fi
 
     if [[ "${WSL_MODE:-}" == "true" ]]; then
