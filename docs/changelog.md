@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-06-12
+
+Patch release: curl|bash one-liner now works end-to-end + docker support.
+
+### Fixed
+
+- **`curl ... | bash` one-liner was broken on a clean re-install** — v0.6.3 fixed the broken-symlink and TTY detection bugs but the TTY guard still fired before the `.env` and container-credential-recovery checks. A user with NO `.env` file and a running `neuralgentics-pg` container would hit the TTY guard and get an error instead of having their existing setup auto-detected. Reordered `prompt_database()` to: (1) check `.env` first, (2) try to recover creds from an existing running container via `$CONTAINER_CMD exec ... printenv`, (3) auto-start a fresh container if needed, (4) only bail with the TTY error as a last resort.
+- **Stopped container would create a duplicate** — When `neuralgentics-pg` existed but was stopped, the installer would try to auto-start a new container on port 6000, fail with a port conflict, and leave the user in a broken state. Now: detect stopped container → try `docker start` (or `podman start`) first → only auto-create if no container exists at all.
+- **TTY error message was misleading** — The old message said "needs to ask for the PostgreSQL password" even when the actual problem was a stopped container or a credential-recovery failure. Reworded to be accurate and to suggest `docker start neuralgentics-pg` for the stopped-container case.
+
+### Added
+
+- **Docker support** — The installer previously hardcoded `podman`. Now uses `_detect_container_runtime()` to pick `docker` (preferred — broader install base) or fall back to `podman`. Both produce identical container behavior. Users with only docker installed no longer need to install podman. Podman-compose and docker-compose both still work for the full-stack deploy path.
+- **Auto-recover creds from any container** — The `printenv` recovery path works for containers created by THIS installer OR by any other means (docker run, podman run, compose file) as long as `POSTGRES_PASSWORD` was passed via `-e`. Verified end-to-end on the user's existing `neuralgentics-pg` container (pg18) — recovered password matches what `psql` accepts.
+
+### Verification
+
+The canonical `curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash` now works for all three common cases: (a) existing `.env` (re-install / upgrade — returns immediately), (b) existing running container with no `.env` (auto-recovers creds, writes `.env`, continues), (c) fresh install (auto-starts a fresh container, writes `.env` with a generated password). The only failure mode is a genuinely broken environment (no docker/podman, or a stopped container that can't be started) — the error message now explains both cases and how to fix them.
+
 ## [0.6.3] - 2026-06-12
 
 Patch release: 3 install-script critical fixes (broken symlink, curl|bash stdin trap, container credential recovery) + multi-project registry feature.
