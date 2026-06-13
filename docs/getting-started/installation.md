@@ -71,6 +71,11 @@ curl -fsSL .../install.sh | bash -s -- --prefix /opt/neuralgentics
 # (drop a .env in $PWD/.neuralgentics/ with the 5 required keys first)
 curl -fsSL .../install.sh | bash -s -- --existing
 
+# Use a sample .env template shipped in the repo
+cp scripts/.env.example .neuralgentics/.env
+$EDITOR .neuralgentics/.env   # fill in POSTGRES_PASSWORD
+curl -fsSL .../install.sh | bash -s -- --existing
+
 # Combine: global install + existing database
 curl -fsSL .../install.sh | bash -s -- --home-dir --existing
 
