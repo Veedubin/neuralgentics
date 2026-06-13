@@ -87,7 +87,8 @@ Options:
                             \$PWD/.neuralgentics/.env (must contain
                             POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER,
                             POSTGRES_PASSWORD, POSTGRES_DB). Skips the
-                            container auto-start.
+                            container auto-start. A sample template lives
+                            at scripts/.env.example in the repo.
     --version <v>           Version to install (default: ${DEFAULT_VERSION})
     --repo <owner/repo>     GitHub repo (default: auto-detect or
                             Veedubin/neuralgentics)
@@ -1175,14 +1176,9 @@ prompt_database() {
             err "It must contain all 5 keys: POSTGRES_HOST, POSTGRES_PORT,"
             err "POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB"
             err ""
-            err "Create the file with:"
-            err "  cat > $env_file <<'ENV'"
-            err "  POSTGRES_HOST=..."
-            err "  POSTGRES_PORT=..."
-            err "  POSTGRES_USER=..."
-            err "  POSTGRES_PASSWORD=..."
-            err "  POSTGRES_DB=..."
-            err "  ENV"
+            err "Copy the sample template and edit it:"
+            err "  cp scripts/.env.example $env_file"
+            err "  \$EDITOR $env_file"
             return 1
         fi
     fi
