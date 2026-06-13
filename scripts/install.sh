@@ -39,6 +39,13 @@ NO_VERIFY=false
 DRY_RUN=false
 VERBOSE=false
 NON_INTERACTIVE=false
+INSTALL_HOME=false
+USE_EXISTING_DB=false
+
+# ─── Env var fallback for non-interactive opt-in (Homebrew convention) ───────
+if [[ "${NONINTERACTIVE:-0}" == "1" ]]; then
+    NON_INTERACTIVE=true
+fi
 
 # ─── Logging ─────────────────────────────────────────────────────────────────
 
@@ -69,28 +76,39 @@ Options:
     -v, --verbose           Verbose output
     -y, --yes               Non-interactive: accept all defaults
         --non-interactive   Same as --yes
-        --no-path           Don't modify shell rc files
-        --no-verify         Skip SHA256 verification
-        --dry-run           Show what would be done without executing
-        --prefix <dir>      Install root (default: $PWD/.neuralgentics,
+    --no-path               Don't modify shell rc files
+    --no-verify             Skip SHA256 verification
+    --dry-run               Show what would be done without executing
+    --prefix <dir>          Install root (default: $PWD/.neuralgentics,
                             env: NEURALGENTICS_PREFIX)
-        --version <v>       Version to install (default: ${DEFAULT_VERSION})
-        --repo <owner/repo> GitHub repo (default: auto-detect or
+    --home-dir              Install to \$HOME/.neuralgentics and symlink to
+                            \$HOME/.local/bin/neuralgentics. Overrides --prefix.
+    --existing              Use an existing database by reading
+                            \$PWD/.neuralgentics/.env (must contain
+                            POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER,
+                            POSTGRES_PASSWORD, POSTGRES_DB). Skips the
+                            container auto-start.
+    --version <v>           Version to install (default: ${DEFAULT_VERSION})
+    --repo <owner/repo>     GitHub repo (default: auto-detect or
                             Veedubin/neuralgentics)
 
-Examples:
-    $0                              # interactive install
-    $0 --no-path                    # don't edit shell rc
-    $0 --version 0.2.0              # install specific version
-    $0 --repo myorg/neuralgentics   # custom GitHub repo
-    $0 --dry-run                    # preview without changes
-    curl -fsSL .../install.sh | bash
-    curl -fsSL .../install.sh | bash -s -- --yes      # non-interactive (all defaults)
-    curl -fsSL .../install.sh | bash -s -- --prefix /opt/neuralgentics --yes
+Environment variables (also honored):
+    NONINTERACTIVE=1        Same as --yes
+    NEURALGENTICS_PREFIX    Same as --prefix
 
-Note: piping the script into bash without --yes is refused. The installer
-is interactive by design — Enter accepts each default, but a real human
-must be at the keyboard. To run unattended, pass --yes explicitly.
+Examples:
+    $0                                          # interactive install (TTY)
+    $0 --no-path                                # don't edit shell rc
+    $0 --version 0.2.0                          # install specific version
+    $0 --repo myorg/neuralgentics               # custom GitHub repo
+    $0 --dry-run                                # preview without changes
+    curl -fsSL .../install.sh | bash            # all defaults, no prompts
+    curl -fsSL .../install.sh | bash -s -- --home-dir
+    curl -fsSL .../install.sh | bash -s -- --existing
+
+Note: \`curl ... | bash\` (no args) installs silently with all defaults to
+\$PWD/.neuralgentics. To run unattended from a CI script with explicit
+opt-in, pass --yes or set NONINTERACTIVE=1.
 EOF
 }
 
@@ -105,6 +123,10 @@ while [[ $# -gt 0 ]]; do
         --dry-run)         DRY_RUN=true; shift ;;
         -y|--yes|--non-interactive)
                            NON_INTERACTIVE=true; shift ;;
+        --home-dir)
+                           INSTALL_HOME=true; shift ;;
+        --existing)
+                           USE_EXISTING_DB=true; shift ;;
         --prefix)
             [[ -n "${2:-}" ]] || { err "--prefix requires an argument"; exit 1; }
             PREFIX="$2"; _PREFIX_EXPLICIT=true; shift 2
@@ -123,33 +145,74 @@ done
 
 INSTALL_BIN="$PREFIX/bin"
 
-# ─── TTY guard ────────────────────────────────────────────────────────────────
-# If stdin is not a TTY (e.g. `curl ... | bash` or running in CI) AND the
-# user did not pass --yes, we cannot prompt for answers and we MUST NOT
-# silently auto-install. Bail out with a clear instruction.
+# ─── --home-dir handling ──────────────────────────────────────────────────────
+# --home-dir sets PREFIX to $HOME/.neuralgentics and BIN_LINK_DIR to
+# $HOME/.local/bin. This is the global install path (works for any
+# user on the system). Overrides --prefix if both were passed.
 #
-# Hitting Enter on a prompt is fine — that's "accept the default", which is
-# user-driven. But an EOF (no TTY at all) is a different beast: it means
-# no human is actually present, and the install would proceed without
-# consent. That has caused real user pain (sneak-installed into $HOME).
+# Inline real-HOME detection (detect_real_home is defined further down —
+# bash resolves functions at call time, so we can't call it before its
+# definition).
+if $INSTALL_HOME; then
+    _early_real_home="${HOME:-}"
+    if [[ -z "$_early_real_home" ]]; then
+        _early_real_home="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6 || true)"
+    fi
+    PREFIX="$_early_real_home/.neuralgentics"
+    NEURALGENTICS_DATA_DIR="$_early_real_home/.local/share/neuralgentics"
+    BIN_LINK_DIR="$_early_real_home/.local/bin"
+    _PREFIX_EXPLICIT=true
+fi
+
+# ─── Non-interactive fallback ─────────────────────────────────────────────────
+# If stdin is not a TTY (e.g. `curl ... | bash` or running under CI), the
+# user can't actually answer prompts even if they want to. In that case we
+# auto-accept all defaults and proceed — this is the Homebrew / Nix /
+# rustup convention. The user ran a one-liner; they expect an install.
+#
+# This is safe because the default install location is now PWD-local
+# ($PWD/.neuralgentics), so even a reflexive curl|bash doesn't pollute
+# the user's $HOME.
+#
+# Two ways to opt into non-interactive mode explicitly:
+#   --yes / --non-interactive flag (handled in arg parsing)
+#   NONINTERACTIVE=1 env var (handled above, before this block)
 if [[ ! -t 0 ]] && ! $NON_INTERACTIVE; then
-    err "Refusing to install: stdin is not a TTY and --yes was not passed."
-    err ""
-    err "Why: this installer is interactive by design. The 'next, next, next'"
-    err "     flow is meant for a human sitting at a terminal, not for"
-    err "     piped/redirected input. Running with no TTY used to silently"
-    err "     skip prompts and install to a default location the user"
-    err "     didn't choose."
-    err ""
-    err "Pick one of these instead:"
-    err "  1. Save the script and run it from a real terminal:"
-    err "       curl -fsSL .../install.sh -o install.sh && bash install.sh"
-    err "  2. Accept all defaults non-interactively (explicit opt-in):"
-    err "       curl -fsSL .../install.sh | bash -s -- --yes"
-    err "  3. Pin a specific install root non-interactively:"
-    err "       curl -fsSL .../install.sh | bash -s -- --prefix /opt/neuralgentics --yes"
-    err ""
-    exit 1
+    # No flag, no env var, but stdin is a pipe → assume one-liner install
+    NON_INTERACTIVE=true
+    log "stdin is not a TTY (e.g. curl|bash). Auto-accepting all defaults."
+    log "To force a specific install path, re-run with: --prefix <dir> or --home-dir"
+    log "To run interactively, save the script first: curl -fsSL .../install.sh -o install.sh && bash install.sh"
+fi
+
+# Resolve DATA_DIR and BIN_LINK_DIR from PREFIX early. If --home-dir or
+# --prefix was passed, the PREFIX is already what the user wants. If neither
+# was passed but we're non-interactive, use the default (PWD-local). If
+# we're interactive, the values get refined later by prompt_install_location.
+# In all cases, having correct values early means the banner, the .env
+# checks, and the project registry all see the right paths from the start.
+#
+# Note: this is duplicated from _resolve_paths_from_prefix because that
+# helper is defined further down the file. Bash resolves function calls
+# at call time, not at parse time, so we can't call it before its
+# definition. The duplication is small and stable.
+if $NON_INTERACTIVE || [[ -n "${_PREFIX_EXPLICIT:-}" ]]; then
+    # detect_real_home is defined further down too — same reason.
+    # Inline a quick version: real HOME, handling sudo / unset HOME.
+    _early_real_home="${HOME:-}"
+    if [[ -z "$_early_real_home" ]]; then
+        _early_real_home="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6 || true)"
+    fi
+    if [[ "$PREFIX" == "$_early_real_home/.neuralgentics" ]]; then
+        NEURALGENTICS_DATA_DIR="$_early_real_home/.local/share/neuralgentics"
+        BIN_LINK_DIR="$_early_real_home/.local/bin"
+    else
+        NEURALGENTICS_DATA_DIR="$PREFIX"
+        BIN_LINK_DIR="$PREFIX/bin"
+    fi
+    export NEURALGENTICS_PREFIX="$PREFIX"
+    export NEURALGENTICS_DATA_DIR
+    INSTALL_BIN="$PREFIX/bin"
 fi
 
 # ─── Banner ──────────────────────────────────────────────────────────────────
@@ -832,35 +895,18 @@ detect_real_home() {
 }
 
 prompt_install_location() {
-    # If --prefix was explicitly passed or NON_INTERACTIVE, skip the prompt
-    if [[ -n "${_PREFIX_EXPLICIT:-}" ]] || $NON_INTERACTIVE; then
-        # Compute DATA_DIR from PREFIX for non-interactive/default path.
-        # Default prefix is PWD-local ($PWD/.neuralgentics). HOME-local
-        # ($HOME/.neuralgentics) is only used when --prefix=$HOME/... was
-        # passed explicitly.
-        if [[ "$PREFIX" == "$PWD/.neuralgentics" ]]; then
-            NEURALGENTICS_DATA_DIR="$PREFIX"
-            BIN_LINK_DIR="$PREFIX/bin"
-        elif [[ "$PREFIX" == "$HOME/.neuralgentics" || "$PREFIX" == "$(detect_real_home)/.neuralgentics" ]]; then
-            local real_home
-            real_home="$(detect_real_home)"
-            # BIN_LINK_DIR and NEURALGENTICS_DATA_DIR may have been set at the
-            # top of the file (PWD-local defaults). Override them now that
-            # we know the user wants a HOME-local install.
-            BIN_LINK_DIR="$real_home/.local/bin"
-            NEURALGENTICS_DATA_DIR="$real_home/.local/share/neuralgentics"
-        else
-            NEURALGENTICS_DATA_DIR="$PREFIX"
-            BIN_LINK_DIR="$PREFIX/bin"
-        fi
-        export NEURALGENTICS_PREFIX="$PREFIX"
-        export NEURALGENTICS_DATA_DIR
-        return 0
-    fi
-
     local real_home
     real_home="$(detect_real_home)"
 
+    # If the user passed a flag (--prefix, --home-dir) or is running
+    # non-interactively (--yes, NONINTERACTIVE=1, curl|bash), don't prompt.
+    # Just derive DATA_DIR and BIN_LINK_DIR from the PREFIX we already have.
+    if $NON_INTERACTIVE || [[ -n "${_PREFIX_EXPLICIT:-}" ]]; then
+        _resolve_paths_from_prefix "$real_home"
+        return 0
+    fi
+
+    # Interactive: prompt the user.
     # WSL detection for warning
     local wsl_flag=false
     if [[ -f /proc/version ]]; then
@@ -886,36 +932,30 @@ prompt_install_location() {
 
     while true; do
         printf "Choice [1/2/3] (default: 1): " >&2
-        local choice=""
-        # `read` returns non-zero on EOF (no TTY) or on signal interrupt.
-        # Treat that as "no answer yet" — keep prompting. NEVER silently
-        # fall through to a default; an install op is destructive.
+        local choice
+        # Interactive: a closed stdin (Ctrl+D) means the user walked away —
+        # abort. Enter accepts the default. Anything else loops for a valid answer.
         if ! read -r choice; then
             printf "\n" >&2
-            err "No input received (stdin not a TTY?)."
-            err "To accept all defaults non-interactively, re-run with --yes."
-            err "To pick a specific prefix, re-run with --prefix <dir>."
-            err "Aborting — no changes made."
+            err "No input received (stdin closed?). Aborting."
             exit 1
         fi
-
-        # Default to 1 (PWD-local) when user just hit Enter
         [[ -z "$choice" ]] && choice="1"
 
         case "$choice" in
             1)
                 PREFIX="$PWD/.neuralgentics"
-                NEURALGENTICS_DATA_DIR="$PREFIX"
-                BIN_LINK_DIR="$PREFIX/bin"
+                _PREFIX_EXPLICIT=true
+                _resolve_paths_from_prefix "$real_home"
                 ;;
             2)
                 PREFIX="$real_home/.neuralgentics"
-                NEURALGENTICS_DATA_DIR="$real_home/.local/share/neuralgentics"
-                BIN_LINK_DIR="$real_home/.local/bin"
+                _PREFIX_EXPLICIT=true
+                _resolve_paths_from_prefix "$real_home"
                 ;;
             3)
                 printf "Enter custom path: " >&2
-                local custom_path=""
+                local custom_path
                 if ! read -r custom_path; then
                     err "No input received. Aborting."
                     exit 1
@@ -942,7 +982,7 @@ prompt_install_location() {
                     warn "Linux binaries on /mnt/ may have permission issues."
                     warn "Consider a path inside the WSL filesystem (e.g. ~/.neuralgentics)."
                     printf "Continue anyway? [y/N] " >&2
-                    local mnt_answer=""
+                    local mnt_answer
                     if ! read -r mnt_answer; then
                         err "No input received. Aborting."
                         exit 1
@@ -966,8 +1006,8 @@ prompt_install_location() {
                 rm -f "$tmp_test"
 
                 PREFIX="$custom_path"
-                NEURALGENTICS_DATA_DIR="$custom_path"
-                BIN_LINK_DIR="$custom_path/bin"
+                _PREFIX_EXPLICIT=true
+                _resolve_paths_from_prefix "$real_home"
                 ;;
             *)
                 err "Invalid choice. Enter 1, 2, or 3."
@@ -977,14 +1017,33 @@ prompt_install_location() {
         break
     done
 
-    export NEURALGENTICS_PREFIX="$PREFIX"
-    export NEURALGENTICS_DATA_DIR
-    # Recompute INSTALL_BIN now that PREFIX may have changed
-    INSTALL_BIN="$PREFIX/bin"
     log "Install prefix:  $PREFIX"
     log "Data directory:  $NEURALGENTICS_DATA_DIR"
     log "Bin link dir:    $BIN_LINK_DIR"
     return 0
+}
+
+# Derive NEURALGENTICS_DATA_DIR and BIN_LINK_DIR from PREFIX. Used by
+# prompt_install_location and the arg-parsing branches. Logic:
+#   PREFIX == $PWD/.neuralgentics  → data + bin in PREFIX (project-local)
+#   PREFIX == $HOME/.neuralgentics → data in ~/.local/share, bin in ~/.local/bin
+#   anything else                  → data + bin in PREFIX (custom)
+# The second arg is the user's real HOME (handles sudo / unset HOME).
+_resolve_paths_from_prefix() {
+    local real_home="$1"
+    if [[ "$PREFIX" == "$PWD/.neuralgentics" ]]; then
+        NEURALGENTICS_DATA_DIR="$PREFIX"
+        BIN_LINK_DIR="$PREFIX/bin"
+    elif [[ "$PREFIX" == "$real_home/.neuralgentics" ]]; then
+        NEURALGENTICS_DATA_DIR="$real_home/.local/share/neuralgentics"
+        BIN_LINK_DIR="$real_home/.local/bin"
+    else
+        # Custom path — keep data + bin in PREFIX
+        NEURALGENTICS_DATA_DIR="$PREFIX"
+        BIN_LINK_DIR="$PREFIX/bin"
+    fi
+    export NEURALGENTICS_PREFIX="$PREFIX"
+    export NEURALGENTICS_DATA_DIR
 }
 
 generate_env_file() {
@@ -1103,106 +1162,92 @@ _recover_container_creds() {
 }
 
 prompt_database() {
+    local env_file="$NEURALGENTICS_DATA_DIR/.env"
+
+    # --existing flag: refuse to do anything if .env isn't in the expected
+    # place with all 5 required keys. No fallback to container creation.
+    if $USE_EXISTING_DB; then
+        if _env_file_valid "$env_file"; then
+            log "Using existing database from $env_file (--existing)"
+            return 0
+        else
+            err "--existing was passed but $env_file is missing or incomplete."
+            err "It must contain all 5 keys: POSTGRES_HOST, POSTGRES_PORT,"
+            err "POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB"
+            err ""
+            err "Create the file with:"
+            err "  cat > $env_file <<'ENV'"
+            err "  POSTGRES_HOST=..."
+            err "  POSTGRES_PORT=..."
+            err "  POSTGRES_USER=..."
+            err "  POSTGRES_PASSWORD=..."
+            err "  POSTGRES_DB=..."
+            err "  ENV"
+            return 1
+        fi
+    fi
+
     # Step 1: If .env already exists with valid config, return immediately.
     # This must come BEFORE the TTY guard so curl | bash re-runs work.
-    local env_file="$NEURALGENTICS_DATA_DIR/.env"
-    if [[ -f "$env_file" ]]; then
-        local missing=0
-        for key in POSTGRES_HOST POSTGRES_PORT POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB; do
-            if ! grep -q "^${key}=" "$env_file" 2>/dev/null; then
-                missing=$((missing + 1))
-            fi
-        done
-        if [[ $missing -eq 0 ]]; then
-            log "Database already configured. Details in $env_file"
-            return 0
-        fi
+    if _env_file_valid "$env_file"; then
+        log "Database already configured. Details in $env_file"
+        return 0
     fi
 
     # Step 2: Detect a container runtime. Prefer docker (broader install base);
     # fall back to podman. Both are interchangeable for our purposes.
     if ! _detect_container_runtime; then
-        # No runtime available — TTY-aware error
-        if [[ ! -t 0 ]] && ! $NON_INTERACTIVE; then
-            err "Neither docker nor podman was found on this system."
-            err "Install one first: https://docs.docker.com/get-docker/ or https://podman.io/getting-started/installation"
-            err "Then re-run: bash install.sh"
-            exit 1
-        fi
-        err "Neither docker nor podman was found. Install one first:"
+        err "Neither docker nor podman was found on this system."
+        err "Install one first:"
         err "  https://docs.docker.com/get-docker/"
         err "  https://podman.io/getting-started/installation"
+        err ""
+        err "Or re-run with --existing if you have your own database:"
+        err "  bash install.sh --existing"
         return 1
     fi
 
     # Step 3: Try to recover credentials from an existing container before
-    # falling back to the TTY prompt. This is reachable under non-TTY now.
-    # Covers: existing container + no .env (most common re-install case).
+    # falling back to the TTY prompt. This handles the "existing container +
+    # no .env" re-install case.
     local container_name="neuralgentics-pg"
     if $CONTAINER_CMD inspect "$container_name" >/dev/null 2>&1; then
-        # Container exists (running or stopped). Try to start it if stopped,
-        # then try to recover creds from its env.
         local state
         state="$($CONTAINER_CMD inspect "$container_name" --format '{{.State.Running}}' 2>/dev/null || echo "false")"
         if [[ "$state" != "true" ]]; then
             log "Container '$container_name' exists but is stopped. Starting it..."
-            if $DRY_RUN; then
-                printf "  ${MUTED}[dry-run]${NC} %s start %s\n" "$CONTAINER_CMD" "$container_name" >&2
-            else
+            if ! $DRY_RUN; then
                 if ! $CONTAINER_CMD start "$container_name" >/dev/null 2>&1; then
                     warn "Failed to start existing container '$container_name' — will create a fresh one"
                 fi
             fi
         fi
-        # If we can recover creds (or we just started it successfully), skip the prompt
         if $CONTAINER_CMD inspect "$container_name" --format '{{.State.Running}}' 2>/dev/null | grep -q true; then
             if _recover_container_creds "$container_name"; then
-                # _recover_container_creds writes the .env on success
                 return 0
             fi
         fi
     fi
 
-    # Step 4: TTY guard as a last resort. If we got here under non-TTY and
-    # couldn't auto-recover, we either need to auto-start fresh (--yes or
-    # implicit when truly broken) or fail with a clear message.
-    if [[ ! -t 0 ]] && ! $NON_INTERACTIVE; then
-        err "This installer needs to ask a question, but stdin is not a terminal."
-        err "This usually happens when piping: curl ... | bash"
-        err ""
-        err "Save the installer and re-run interactively:"
-        err "  curl -fsSL https://github.com/${REPO:-Veedubin/neuralgentics}/releases/latest/download/install.sh -o install.sh"
-        err "  bash install.sh"
-        err ""
-        err "Or use non-interactive mode to auto-create a database:"
-        err "  bash install.sh --yes"
-        err ""
-        err "If you have an existing '$container_name' container that's stopped:"
-        err "  $CONTAINER_CMD start $container_name"
-        err "Then re-run the installer."
-        exit 1
-    fi
-
-    # Non-interactive: default to starting a fresh container
+    # Non-interactive: default to starting a fresh container with an
+    # auto-generated password. This makes `curl ... | bash` just work.
     if $NON_INTERACTIVE; then
         _start_fresh_db
         return $?
     fi
 
+    # Interactive: ask the user.
     printf '\n' >&2
     printf "${CYAN}Neuralgentics needs a PostgreSQL database with the pgvector extension.${NC}\n" >&2
 
     while true; do
         printf "Start one now using %s? [Y/n] (default: Y): " "$CONTAINER_CMD" >&2
-        local answer=""
+        local answer
         if ! read -r answer; then
-            err "No input received (stdin not a TTY?)."
-            err "To accept all defaults non-interactively, re-run with --yes."
-            err "Aborting — no changes made."
+            err "No input received. Aborting."
             exit 1
         fi
 
-        # Default to Y
         if [[ -z "$answer" || "$answer" =~ ^[Yy] ]]; then
             _start_fresh_db
             return $?
@@ -1211,7 +1256,6 @@ prompt_database() {
         if [[ "$answer" =~ ^[Nn]$ ]]; then
             break
         fi
-        # Invalid input, re-prompt
         err "Please enter Y or n."
     done
 
@@ -1223,7 +1267,7 @@ prompt_database() {
 
     while true; do
         printf "Choice [1/2] (default: 1): " >&2
-        local sub_choice=""
+        local sub_choice
         if ! read -r sub_choice; then
             err "No input received. Aborting."
             exit 1
@@ -1245,6 +1289,18 @@ prompt_database() {
                 ;;
         esac
     done
+}
+
+# Check if a .env file exists and contains all 5 required DB keys.
+# Returns 0 (true) if valid, 1 (false) otherwise. Does not print anything.
+_env_file_valid() {
+    local env_file="$1"
+    [[ -f "$env_file" ]] || return 1
+    local key
+    for key in POSTGRES_HOST POSTGRES_PORT POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB; do
+        grep -q "^${key}=" "$env_file" 2>/dev/null || return 1
+    done
+    return 0
 }
 
 _start_fresh_db() {
@@ -1789,8 +1845,13 @@ main() {
     # 8. PATH setup
     setup_path
 
-    # 9. Interactive prompt: database (after install, before verification)
-    prompt_database
+    # 9. Interactive prompt: database (after install, before verification).
+    #    If this returns non-zero (e.g. --existing was passed but .env is
+    #    missing, or no container runtime was found), abort the install.
+    if ! prompt_database; then
+        err "Database setup failed. Install aborted."
+        exit 1
+    fi
 
     # 10. Register project directory
     register_project

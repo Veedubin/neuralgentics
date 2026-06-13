@@ -58,20 +58,28 @@ This is the fastest way to get started. We provide pre-built binaries for Linux,
    ```
 
 ### Customization
-The installer defaults to a **project-local install at `$PWD/.neuralgentics`** — binaries, data, and the projects registry all live inside your project, so the install never touches `$HOME` unless you ask. If you're running in an interactive terminal the installer will still prompt you with options:
+The installer defaults to a **project-local install at `$PWD/.neuralgentics`** — binaries, data, and the projects registry all live inside your project, so the install never touches `$HOME` unless you ask. `curl ... | bash` (no flags) installs silently with all defaults; no prompts, ever. For non-default behavior, pass flags:
 
-  1. Local to this project (`$PWD/.neuralgentics`) — default
-  2. Home directory (`$HOME/.neuralgentics`)
-  3. Custom path
-
-You can also override the default non-interactively:
 ```bash
-# Force home-dir install
-./scripts/install.sh --prefix $HOME/.neuralgentics
+# Global install to $HOME/.neuralgentics with a symlink in ~/.local/bin
+curl -fsSL .../install.sh | bash -s -- --home-dir
 
-# Or any absolute path
-./scripts/install.sh --prefix /opt/neuralgentics
+# Custom absolute path
+curl -fsSL .../install.sh | bash -s -- --prefix /opt/neuralgentics
+
+# Use an existing database instead of creating a new container
+# (drop a .env in $PWD/.neuralgentics/ with the 5 required keys first)
+curl -fsSL .../install.sh | bash -s -- --existing
+
+# Combine: global install + existing database
+curl -fsSL .../install.sh | bash -s -- --home-dir --existing
+
+# Interactive (TTY only): prompts for the install location
+curl -fsSL .../install.sh -o install.sh
+bash install.sh
 ```
+
+Environment variables are also honored: `NONINTERACTIVE=1` (same as `--yes`), `NEURALGENTICS_PREFIX` (same as `--prefix`).
 
 ---
 
