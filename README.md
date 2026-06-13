@@ -46,9 +46,19 @@ A harness provides the structural scaffolding that a raw model lacks. It wraps t
 ## Install
 
 ```bash
-# One-line install (Linux, macOS, WSL2)
+# One-line install (Linux, macOS, WSL2) — installs to $PWD/.neuralgentics
 curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash
 ```
+
+> ⚠️  **If you want to pass flags** (like `--home-dir`, `--existing`, `--prefix`) when piping the script into bash, you **must** use `bash -s --` to tell bash to read the script from stdin and pass the flags through. Otherwise bash tries to interpret them as its own options:
+>
+> ```bash
+> # CORRECT — flag is passed to install.sh
+> curl -fsSL .../install.sh | bash -s -- --home-dir
+>
+> # WRONG — bash tries to parse --home-dir and errors out
+> curl -fsSL .../install.sh | bash --home-dir
+> ```
 
 The install script handles Go, Node, container runtimes (docker or podman), and SSL certs. It detects WSL2, defaults to a project-local install at `$PWD/.neuralgentics` (so it never pollutes `$HOME` unless you ask), and supports `--dry-run` and `--home-dir` / `--existing` / `--prefix` flags. The one-liner above works end-to-end and installs silently with all defaults — no prompts, no surprises. For an existing database, copy `scripts/.env.example` to `$PWD/.neuralgentics/.env`, edit the 5 required keys, and prepend `--existing` to the install command. See the [installation guide](https://veedubin.github.io/neuralgentics/getting-started/installation/) for the full option list.
 
