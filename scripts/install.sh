@@ -103,9 +103,20 @@ Examples:
     $0 --version 0.2.0                          # install specific version
     $0 --repo myorg/neuralgentics               # custom GitHub repo
     $0 --dry-run                                # preview without changes
+
+  # Pipe form — note the 'bash -s --' before any flags. This tells bash
+  # to read the script from stdin and pass everything after '--' to the
+  # script as arguments. Without '-s --', bash interprets flags like
+  # --existing as its own options, not the script's.
+  #
+  # CORRECT:  curl -fsSL .../install.sh | bash -s -- --home-dir
+  # WRONG:    curl -fsSL .../install.sh | bash --home-dir  ← bash errors out
+  #
     curl -fsSL .../install.sh | bash            # all defaults, no prompts
     curl -fsSL .../install.sh | bash -s -- --home-dir
     curl -fsSL .../install.sh | bash -s -- --existing
+    curl -fsSL .../install.sh | bash -s -- --prefix /opt/neuralgentics
+    curl -fsSL .../install.sh | bash -s -- --home-dir --existing
 
 Note: \`curl ... | bash\` (no args) installs silently with all defaults to
 \$PWD/.neuralgentics. To run unattended from a CI script with explicit
