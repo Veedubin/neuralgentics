@@ -91,14 +91,15 @@ Options:
     --home-dir              Install to \$HOME/.neuralgentics and symlink to
                             \$HOME/.local/bin/neuralgentics. Overrides --prefix.
     --existing [<file>]     Use an existing database. With no argument,
-                            reads \$PWD/.neuralgentics/.env. With a path,
-                            reads that file instead. Falls back to:
-                            \$PREFIX/.env, \$HOME/.neuralgentics/.env,
+                            searches: \$PWD/.neuralgentics/.env, \$PWD/.env,
+                            \$PREFIX/.env, \$PWD/../.env,
+                            \$HOME/.neuralgentics/.env,
                             \$HOME/.config/neuralgentics/.env,
-                            \$HOME/.local/share/neuralgentics/.env.
-                            The file must contain all 5 keys: POSTGRES_HOST,
-                            POSTGRES_PORT, POSTGRES_USER, POSTGRES_PASSWORD,
-                            POSTGRES_DB. Skips container auto-start.
+                            \$HOME/.local/share/neuralgentics/.env. With a
+                            path, reads that file instead. The first file
+                            with all 5 keys (POSTGRES_HOST, POSTGRES_PORT,
+                            POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB)
+                            wins. Skips container auto-start.
                             (env: NEURALGENTICS_ENV_FILE)
                             Sample template: scripts/.env.example in the repo.
     --version <v>           Version to install (default: ${DEFAULT_VERSION})
@@ -1217,12 +1218,16 @@ prompt_database() {
         # 2. Canonical install location
         search_paths+=("$env_file")
 
-        # 3. Same fallbacks as _recover_container_creds. Dedupe against
-        # anything already in search_paths so the error message doesn't
-        # show the same path twice.
+        # 3. Same fallbacks as _recover_container_creds, plus the
+        # project root (where users naturally drop a .env next to the
+        # project they ran the install from). Dedupe against anything
+        # already in search_paths so the error message doesn't show
+        # the same path twice.
         local fallback
         for fallback in \
+            "$PWD/.env" \
             "$PREFIX/.env" \
+            "$PWD/../.env" \
             "$HOME/.neuralgentics/.env" \
             "$HOME/.config/neuralgentics/.env" \
             "$HOME/.local/share/neuralgentics/.env"
