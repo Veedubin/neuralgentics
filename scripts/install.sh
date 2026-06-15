@@ -41,10 +41,17 @@ VERBOSE=false
 NON_INTERACTIVE=false
 INSTALL_HOME=false
 USE_EXISTING_DB=false
+EXISTING_ENV_FILE=""
 
 # ─── Env var fallback for non-interactive opt-in (Homebrew convention) ───────
 if [[ "${NONINTERACTIVE:-0}" == "1" ]]; then
     NON_INTERACTIVE=true
+fi
+
+# NEURALGENTICS_ENV_FILE points --existing at a file. The flag itself
+# always wins over the env var.
+if [[ -z "$EXISTING_ENV_FILE" && -n "${NEURALGENTICS_ENV_FILE:-}" ]]; then
+    EXISTING_ENV_FILE="$NEURALGENTICS_ENV_FILE"
 fi
 
 # ─── Logging ─────────────────────────────────────────────────────────────────
@@ -83,12 +90,17 @@ Options:
                             env: NEURALGENTICS_PREFIX)
     --home-dir              Install to \$HOME/.neuralgentics and symlink to
                             \$HOME/.local/bin/neuralgentics. Overrides --prefix.
-    --existing              Use an existing database by reading
-                            \$PWD/.neuralgentics/.env (must contain
-                            POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER,
-                            POSTGRES_PASSWORD, POSTGRES_DB). Skips the
-                            container auto-start. A sample template lives
-                            at scripts/.env.example in the repo.
+    --existing [<file>]     Use an existing database. With no argument,
+                            reads \$PWD/.neuralgentics/.env. With a path,
+                            reads that file instead. Falls back to:
+                            \$PREFIX/.env, \$HOME/.neuralgentics/.env,
+                            \$HOME/.config/neuralgentics/.env,
+                            \$HOME/.local/share/neuralgentics/.env.
+                            The file must contain all 5 keys: POSTGRES_HOST,
+                            POSTGRES_PORT, POSTGRES_USER, POSTGRES_PASSWORD,
+                            POSTGRES_DB. Skips container auto-start.
+                            (env: NEURALGENTICS_ENV_FILE)
+                            Sample template: scripts/.env.example in the repo.
     --version <v>           Version to install (default: ${DEFAULT_VERSION})
     --repo <owner/repo>     GitHub repo (default: auto-detect or
                             Veedubin/neuralgentics)
@@ -96,6 +108,8 @@ Options:
 Environment variables (also honored):
     NONINTERACTIVE=1        Same as --yes
     NEURALGENTICS_PREFIX    Same as --prefix
+    NEURALGENTICS_ENV_FILE  Path to an existing .env for --existing
+                            (the flag argument, if any, wins)
 
 Examples:
     $0                                          # interactive install (TTY)
@@ -115,6 +129,7 @@ Examples:
     curl -fsSL .../install.sh | bash            # all defaults, no prompts
     curl -fsSL .../install.sh | bash -s -- --home-dir
     curl -fsSL .../install.sh | bash -s -- --existing
+    curl -fsSL .../install.sh | bash -s -- --existing /path/to/your/.env
     curl -fsSL .../install.sh | bash -s -- --prefix /opt/neuralgentics
     curl -fsSL .../install.sh | bash -s -- --home-dir --existing
 
@@ -138,7 +153,14 @@ while [[ $# -gt 0 ]]; do
         --home-dir)
                            INSTALL_HOME=true; shift ;;
         --existing)
-                           USE_EXISTING_DB=true; shift ;;
+                           USE_EXISTING_DB=true
+                           # Optional path: --existing <file> or --existing=<file>
+                           if [[ -n "${2:-}" && "${2:-}" != -* ]]; then
+                               EXISTING_ENV_FILE="$2"; shift 2
+                           else
+                               shift
+                           fi
+                           ;;
         --prefix)
             [[ -n "${2:-}" ]] || { err "--prefix requires an argument"; exit 1; }
             PREFIX="$2"; _PREFIX_EXPLICIT=true; shift 2
@@ -1176,22 +1198,100 @@ _recover_container_creds() {
 prompt_database() {
     local env_file="$NEURALGENTICS_DATA_DIR/.env"
 
-    # --existing flag: refuse to do anything if .env isn't in the expected
-    # place with all 5 required keys. No fallback to container creation.
+    # --existing flag: find a valid .env somewhere we recognize. If
+    # EXISTING_ENV_FILE was set (--existing /path or NEURALGENTICS_ENV_FILE),
+    # use that path first. Then check the canonical install location.
+    # Then search the same fallback list that _recover_container_creds uses
+    # (home-dir XDG locations). The first file that passes the 5-key
+    # validator wins; we copy it into the canonical location so the TUI
+    # resolver and the running backend both know where to look.
     if $USE_EXISTING_DB; then
-        if _env_file_valid "$env_file"; then
-            log "Using existing database from $env_file (--existing)"
-            return 0
-        else
-            err "--existing was passed but $env_file is missing or incomplete."
-            err "It must contain all 5 keys: POSTGRES_HOST, POSTGRES_PORT,"
-            err "POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB"
-            err ""
-            err "Copy the sample template and edit it:"
-            err "  cp scripts/.env.example $env_file"
-            err "  \$EDITOR $env_file"
-            return 1
+        local found_env=""
+        local search_paths=()
+
+        # 1. Explicit path from flag or env var
+        if [[ -n "$EXISTING_ENV_FILE" ]]; then
+            search_paths+=("$EXISTING_ENV_FILE")
         fi
+
+        # 2. Canonical install location
+        search_paths+=("$env_file")
+
+        # 3. Same fallbacks as _recover_container_creds. Dedupe against
+        # anything already in search_paths so the error message doesn't
+        # show the same path twice.
+        local fallback
+        for fallback in \
+            "$PREFIX/.env" \
+            "$HOME/.neuralgentics/.env" \
+            "$HOME/.config/neuralgentics/.env" \
+            "$HOME/.local/share/neuralgentics/.env"
+        do
+            local dup=false
+            local existing
+            for existing in "${search_paths[@]}"; do
+                if [[ "$existing" == "$fallback" ]]; then
+                    dup=true
+                    break
+                fi
+            done
+            $dup || search_paths+=("$fallback")
+        done
+
+        local spath
+        for spath in "${search_paths[@]}"; do
+            [[ -z "$spath" ]] && continue
+            if _env_file_valid "$spath"; then
+                found_env="$spath"
+                break
+            fi
+        done
+
+        if [[ -n "$found_env" ]]; then
+            if [[ "$found_env" != "$env_file" ]]; then
+                # Copy the user-provided .env to the canonical location so
+                # the TUI resolver, the running backend, and the project
+                # registry all see the same file. chmod 600 — it contains
+                # a password.
+                if $DRY_RUN; then
+                    printf "  ${MUTED}[dry-run]${NC} cp %s %s && chmod 600 %s\n" \
+                        "$found_env" "$env_file" "$env_file" >&2
+                else
+                    mkdir -p "$NEURALGENTICS_DATA_DIR"
+                    cp "$found_env" "$env_file"
+                    chmod 600 "$env_file"
+                fi
+                log "Adopted existing database config from $found_env"
+                log "  (copied to $env_file)"
+            else
+                log "Using existing database from $env_file (--existing)"
+            fi
+            return 0
+        fi
+
+        # Nothing found — list what we looked at so the user can fix it
+        err "--existing was passed but no valid .env file was found."
+        err "It must contain all 5 keys: POSTGRES_HOST, POSTGRES_PORT,"
+        err "POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB"
+        err ""
+        err "Searched these locations:"
+        local spath
+        for spath in "${search_paths[@]}"; do
+            [[ -z "$spath" ]] && continue
+            if [[ -e "$spath" ]]; then
+                err "  ✗ $spath  (exists but failed validation)"
+            else
+                err "  · $spath  (not found)"
+            fi
+        done
+        err ""
+        err "Fix one of these:"
+        err "  1) Point --existing at your file: --existing /path/to/.env"
+        err "  2) Set NEURALGENTICS_ENV_FILE=/path/to/.env in the env"
+        err "  3) Copy the sample template and edit it:"
+        err "     cp scripts/.env.example $env_file"
+        err "     \$EDITOR $env_file"
+        return 1
     fi
 
     # Step 1: If .env already exists with valid config, return immediately.
