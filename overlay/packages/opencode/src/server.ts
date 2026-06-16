@@ -160,7 +160,7 @@ async function server(input: PluginInput): Promise<Hooks> {
   backend = new GoBackendClient(binaryPath);
   try {
     await backend.waitForReady();
-    console.log(`[Neuralgentics] Go backend ready (${binaryPath})`);
+    console.error(`[Neuralgentics] Go backend ready (${binaryPath})`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[Neuralgentics] Failed to start Go backend: ${message}`);
@@ -415,7 +415,7 @@ async function server(input: PluginInput): Promise<Hooks> {
     const type = event.type as string;
     switch (type) {
       case "session.created": {
-        console.log("[Neuralgentics] Session created — tools ready");
+        console.error("[Neuralgentics] Session created — tools ready");
         break;
       }
       case "session.compacting": {
@@ -427,7 +427,7 @@ async function server(input: PluginInput): Promise<Hooks> {
               sourceType: "context_package",
               metadata: { reason: "compaction_backup", file: "AGENTS.md" },
             });
-            console.log("[Neuralgentics] AGENTS.md backed up before compaction");
+            console.error("[Neuralgentics] AGENTS.md backed up before compaction");
           }
         } catch (err) {
           console.error("[Neuralgentics] Compaction backup failed:", err);
@@ -455,7 +455,7 @@ async function server(input: PluginInput): Promise<Hooks> {
   // Cleanup
   // --------------------------------------------------------------------------
   const cleanup = async (): Promise<void> => {
-    console.log("[Neuralgentics] Plugin shutting down");
+    console.error("[Neuralgentics] Plugin shutting down");
     if (backend) {
       try {
         await backend.shutdown();
