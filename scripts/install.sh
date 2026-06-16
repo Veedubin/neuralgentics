@@ -17,16 +17,6 @@ set -euo pipefail
 APP="neuralgentics"
 DEFAULT_VERSION="0.6.4"
 
-# ─── Colors ──────────────────────────────────────────────────────────────────
-
-MUTED='\033[0;2m'
-RED='\033[0;31m'
-ORANGE='\033[38;5;214m'
-GREEN='\033[0;32m'
-BRIGHT_GREEN='\033[1;32m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
 # ─── Defaults ────────────────────────────────────────────────────────────────
 
 PREFIX="${NEURALGENTICS_PREFIX:-$PWD/.neuralgentics}"
@@ -56,14 +46,14 @@ fi
 
 # ─── Logging ─────────────────────────────────────────────────────────────────
 
-log()     { printf "${GREEN}[$APP]${NC} %s\n" "$*" >&2; }
-warn()    { printf "${ORANGE}[warn]${NC} %s\n" "$*" >&2; }
-err()     { printf "${RED}[error]${NC} %s\n" "$*" >&2; }
+log()     { printf "[$APP] %s\n" "$*" >&2; }
+warn()    { printf "[warn] %s\n" "$*" >&2; }
+err()     { printf "[error] %s\n" "$*" >&2; }
 verbose() { [[ "${VERBOSE}" == "true" ]] && log "$@" || true; }
 
 run() {
     if $DRY_RUN; then
-        printf "  ${MUTED}[dry-run]${NC} %s\n" "$*" >&2
+        printf "  [dry-run] %s\n" "$*" >&2
     else
         verbose "running: $*"
         "$@"
@@ -253,7 +243,7 @@ fi
 # ─── Banner ──────────────────────────────────────────────────────────────────
 
 print_banner() {
-    printf "${BRIGHT_GREEN}" >&2
+    printf "" >&2
     cat <<'BANNER' >&2
 
 ██╗  ██╗ █████╗  ██████╗██╗  ██╗    ████████╗██╗  ██╗███████╗
@@ -270,8 +260,8 @@ print_banner() {
 ██║     ███████╗██║  ██║██║ ╚████║███████╗   ██║
 ╚═╝     ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝
 BANNER
-    printf "${NC}" >&2
-    printf "\n  ${BRIGHT_GREEN}HACK THE PLANET${NC} ${MUTED}—${NC} ${CYAN}neuralgentics v${VERSION}${NC}\n\n" >&2
+    printf "" >&2
+    printf "\n  HACK THE PLANET — neuralgentics v${VERSION}\n\n" >&2
 }
 
 # ─── OS/arch detection ────────────────────────────────────────────────────────
@@ -353,20 +343,20 @@ detect_wsl() {
 
     if [[ "$wsl_detected" == "true" ]]; then
         printf "\n" >&2
-        printf "${ORANGE}⚠  WSL Detected — Windows Subsystem for Linux${NC}\n" >&2
-        printf "${MUTED}   • Linux binaries work inside WSL${NC}\n" >&2
-        printf "${MUTED}   • Add ~/.local/bin to your WSL shell rc, NOT Windows PATH${NC}\n" >&2
-        printf "${MUTED}   • Windows paths from /mnt/c may have permission issues${NC}\n" >&2
+        printf "⚠  WSL Detected — Windows Subsystem for Linux\n" >&2
+        printf "   • Linux binaries work inside WSL\n" >&2
+        printf "   • Add ~/.local/bin to your WSL shell rc, NOT Windows PATH\n" >&2
+        printf "   • Windows paths from /mnt/c may have permission issues\n" >&2
         if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
-            printf "${MUTED}   • Distro: %s${NC}\n" "$WSL_DISTRO_NAME" >&2
+            printf "   • Distro: %s\n" "$WSL_DISTRO_NAME" >&2
         fi
         # WSL1 vs WSL2
         if [[ -n "${WSL_INTEROP:-}" ]]; then
-            printf "${MUTED}   • WSL2 detected (WSL_INTEROP set)${NC}\n" >&2
+            printf "   • WSL2 detected (WSL_INTEROP set)\n" >&2
         else
-            printf "${MUTED}   • WSL1 detected (no WSL_INTEROP)${NC}\n" >&2
+            printf "   • WSL1 detected (no WSL_INTEROP)\n" >&2
         fi
-        printf "${MUTED}   • For native Windows install, use install.ps1 in PowerShell${NC}\n" >&2
+        printf "   • For native Windows install, use install.ps1 in PowerShell\n" >&2
         printf "\n" >&2
 
         # Note: user can add ~/.local/bin to Windows PATH via:
@@ -442,7 +432,7 @@ print_progress() {
     empty="$(printf "%*s" "$off" "")"
     empty="${empty// /･}"
 
-    printf "\r${ORANGE}%s%s %3d%%${NC}" "$filled" "$empty" "$percent" >&4
+    printf "\r%s%s %3d%%" "$filled" "$empty" "$percent" >&4
 }
 
 download_with_progress() {
@@ -463,9 +453,9 @@ download_with_progress() {
     mkfifo "$tracefile"
 
     # Hide cursor
-    printf "\033[?25l" >&4
+    :
 
-    trap "trap - RETURN; rm -f \"$tracefile\"; printf '\033[?25h' >&4; exec 4>&-" RETURN
+    trap "trap - RETURN; rm -f \"$tracefile\"; :exec 4>&-" RETURN
 
     (
         curl --trace-ascii "$tracefile" -s -L -o "$output" "$url" 2>/dev/null
@@ -513,7 +503,7 @@ download_file() {
     log "Downloading $description..."
 
     if $DRY_RUN; then
-        printf "  ${MUTED}[dry-run]${NC} curl -L -o %s %s\n" "$output" "$url" >&2
+        printf "  [dry-run] curl -L -o %s %s\n" "$output" "$url" >&2
         return 0
     fi
 
@@ -551,7 +541,7 @@ verify_sha256() {
     log "Verifying SHA256 checksum..."
 
     if $DRY_RUN; then
-        printf "  ${MUTED}[dry-run]${NC} sha256sum -c checksums.txt\n" >&2
+        printf "  [dry-run] sha256sum -c checksums.txt\n" >&2
         return 0
     fi
 
@@ -598,11 +588,11 @@ extract_archive() {
         if [[ "$archive_path" == *.zip ]]; then
             local strip_opt=""
             [[ "$strip_components" -gt 0 ]] && strip_opt=" (strip $strip_components)"
-            printf "  ${MUTED}[dry-run]${NC} unzip -q %s -d %s%s\n" "$archive_path" "$target_dir" "$strip_opt" >&2
+            printf "  [dry-run] unzip -q %s -d %s%s\n" "$archive_path" "$target_dir" "$strip_opt" >&2
         else
             local strip_flag=""
             [[ "$strip_components" -gt 0 ]] && strip_flag=" --strip-components=$strip_components"
-            printf "  ${MUTED}[dry-run]${NC} tar -xzf %s -C %s%s\n" "$archive_path" "$target_dir" "$strip_flag" >&2
+            printf "  [dry-run] tar -xzf %s -C %s%s\n" "$archive_path" "$target_dir" "$strip_flag" >&2
         fi
         return 0
     fi
@@ -667,7 +657,7 @@ post_install() {
 
     # chmod +x all binaries
     if $DRY_RUN; then
-        printf "  ${MUTED}[dry-run]${NC} chmod +x %s/bin/*\n" "$PREFIX" >&2
+        printf "  [dry-run] chmod +x %s/bin/*\n" "$PREFIX" >&2
     else
         chmod +x "$INSTALL_BIN"/neuralgentics* 2>/dev/null || true
         chmod +x "$INSTALL_BIN"/neuralgentics-backend* 2>/dev/null || true
@@ -695,7 +685,7 @@ export NEURALGENTICS_DATA_DIR="${NEURALGENTICS_DATA_DIR}"
 ENVEOF
         verbose "Wrote install.env to $NEURALGENTICS_DATA_DIR/install.env"
     else
-        printf "  ${MUTED}[dry-run]${NC} write %s/install.env\n" "$NEURALGENTICS_DATA_DIR" >&2
+        printf "  [dry-run] write %s/install.env\n" "$NEURALGENTICS_DATA_DIR" >&2
     fi
 
     # Symlink $BIN_LINK_DIR/neuralgentics -> $INSTALL_BIN/neuralgentics.
@@ -715,7 +705,7 @@ ENVEOF
             warn "$link exists and is not a symlink — leaving in place"
         else
             if $DRY_RUN; then
-                printf "  ${MUTED}[dry-run]${NC} ln -sf %s %s\n" "$target" "$link" >&2
+                printf "  [dry-run] ln -sf %s %s\n" "$target" "$link" >&2
             else
                 ln -sf "$target" "$link"
                 log "Symlinked: $link -> $target"
@@ -780,7 +770,7 @@ setup_path() {
             if ! $DRY_RUN; then
                 add_to_path "$config_file" "fish_add_path $BIN_LINK_DIR"
             else
-                printf "  ${MUTED}[dry-run]${NC} add_to_path %s fish_add_path %s\n" "$config_file" "$BIN_LINK_DIR" >&2
+                printf "  [dry-run] add_to_path %s fish_add_path %s\n" "$config_file" "$BIN_LINK_DIR" >&2
             fi
             ;;
         zsh)
@@ -791,7 +781,7 @@ setup_path() {
             if ! $DRY_RUN; then
                 add_to_path "$config_file" "export PATH=\"$BIN_LINK_DIR:\$PATH\""
             else
-                printf "  ${MUTED}[dry-run]${NC} add_to_path %s\n" "$config_file" >&2
+                printf "  [dry-run] add_to_path %s\n" "$config_file" >&2
             fi
             ;;
         bash)
@@ -802,7 +792,7 @@ setup_path() {
             if ! $DRY_RUN; then
                 add_to_path "$config_file" "export PATH=\"$BIN_LINK_DIR:\$PATH\""
             else
-                printf "  ${MUTED}[dry-run]${NC} add_to_path %s\n" "$config_file" >&2
+                printf "  [dry-run] add_to_path %s\n" "$config_file" >&2
             fi
             ;;
         ash|sh)
@@ -813,7 +803,7 @@ setup_path() {
             if ! $DRY_RUN; then
                 add_to_path "$config_file" "export PATH=\"$BIN_LINK_DIR:\$PATH\""
             else
-                printf "  ${MUTED}[dry-run]${NC} add_to_path %s\n" "$config_file" >&2
+                printf "  [dry-run] add_to_path %s\n" "$config_file" >&2
             fi
             ;;
         *)
@@ -827,7 +817,7 @@ setup_path() {
             echo "$BIN_LINK_DIR" >> "$GITHUB_PATH"
             log "Added $BIN_LINK_DIR to \$GITHUB_PATH"
         else
-            printf "  ${MUTED}[dry-run]${NC} echo %s >> \$GITHUB_PATH\n" "$BIN_LINK_DIR" >&2
+            printf "  [dry-run] echo %s >> \$GITHUB_PATH\n" "$BIN_LINK_DIR" >&2
         fi
     fi
 
@@ -871,9 +861,9 @@ verify_install() {
         local path="${entry%%:*}"
         local label="${entry#*:}"
         if [[ -e "$path" ]]; then
-            printf "  ${GREEN}✓${NC} %-30s %s\n" "$label" "$path" >&2
+            printf "  ✓ %-30s %s\n" "$label" "$path" >&2
         else
-            printf "  ${RED}✗${NC} %-30s %s\n" "$label" "$path" >&2
+            printf "  ✗ %-30s %s\n" "$label" "$path" >&2
             errors=$((errors + 1))
         fi
     done
@@ -884,9 +874,9 @@ verify_install() {
         local tui_size
         tui_size=$(stat -c '%s' "$INSTALL_BIN/neuralgentics" 2>/dev/null || stat -f '%z' "$INSTALL_BIN/neuralgentics" 2>/dev/null || echo 0)
         if [[ "$tui_size" -gt 50000000 ]]; then
-            printf "  ${GREEN}✓${NC} %-30s %s (%d bytes)\n" "TUI binary" "$INSTALL_BIN/neuralgentics" "$tui_size" >&2
+            printf "  ✓ %-30s %s (%d bytes)\n" "TUI binary" "$INSTALL_BIN/neuralgentics" "$tui_size" >&2
         else
-            printf "  ${RED}✗${NC} %-30s %s (suspiciously small: %d bytes)\n" "TUI binary" "$INSTALL_BIN/neuralgentics" "$tui_size" >&2
+            printf "  ✗ %-30s %s (suspiciously small: %d bytes)\n" "TUI binary" "$INSTALL_BIN/neuralgentics" "$tui_size" >&2
             errors=$((errors + 1))
         fi
     fi
@@ -895,17 +885,17 @@ verify_install() {
         local bout
         bout="$("$INSTALL_BIN/neuralgentics-backend" --version 2>/dev/null || true)"
         if [[ -n "$bout" ]]; then
-            printf "  ${GREEN}✓${NC} %-30s %s\n" "backend --version" "$bout" >&2
+            printf "  ✓ %-30s %s\n" "backend --version" "$bout" >&2
         else
-            printf "  ${GREEN}✓${NC} %-30s %s\n" "backend binary" "executable" >&2
+            printf "  ✓ %-30s %s\n" "backend binary" "executable" >&2
         fi
     fi
 
     log ""
     if [[ $errors -eq 0 ]]; then
-        printf "${BRIGHT_GREEN}✅ All systems ready${NC}\n" >&2
+        printf "✅ All systems ready\n" >&2
     else
-        printf "${RED}❌ %s verification check(s) failed${NC}\n" "$errors" >&2
+        printf "❌ %s verification check(s) failed\n" "$errors" >&2
         return 1
     fi
 }
@@ -956,13 +946,13 @@ prompt_install_location() {
     fi
 
     printf '\n' >&2
-    printf "${CYAN}Where should Neuralgentics install?${NC}\n" >&2
-    printf "  1) Local to this project (%s) ${GREEN}<-- default${NC}\n" "$PWD" >&2
+    printf "Where should Neuralgentics install?\n" >&2
+    printf "  1) Local to this project (%s) <-- default\n" "$PWD" >&2
     printf "  2) Home directory (%s)\n" "$real_home" >&2
     printf "  3) Custom path\n" >&2
 
     if $wsl_flag; then
-        printf "\n  ${ORANGE}⚠  WSL detected — install paths must stay inside the Linux distro (no /mnt/c)${NC}\n" >&2
+        printf "\n  ⚠  WSL detected — install paths must stay inside the Linux distro (no /mnt/c)\n" >&2
     fi
 
     while true; do
@@ -1259,7 +1249,7 @@ prompt_database() {
                 # registry all see the same file. chmod 600 — it contains
                 # a password.
                 if $DRY_RUN; then
-                    printf "  ${MUTED}[dry-run]${NC} cp %s %s && chmod 600 %s\n" \
+                    printf "  [dry-run] cp %s %s && chmod 600 %s\n" \
                         "$found_env" "$env_file" "$env_file" >&2
                 else
                     mkdir -p "$NEURALGENTICS_DATA_DIR"
@@ -1350,7 +1340,7 @@ prompt_database() {
 
     # Interactive: ask the user.
     printf '\n' >&2
-    printf "${CYAN}Neuralgentics needs a PostgreSQL database with the pgvector extension.${NC}\n" >&2
+    printf "Neuralgentics needs a PostgreSQL database with the pgvector extension.\n" >&2
 
     while true; do
         printf "Start one now using %s? [Y/n] (default: Y): " "$CONTAINER_CMD" >&2
@@ -1439,7 +1429,7 @@ _start_fresh_db() {
         if [[ "$container_exists" == "true" ]]; then
             log "Starting existing container '$container_name'..."
             if $DRY_RUN; then
-                printf "  ${MUTED}[dry-run]${NC} %s start %s\n" "$CONTAINER_CMD" "$container_name" >&2
+                printf "  [dry-run] %s start %s\n" "$CONTAINER_CMD" "$container_name" >&2
             else
                 $CONTAINER_CMD start "$container_name" || { err "Failed to start container '$container_name'"; return 1; }
             fi
@@ -1463,9 +1453,9 @@ _start_fresh_db() {
             local ssl_key="$ssl_cert_dir/server.key"
 
             if $DRY_RUN; then
-                printf "  ${MUTED}[dry-run]${NC} openssl req -x509 -newkey rsa:2048 -keyout %s -out %s -days 365 -nodes -subj '/CN=neuralgentics'\n" \
+                printf "  [dry-run] openssl req -x509 -newkey rsa:2048 -keyout %s -out %s -days 365 -nodes -subj '/CN=neuralgentics'\n" \
                     "$ssl_key" "$ssl_cert" >&2
-                printf "  ${MUTED}[dry-run]${NC} chmod 600 %s && chmod 644 %s\n" "$ssl_key" "$ssl_cert" >&2
+                printf "  [dry-run] chmod 600 %s && chmod 644 %s\n" "$ssl_key" "$ssl_cert" >&2
             else
                 if ! openssl req -x509 -newkey rsa:2048 \
                     -keyout "$ssl_key" \
@@ -1481,7 +1471,7 @@ _start_fresh_db() {
             fi
 
             if $DRY_RUN; then
-                printf "  ${MUTED}[dry-run]${NC} %s run -d --name %s -e POSTGRES_USER=%s -e POSTGRES_PASSWORD=*** -e POSTGRES_DB=%s -p %s:5432 -v %s:/var/lib/postgresql/server.crt:z -v %s:/var/lib/postgresql/server.key:z docker.io/pgvector/pgvector:pg18 bash -c 'chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key'\n" \
+                printf "  [dry-run] %s run -d --name %s -e POSTGRES_USER=%s -e POSTGRES_PASSWORD=*** -e POSTGRES_DB=%s -p %s:5432 -v %s:/var/lib/postgresql/server.crt:z -v %s:/var/lib/postgresql/server.key:z docker.io/pgvector/pgvector:pg18 bash -c 'chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key'\n" \
                     "$CONTAINER_CMD" "$container_name" "$db_user" "$db_name" "$db_port" "$ssl_cert" "$ssl_key" >&2
                 log "Container '$container_name' created on port $db_port (SSL enabled)"
                 generate_env_file "127.0.0.1" "$db_port" "$db_user" "$db_password" "$db_name"
@@ -1655,7 +1645,7 @@ _prompt_connection_details() {
             err "  Try sslmode=disable or sslmode=require in the connection string."
             return 1
         fi
-        printf "  ${GREEN}✓${NC} Database connection verified.\n" >&2
+        printf "  ✓ Database connection verified.\n" >&2
     else
         warn "psql not found — skipping connection verification"
         warn "  Verify manually: psql postgresql://${db_user}:***@${db_host}:${db_port}/${db_name}"
@@ -1729,7 +1719,7 @@ _prompt_env_file() {
         if command -v psql >/dev/null 2>&1; then
             local db_url="postgresql://${db_user}:${db_password}@${db_host}:${db_port}/${db_name}?sslmode=prefer"
             if psql "$db_url" -c "SELECT 1" --no-psqlrc -q -t >/dev/null 2>&1; then
-                printf "  ${GREEN}✓${NC} Database connection verified.\n" >&2
+                printf "  ✓ Database connection verified.\n" >&2
             else
                 warn "Could not verify connection to ${db_host}:${db_port}/${db_name}"
                 warn "  Verify manually that the credentials are correct."
@@ -1783,7 +1773,7 @@ register_project() {
             verbose "Skipping project registration (non-TTY stdin)"
             return 0
         fi
-        printf "\n${CYAN}Register this directory as a project?${NC} [%s] [Y/n]: " "$project_name" >&2
+        printf "\nRegister this directory as a project? [%s] [Y/n]: " "$project_name" >&2
         local answer=""
         if ! read -r answer; then
             err "No input received. Aborting."
@@ -1843,7 +1833,7 @@ register_project() {
     fi
 
     if $DRY_RUN; then
-        printf "  ${MUTED}[dry-run]${NC} register_project: name=%s path=%s default=%s\n" "$project_name" "$project_dir" "$is_default" >&2
+        printf "  [dry-run] register_project: name=%s path=%s default=%s\n" "$project_name" "$project_dir" "$is_default" >&2
         return 0
     fi
 
@@ -1979,23 +1969,23 @@ main() {
     # Success!
     cat <<EOF >&2
 
-${BRIGHT_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
-${BRIGHT_GREEN}  HACK THE PLANET!${NC} — neuralgentics v${VERSION} installed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  HACK THE PLANET! — neuralgentics v${VERSION} installed
 
-${CYAN}  Quick start:${NC}
-    neuralgentics                ${MUTED}# Launch the TUI${NC}
-    neuralgentics --help         ${MUTED}# Show commands${NC}
-    neuralgentics status         ${MUTED}# Check component status${NC}
+  Quick start:
+    neuralgentics                # Launch the TUI
+    neuralgentics --help         # Show commands
+    neuralgentics status         # Check component status
 
- ${MUTED}  Install root:  ${PREFIX}${NC}
- ${MUTED}  Data dir:      ${NEURALGENTICS_DATA_DIR}${NC}
- ${MUTED}  Binary link:   ${BIN_LINK_DIR}/neuralgentics${NC}
- ${MUTED}  Env:           source ${NEURALGENTICS_DATA_DIR}/install.env${NC}
+   Install root:  ${PREFIX}
+   Data dir:      ${NEURALGENTICS_DATA_DIR}
+   Binary link:   ${BIN_LINK_DIR}/neuralgentics
+   Env:           source ${NEURALGENTICS_DATA_DIR}/install.env
 EOF
 
     # Show .env path if database was configured
     if [[ -f "$NEURALGENTICS_DATA_DIR/.env" ]]; then
-        printf "${MUTED}  DB config:      %s/.env${NC}\n" "$NEURALGENTICS_DATA_DIR" >&2
+        printf "  DB config:      %s/.env\n" "$NEURALGENTICS_DATA_DIR" >&2
     fi
 
     # Show registered projects count
@@ -2005,23 +1995,23 @@ EOF
     if [[ -f "$registry_file" ]]; then
         project_count="$(grep -c '^\[\[project\]\]' "$registry_file" 2>/dev/null || echo 0)"
         if [[ "$project_count" -gt 0 ]]; then
-            printf "${MUTED}  Projects:      %d registered (%s)${NC}\n" "$project_count" "$registry_file" >&2
+            printf "  Projects:      %d registered (%s)\n" "$project_count" "$registry_file" >&2
         fi
     fi
 
     if [[ "${WSL_MODE:-}" == "true" ]]; then
-        printf "${MUTED}  WSL note:     Add ~/.local/bin to your WSL shell rc${NC}\n" >&2
+        printf "  WSL note:     Add ~/.local/bin to your WSL shell rc\n" >&2
     fi
 
     cat <<EOF >&2
-${MUTED}  Docs:          https://github.com/${REPO}${NC}
-${MUTED}  Sidecar:       https://github.com/${REPO}/blob/main/docs/sidecar-setup.md${NC}
-${BRIGHT_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+  Docs:          https://github.com/${REPO}
+  Sidecar:       https://github.com/${REPO}/blob/main/docs/sidecar-setup.md
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-${ORANGE}  Sidecar (advanced):${NC} To enable real BGE-Large embeddings, run:
-${MUTED}    git clone https://github.com/${REPO}.git && cd neuralgentics${NC}
-${MUTED}    ./scripts/sidecar.sh start${NC}
-${MUTED}  Or skip — memory operations work fine with noop embeddings.${NC}
+  Sidecar (advanced): To enable real BGE-Large embeddings, run:
+    git clone https://github.com/${REPO}.git && cd neuralgentics
+    ./scripts/sidecar.sh start
+  Or skip — memory operations work fine with noop embeddings.
 EOF
 }
 
