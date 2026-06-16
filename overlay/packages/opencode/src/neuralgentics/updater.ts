@@ -52,7 +52,7 @@ export class NeuralgenticsUpdater {
    * Neuralgentics update script (does NOT auto-apply).
    */
   static applyUpdate(): void {
-    console.log(
+    console.error(
       "[Neuralgentics] Update available. Run: ./scripts/update-opencode.sh",
     );
   }
