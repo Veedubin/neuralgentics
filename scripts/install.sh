@@ -455,7 +455,7 @@ download_with_progress() {
     # Hide cursor
     :
 
-    trap "trap - RETURN; rm -f \"$tracefile\"; :exec 4>&-" RETURN
+    trap "trap - RETURN; rm -f \"$tracefile\"; exec 4>&-" RETURN
 
     (
         curl --trace-ascii "$tracefile" -s -L -o "$output" "$url" 2>/dev/null
