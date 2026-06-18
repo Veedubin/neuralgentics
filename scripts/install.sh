@@ -367,6 +367,35 @@ detect_wsl() {
     fi
 }
 
+# ─── GPU detection ────────────────────────────────────────────────────────────
+
+HAS_GPU=false
+
+_detect_gpu() {
+    # Check for NVIDIA GPU via nvidia-smi. This is the standard way to
+    # detect CUDA-capable hardware on Linux. Also works in WSL2 with
+    # NVIDIA's WSL driver. Falls back to checking for AMD ROCm via
+    # rocminfo, and Intel via clinfo.
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+        HAS_GPU=true
+        log "NVIDIA GPU detected — sidecar will use CUDA"
+        return 0
+    fi
+    if command -v rocminfo >/dev/null 2>&1 && rocminfo >/dev/null 2>&1; then
+        HAS_GPU=true
+        log "AMD GPU detected (ROCm) — sidecar will use CPU (ROCm support pending)"
+        return 0
+    fi
+    # Intel GPU detection via clinfo (OpenCL) — less common for ML but present
+    if command -v clinfo >/dev/null 2>&1 && clinfo >/dev/null 2>&1 | grep -qi 'intel.*gpu'; then
+        HAS_GPU=true
+        log "Intel GPU detected — sidecar will use CPU (Intel support pending)"
+        return 0
+    fi
+    HAS_GPU=false
+    return 1
+}
+
 # ─── Repo detection ───────────────────────────────────────────────────────────
 
 detect_repo() {
@@ -1886,6 +1915,129 @@ register_project() {
     fi
 }
 
+# ─── Sidecar auto-setup ────────────────────────────────────────────────────────
+# When a GPU is detected, download the embedding sidecar source files,
+# create a Python venv, install dependencies, and pre-download the
+# BGE-Large model. The sidecar is NOT started — it's just made ready
+# so the user can launch it with a single command.
+
+SIDECAR_READY=false
+
+_setup_sidecar() {
+    if ! $HAS_GPU; then
+        log "No GPU detected — skipping sidecar setup (memory ops use noop embeddings)"
+        return 0
+    fi
+
+    local sidecar_dir="$NEURALGENTICS_DATA_DIR/sidecar"
+    local raw_base="https://raw.githubusercontent.com/${REPO}/main/packages/memory/cmd/embedding-sidecar"
+
+    log "Setting up embedding sidecar (BGE-Large, CUDA)..."
+
+    if $DRY_RUN; then
+        printf "  [dry-run] mkdir -p %s\n" "$sidecar_dir" >&2
+        printf "  [dry-run] download sidecar source files from %s\n" "$raw_base" >&2
+        printf "  [dry-run] python3 -m venv %s/.venv\n" "$sidecar_dir" >&2
+        printf "  [dry-run] pip install sentence-transformers torch grpcio\n" >&2
+        printf "  [dry-run] pre-download BAAI/bge-large-en-v1.5 model\n" >&2
+        SIDECAR_READY=true
+        return 0
+    fi
+
+    # Check for Python 3
+    local python_bin
+    python_bin="$(command -v python3 || command -v python || true)"
+    if [[ -z "$python_bin" ]]; then
+        warn "Python 3 not found — skipping sidecar setup"
+        warn "Install Python 3.10+ and re-run the installer to enable embeddings"
+        return 0
+    fi
+
+    mkdir -p "$sidecar_dir/embedding_sidecar/proto/embedding/v1"
+
+    # Download sidecar source files from the repo's raw GitHub URL.
+    # These are small text files — no binary blobs.
+    local files=(
+        "main.py"
+        "requirements.txt"
+        "embedding_sidecar/__init__.py"
+        "embedding_sidecar/embed.py"
+        "embedding_sidecar/health.py"
+        "embedding_sidecar/server.py"
+        "embedding_sidecar/proto/__init__.py"
+        "embedding_sidecar/proto/embedding/__init__.py"
+        "embedding_sidecar/proto/embedding/v1/__init__.py"
+        "embedding_sidecar/proto/embedding/v1/embedding_pb2.py"
+        "embedding_sidecar/proto/embedding/v1/embedding_pb2_grpc.py"
+    )
+
+    local dl_errors=0
+    local f
+    for f in "${files[@]}"; do
+        if ! curl -fsSL "$raw_base/$f" -o "$sidecar_dir/$f" 2>/dev/null; then
+            warn "Failed to download sidecar file: $f"
+            dl_errors=$((dl_errors + 1))
+        fi
+    done
+
+    if [[ $dl_errors -gt 0 ]]; then
+        warn "$dl_errors sidecar file(s) failed to download — sidecar may not work"
+        warn "You can re-run the installer later to retry, or clone the repo manually"
+    fi
+
+    # Create Python virtual environment
+    if ! "$python_bin" -m venv "$sidecar_dir/.venv" 2>/dev/null; then
+        warn "Failed to create sidecar venv — ensure python3-venv is installed"
+        warn "  Debian/Ubuntu: apt-get install python3-venv"
+        warn "  Fedora/RHEL:   dnf install python3-venv"
+        return 0
+    fi
+
+    local pip_bin="$sidecar_dir/.venv/bin/pip"
+    local python_venv="$sidecar_dir/.venv/bin/python"
+
+    # Install Python dependencies
+    log "Installing sidecar Python dependencies (sentence-transformers, torch, grpcio)..."
+    if ! "$pip_bin" install -r "$sidecar_dir/requirements.txt" --quiet 2>&1; then
+        warn "pip install failed — sidecar dependencies may be incomplete"
+        warn "Check $sidecar_dir/requirements.txt and re-run the installer"
+        return 0
+    fi
+
+    # Pre-download the BGE-Large model (~1.3 GB). This is the slowest step —
+    # the model is downloaded from HuggingFace and cached in ~/.cache/torch/.
+    # We do this now so the first sidecar start is instant.
+    log "Pre-downloading BGE-Large model (BAAI/bge-large-en-v1.5, ~1.3 GB)..."
+    log "  This may take a few minutes on first run. Subsequent runs use the cache."
+    if "$python_venv" -c "
+from sentence_transformers import SentenceTransformer
+model = SentenceTransformer('BAAI/bge-large-en-v1.5', device='cuda')
+# Run a tiny inference to warm up the model and verify it works
+_ = model.encode('neuralgentics ready', convert_to_numpy=True)
+print('BGE-Large model loaded and verified on CUDA')
+" 2>&1; then
+        log "BGE-Large model downloaded and verified"
+    else
+        warn "BGE-Large model download failed — sidecar will start but may fail on first request"
+        warn "Check disk space (~2 GB free needed) and network connectivity"
+        return 0
+    fi
+
+    # Write sidecar config to install.env so the backend knows where to find it
+    cat >> "$NEURALGENTICS_DATA_DIR/install.env" <<ENVEOF
+
+# Embedding sidecar — auto-configured by installer
+# Start with: $sidecar_dir/.venv/bin/python $sidecar_dir/main.py &
+export MEMINI_EMBEDDING_ADDR="unix:///tmp/neuralgentics-embed.sock"
+export EMBEDDING_MODE="auto"
+export NEURALGENTICS_EMBED_DEVICE="cuda"
+ENVEOF
+
+    SIDECAR_READY=true
+    log "Sidecar ready (BGE-Large, CUDA) — start with: neuralgentics-sidecar start"
+    log "  Config written to $NEURALGENTICS_DATA_DIR/install.env"
+}
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 main() {
@@ -1906,6 +2058,7 @@ main() {
     # 1. Detect platform
     detect_os_arch
     detect_wsl
+    _detect_gpu
 
     # 2. Detect repo
     detect_repo
@@ -1958,6 +2111,9 @@ main() {
     # 10. Register project directory
     register_project
 
+    # 10.5. Sidecar auto-setup (GPU only — downloads BGE-Large model)
+    _setup_sidecar
+
     # 11. Verify
     verify_install
 
@@ -2003,15 +2159,18 @@ EOF
         printf "  WSL note:     Add ~/.local/bin to your WSL shell rc\n" >&2
     fi
 
+    # Sidecar status
+    if $SIDECAR_READY; then
+        printf "  Sidecar:      ready (BGE-Large, CUDA) — start with: neuralgentics-sidecar start\n" >&2
+    else
+        printf "  Sidecar:      not configured (no GPU detected)\n" >&2
+        printf "                Memory operations use noop embeddings.\n" >&2
+        printf "                To enable later: clone the repo and run scripts/sidecar.sh start\n" >&2
+    fi
+
     cat <<EOF >&2
   Docs:          https://github.com/${REPO}
-  Sidecar:       https://github.com/${REPO}/blob/main/docs/sidecar-setup.md
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  Sidecar (advanced): To enable real BGE-Large embeddings, run:
-    git clone https://github.com/${REPO}.git && cd neuralgentics
-    ./scripts/sidecar.sh start
-  Or skip — memory operations work fine with noop embeddings.
 EOF
 }
 
