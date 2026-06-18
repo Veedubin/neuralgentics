@@ -2226,20 +2226,38 @@ EOF
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EOF
 
-    # ── OpenCode setup ──────────────────────────────────────────────────
-    # neuralgentics is a plugin for OpenCode. The .opencode/ directory
-    # (agent personas, skills, MCP configs) is bundled in the install
-    # prefix. OpenCode loads it from the project root via a symlink.
+    # ── OpenCode runtime ────────────────────────────────────────────────
+    # neuralgentics spawns opencode internally via the SDK. The user never
+    # runs 'opencode' directly — they run 'neuralgentics'. But the opencode
+    # binary must be available for the TUI to spawn.
     echo "" >&2
     if command -v opencode >/dev/null 2>&1; then
-        printf "  OpenCode detected. To activate neuralgentics in a project:\n" >&2
-        printf "    cd your-project && ln -s %s/.opencode .opencode && opencode\n" "$PREFIX" >&2
+        printf "  OpenCode runtime detected (%s)\n" "$(opencode --version 2>/dev/null || echo 'unknown')" >&2
     else
-        printf "  OpenCode not found — install it to use neuralgentics:\n" >&2
-        printf "    sudo snap install opencode\n" >&2
-        printf "  Then activate in any project:\n" >&2
-        printf "    cd your-project && ln -s %s/.opencode .opencode && opencode\n" "$PREFIX" >&2
+        printf "  OpenCode runtime not found — installing...\n" >&2
+        if command -v snap >/dev/null 2>&1; then
+            if $DRY_RUN; then
+                printf "  [dry-run] sudo snap install opencode\n" >&2
+            else
+                sudo snap install opencode 2>&1 || warn "snap install opencode failed — install manually: sudo snap install opencode"
+            fi
+        elif command -v npm >/dev/null 2>&1; then
+            if $DRY_RUN; then
+                printf "  [dry-run] npm install -g @opencode-ai/cli\n" >&2
+            else
+                npm install -g @opencode-ai/cli 2>&1 || warn "npm install -g @opencode-ai/cli failed"
+            fi
+        else
+            warn "Neither snap nor npm found — install opencode manually:"
+            warn "  curl -fsSL https://opencode.ai/install.sh | bash"
+        fi
     fi
+
+    # The .opencode/ config (agent personas, skills, MCP servers) lives in
+    # the install prefix. The TUI reads it from the project root. Create a
+    # symlink so every project gets the canonical config.
+    printf "  To activate in a project:\n" >&2
+    printf "    cd your-project && ln -s %s/.opencode .opencode && neuralgentics\n" "$PREFIX" >&2
     echo "" >&2
 }
 
