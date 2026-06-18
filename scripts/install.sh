@@ -2299,11 +2299,12 @@ EOF
 
     # ── Activation ─────────────────────────────────────────────────────
     # The .opencode/ config (agent personas, skills, MCP servers) lives in
-    # the install prefix. The TUI reads it from the project root. Create a
-    # symlink so every project gets the canonical config.
+    # the install prefix. The TUI auto-detects it on startup — no manual
+    # symlink needed. For explicit setup, run 'neuralgentics init'.
     echo "" >&2
     printf "  To activate in a project:\n" >&2
-    printf "    cd your-project && ln -s %s/.opencode .opencode && neuralgentics\n" "$PREFIX" >&2
+    printf "    cd your-project && neuralgentics init && neuralgentics\n" >&2
+    printf "  (The TUI auto-links .opencode/ on startup — 'init' is optional)\n" >&2
     echo "" >&2
 }
 

@@ -16,6 +16,8 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { existsSync, symlinkSync, readlinkSync } from "node:fs";
+import { resolve, join } from "node:path";
 import {
   createCliRenderer,
   Box,
@@ -809,9 +811,124 @@ async function buildLayout(renderer: Awaited<ReturnType<typeof createCliRenderer
   inputVNode.focus();
 }
 
+// ─── Init command + auto-config ────────────────────────────────────────────────
+
+/**
+ * Find the neuralgentics install prefix by checking common locations.
+ * Returns the path to the .opencode/ directory, or null if not found.
+ */
+function findInstallPrefix(): string | null {
+  const candidates = [
+    process.env.NEURALGENTICS_INSTALL_PREFIX,
+    resolve(process.env.HOME ?? "", ".neuralgentics"),
+    resolve(process.cwd(), ".neuralgentics"),
+    resolve(process.cwd(), "..", ".neuralgentics"),
+  ];
+  for (const prefix of candidates) {
+    if (prefix && existsSync(join(prefix, ".opencode", "opencode.json"))) {
+      return join(prefix, ".opencode");
+    }
+  }
+  return null;
+}
+
+/**
+ * neuralgentics init — creates the .opencode/ symlink from the install
+ * prefix into the current directory. No manual ln -s needed.
+ */
+function handleInitCommand(): void {
+  const prefixOpenCode = findInstallPrefix();
+  if (!prefixOpenCode) {
+    console.error("neuralgentics: no install found. Run the installer first:");
+    console.error("  curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash");
+    process.exit(1);
+  }
+
+  const cwdOpenCode = resolve(process.cwd(), ".opencode");
+
+  if (existsSync(cwdOpenCode)) {
+    try {
+      if (readlinkSync(cwdOpenCode) === prefixOpenCode) {
+        console.log(`.opencode/ already linked to ${prefixOpenCode}`);
+        return;
+      }
+    } catch {
+      // Not a symlink — back up and replace
+    }
+    // Back up existing directory
+    const backup = `${cwdOpenCode}.bak-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    require("node:fs").renameSync(cwdOpenCode, backup);
+    console.log(`Backed up existing .opencode/ to ${backup}`);
+  }
+
+  symlinkSync(prefixOpenCode, cwdOpenCode);
+  console.log(`Linked .opencode/ → ${prefixOpenCode}`);
+  console.log("Run 'neuralgentics' to start.");
+}
+
+/**
+ * Auto-detect .opencode/ config on TUI startup. If .opencode/ doesn't
+ * exist in cwd, find the install prefix config and symlink it. This
+ * makes neuralgentics work from any directory — home dir, project dir,
+ * anywhere — without manual setup.
+ */
+function ensureOpenCodeConfig(): void {
+  const cwdOpenCode = resolve(process.cwd(), ".opencode");
+  if (existsSync(cwdOpenCode)) return; // already present
+
+  const prefixOpenCode = findInstallPrefix();
+  if (!prefixOpenCode) return; // no install found, TUI will start without config
+
+  try {
+    symlinkSync(prefixOpenCode, cwdOpenCode);
+    console.log(`[neuralgentics] Auto-linked .opencode/ → ${prefixOpenCode}`);
+  } catch {
+    // Symlink failed (permissions, existing file, etc.) — TUI starts without config
+  }
+}
+
 // ─── Main ──────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  // ── CLI: neuralgentics init ──────────────────────────────────────────────
+  // Creates the .opencode/ symlink from the install prefix into the current
+  // directory. No manual ln -s needed. Also handles --help and --version.
+  if (process.argv[2] === "init") {
+    handleInitCommand();
+    return;
+  }
+  if (process.argv[2] === "--help" || process.argv[2] === "-h") {
+    console.log("neuralgentics — AI-powered development TUI");
+    console.log("");
+    console.log("Usage:");
+    console.log("  neuralgentics              Launch the TUI");
+    console.log("  neuralgentics init         Set up .opencode/ config in this directory");
+    console.log("  neuralgentics --help       Show this help");
+    console.log("  neuralgentics --version    Show version");
+    console.log("");
+    console.log("The TUI auto-detects .opencode/ config from the install prefix.");
+    console.log("Run 'neuralgentics init' in any project to link it.");
+    return;
+  }
+  if (process.argv[2] === "--version" || process.argv[2] === "-v") {
+    // Read version from package.json at runtime
+    try {
+      const pkg = JSON.parse(require("node:fs").readFileSync(
+        resolve(__dirname, "..", "package.json"), "utf-8"
+      ));
+      console.log(`neuralgentics v${pkg.version}`);
+    } catch {
+      console.log("neuralgentics (version unknown)");
+    }
+    return;
+  }
+
+  // ── Auto-detect .opencode/ config ───────────────────────────────────────
+  // If .opencode/ doesn't exist in cwd, look for the install prefix config
+  // and symlink it. This makes neuralgentics work from any directory —
+  // home dir, project dir, anywhere — without manual setup.
+  ensureOpenCodeConfig();
+
   const renderer = await createCliRenderer({ exitOnCtrlC: true });
   renderer.setBackgroundColor(COLORS.bg);
 
