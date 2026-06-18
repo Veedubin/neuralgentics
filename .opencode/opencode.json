@@ -99,7 +99,7 @@
         "THOUGHT_CHAINS": "true"
       },
       "timeout": 60000,
-      "enabled": true
+      "enabled": false
     },
     "github-mcp": {
       "type": "local",
@@ -154,7 +154,7 @@
       "disabled": false
     }
   },
-  "instructions": ["AGENTS.md"],
+  "instructions": [".opencode/AGENTS.md"],
   "compaction": {
     "auto": true,
     "prune": true,
