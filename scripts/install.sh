@@ -1943,29 +1943,95 @@ register_project() {
     # launched (the project root). The self-contained install puts all
     # agent config in $PREFIX/.opencode/. This symlink makes it available
     # in every registered project without copying files.
+    #
+    # If a real directory already exists at the target (e.g. from a prior
+    # manual setup), back it up as .opencode.bak-<timestamp> and force the
+    # symlink. The user needs the canonical config, not a stale copy.
     local project_opencode="$project_dir/.opencode"
     local prefix_opencode="$PREFIX/.opencode"
     if [[ -d "$prefix_opencode" ]]; then
-        if [[ -e "$project_opencode" ]]; then
-            if [[ -L "$project_opencode" ]]; then
-                # Already a symlink — check if it points to the right place
-                local current_target
-                current_target="$(readlink "$project_opencode" 2>/dev/null || true)"
-                if [[ "$current_target" != "$prefix_opencode" ]]; then
-                    warn "$project_opencode symlink points to $current_target, not $prefix_opencode — leaving in place"
-                fi
-            else
-                warn "$project_opencode already exists (not a symlink) — leaving in place"
-            fi
-        else
+        if [[ -e "$project_opencode" && ! -L "$project_opencode" ]]; then
+            local backup="$project_dir/.opencode.bak-$(date +%Y%m%d-%H%M%S)"
             if $DRY_RUN; then
-                printf "  [dry-run] ln -s %s %s\n" "$prefix_opencode" "$project_opencode" >&2
+                printf "  [dry-run] mv %s %s\n" "$project_opencode" "$backup" >&2
             else
-                ln -s "$prefix_opencode" "$project_opencode"
-                log "Symlinked $project_opencode -> $prefix_opencode"
+                mv "$project_opencode" "$backup"
+                log "Backed up existing .opencode/ to $backup"
             fi
         fi
+        if $DRY_RUN; then
+            printf "  [dry-run] ln -sf %s %s\n" "$prefix_opencode" "$project_opencode" >&2
+        else
+            ln -sf "$prefix_opencode" "$project_opencode"
+            log "Symlinked $project_opencode -> $prefix_opencode"
+        fi
     fi
+}
+
+# ─── OpenCode runtime ──────────────────────────────────────────────────────────
+# neuralgentics spawns opencode internally via the SDK. The user never runs
+# 'opencode' directly — they run 'neuralgentics'. But the opencode binary
+# must be on PATH for the TUI to spawn it. Download it from GitHub releases
+# into $PREFIX/bin/ alongside neuralgentics.
+
+_install_opencode() {
+    # Already installed? Check both the install prefix and system PATH.
+    if command -v opencode >/dev/null 2>&1; then
+        log "OpenCode runtime already on PATH ($(opencode --version 2>/dev/null || echo 'unknown'))"
+        return 0
+    fi
+    if [[ -x "$PREFIX/bin/opencode" ]]; then
+        log "OpenCode runtime already in $PREFIX/bin/"
+        return 0
+    fi
+
+    log "Installing OpenCode runtime (required by neuralgentics TUI)..."
+
+    # Map our OS/arch to opencode's release naming
+    local oc_os oc_arch
+    case "$DETECTED_OS" in
+        linux)   oc_os="linux" ;;
+        darwin)  oc_os="mac" ;;
+        *)       warn "Unsupported OS for opencode: $DETECTED_OS — install manually"; return 0 ;;
+    esac
+    case "$DETECTED_ARCH" in
+        amd64|x86_64) oc_arch="x86_64" ;;
+        arm64|aarch64) oc_arch="arm64" ;;
+        *)            warn "Unsupported arch for opencode: $DETECTED_ARCH — install manually"; return 0 ;;
+    esac
+
+    local oc_version="0.0.55"  # latest stable as of 2026-06-18
+    local oc_archive="opencode-${oc_os}-${oc_arch}.tar.gz"
+    local oc_url="https://github.com/opencode-ai/opencode/releases/download/v${oc_version}/${oc_archive}"
+
+    if $DRY_RUN; then
+        printf "  [dry-run] download %s → %s/bin/opencode\n" "$oc_url" "$PREFIX" >&2
+        return 0
+    fi
+
+    local tmp_dir="${TMPDIR:-/tmp}/opencode_install_$$"
+    mkdir -p "$tmp_dir"
+    local oc_path="$tmp_dir/$oc_archive"
+
+    log "Downloading $oc_archive..."
+    if ! curl -fsSL "$oc_url" -o "$oc_path" 2>/dev/null; then
+        warn "Failed to download opencode from $oc_url"
+        warn "Install manually: curl -fsSL https://opencode.ai/install.sh | bash"
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+
+    # Extract — the archive contains a single 'opencode' binary at the root
+    tar -xzf "$oc_path" -C "$tmp_dir" opencode 2>/dev/null
+    if [[ -f "$tmp_dir/opencode" ]]; then
+        chmod +x "$tmp_dir/opencode"
+        mv "$tmp_dir/opencode" "$PREFIX/bin/opencode"
+        log "OpenCode runtime installed to $PREFIX/bin/opencode"
+    else
+        warn "opencode binary not found in archive — install manually"
+    fi
+
+    rm -rf "$tmp_dir"
 }
 
 # ─── Sidecar auto-setup ────────────────────────────────────────────────────────
@@ -2150,6 +2216,11 @@ main() {
     # 7. Post-install
     post_install
 
+    # 7.5. OpenCode runtime — neuralgentics spawns opencode internally via
+    #      the SDK. Download it from GitHub releases into $PREFIX/bin/ so
+    #      it's always available alongside neuralgentics.
+    _install_opencode
+
     # 8. PATH setup
     setup_path
 
@@ -2226,36 +2297,11 @@ EOF
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EOF
 
-    # ── OpenCode runtime ────────────────────────────────────────────────
-    # neuralgentics spawns opencode internally via the SDK. The user never
-    # runs 'opencode' directly — they run 'neuralgentics'. But the opencode
-    # binary must be available for the TUI to spawn.
-    echo "" >&2
-    if command -v opencode >/dev/null 2>&1; then
-        printf "  OpenCode runtime detected (%s)\n" "$(opencode --version 2>/dev/null || echo 'unknown')" >&2
-    else
-        printf "  OpenCode runtime not found — installing...\n" >&2
-        if command -v snap >/dev/null 2>&1; then
-            if $DRY_RUN; then
-                printf "  [dry-run] sudo snap install opencode\n" >&2
-            else
-                sudo snap install opencode 2>&1 || warn "snap install opencode failed — install manually: sudo snap install opencode"
-            fi
-        elif command -v npm >/dev/null 2>&1; then
-            if $DRY_RUN; then
-                printf "  [dry-run] npm install -g @opencode-ai/cli\n" >&2
-            else
-                npm install -g @opencode-ai/cli 2>&1 || warn "npm install -g @opencode-ai/cli failed"
-            fi
-        else
-            warn "Neither snap nor npm found — install opencode manually:"
-            warn "  curl -fsSL https://opencode.ai/install.sh | bash"
-        fi
-    fi
-
+    # ── Activation ─────────────────────────────────────────────────────
     # The .opencode/ config (agent personas, skills, MCP servers) lives in
     # the install prefix. The TUI reads it from the project root. Create a
     # symlink so every project gets the canonical config.
+    echo "" >&2
     printf "  To activate in a project:\n" >&2
     printf "    cd your-project && ln -s %s/.opencode .opencode && neuralgentics\n" "$PREFIX" >&2
     echo "" >&2
