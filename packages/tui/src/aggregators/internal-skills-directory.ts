@@ -51,7 +51,12 @@ export class InternalSkillsDirectoryAggregator implements Aggregator {
     indexTtlMs?: number;
   }) {
     this.cache = options.cache;
-    this.skillsRoot = options.skillsRoot ?? join(process.cwd(), ".opencode", "skills");
+    this.skillsRoot = options.skillsRoot ?? (
+      // Self-contained install: skills live in the install prefix
+      process.env.NEURALGENTICS_INSTALL_PREFIX
+        ? join(process.env.NEURALGENTICS_INSTALL_PREFIX, ".opencode", "skills")
+        : join(process.cwd(), ".opencode", "skills")
+    );
     this.indexTtlMs = options.indexTtlMs ?? 5 * 60 * 1000; // 5 minutes
   }
 

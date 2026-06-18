@@ -207,6 +207,8 @@ export function getRegisteredModels(opencodeConfigPath?: string): Set<string> {
     : [
         resolve(process.cwd(), ".opencode/opencode.json"),
         resolve(process.cwd(), "neuralgentics/.opencode/opencode.json"),
+        // Self-contained install: .opencode/ lives in the install prefix
+        resolve(process.env.NEURALGENTICS_INSTALL_PREFIX ?? "", ".opencode/opencode.json"),
       ];
 
   for (const path of searchPaths) {

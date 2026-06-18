@@ -516,7 +516,7 @@ export async function handleResumeSessionCommand(
  * @param projectRoot - Project root directory to scan for skills.
  */
 function handleHarnessCommand(projectRoot?: string): CommandResult {
-  const root = projectRoot ?? process.cwd();
+  const root = projectRoot ?? process.env.NEURALGENTICS_INSTALL_PREFIX ?? process.cwd();
   const skillsDir = join(root, ".opencode", "skills");
   const roleDisplay = detectRole(root);
 

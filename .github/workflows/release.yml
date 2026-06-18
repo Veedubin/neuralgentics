@@ -195,6 +195,45 @@ jobs:
             fi
           fi
 
+          # ── OpenCode agent system ────────────────────────────────────
+          # Compile the overlay TypeScript plugin (runs inside OpenCode as
+          # the neuralgentics orchestrator, memory client, routing, etc.)
+          cd overlay/packages/opencode
+          npm install --no-audit --no-fund
+          npx tsc
+          cd "${{ github.workspace }}"
+
+          # Bundle the compiled overlay as a local plugin package so
+          # OpenCode can load it without an npm publish step.
+          mkdir -p dist/neuralgentics/node_modules/@neuralgentics/plugin
+          cp overlay/packages/opencode/package.json \
+             dist/neuralgentics/node_modules/@neuralgentics/plugin/
+          cp -r overlay/packages/opencode/dist/* \
+                dist/neuralgentics/node_modules/@neuralgentics/plugin/
+
+          # Agent personas, skills, and OpenCode config (source files only —
+          # node_modules is resolved by npm install at install time).
+          mkdir -p dist/neuralgentics/.opencode/agents dist/neuralgentics/.opencode/skills
+          cp .opencode/agents/*.md dist/neuralgentics/.opencode/agents/
+          cp -r .opencode/skills/* dist/neuralgentics/.opencode/skills/
+          cp .opencode/opencode.json dist/neuralgentics/.opencode/
+          cp .opencode/package.json dist/neuralgentics/.opencode/
+          cp .opencode/package-lock.json dist/neuralgentics/.opencode/
+          cp .opencode/.gitignore dist/neuralgentics/.opencode/
+
+          # Add the local overlay plugin as a file: dependency so npm
+          # install resolves it from the bundled node_modules/ directory.
+          # The opencode.json plugin field stays as "@neuralgentics/plugin"
+          # — npm/node_modules resolution handles the rest.
+          sed -i 's/"@opencode-ai\/plugin": "1.15.9"/"@opencode-ai\/plugin": "1.15.9",\n    "@neuralgentics\/plugin": "file:..\/node_modules\/@neuralgentics\/plugin"/' \
+            dist/neuralgentics/.opencode/package.json
+
+          # Project instructions (loaded by OpenCode via the "instructions"
+          # field in opencode.json). Placed inside .opencode/ so the
+          # relative path "AGENTS.md" resolves correctly regardless of
+          # which project directory the user runs opencode from.
+          cp AGENTS.md dist/neuralgentics/.opencode/AGENTS.md
+
           # Install script
           if [ -f "scripts/install.sh" ]; then
             cp scripts/install.sh dist/neuralgentics/install.sh
