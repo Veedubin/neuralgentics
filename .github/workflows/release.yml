@@ -225,8 +225,7 @@ jobs:
           # install resolves it from the bundled node_modules/ directory.
           # The opencode.json plugin field stays as "@neuralgentics/plugin"
           # — npm/node_modules resolution handles the rest.
-          sed -i 's/"@opencode-ai\/plugin": "1.15.9"/"@opencode-ai\/plugin": "1.15.9",\n    "@neuralgentics\/plugin": "file:..\/node_modules\/@neuralgentics\/plugin"/' \
-            dist/neuralgentics/.opencode/package.json
+          node -e "const pkg=require('./dist/neuralgentics/.opencode/package.json'); pkg.dependencies['@neuralgentics/plugin']='file:../node_modules/@neuralgentics/plugin'; require('fs').writeFileSync('./dist/neuralgentics/.opencode/package.json', JSON.stringify(pkg, null, 2)+'\n')"
 
           # Project instructions (loaded by OpenCode via the "instructions"
           # field in opencode.json). Placed inside .opencode/ so the

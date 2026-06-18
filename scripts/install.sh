@@ -15,7 +15,7 @@
 set -euo pipefail
 
 APP="neuralgentics"
-DEFAULT_VERSION="0.6.6"
+DEFAULT_VERSION="0.6.7"
 
 # ─── Defaults ────────────────────────────────────────────────────────────────
 
