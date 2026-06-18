@@ -393,7 +393,7 @@ _detect_gpu() {
         return 0
     fi
     HAS_GPU=false
-    return 1
+    return 0  # never fail — HAS_GPU is the signal, not the exit code
 }
 
 # ─── Repo detection ───────────────────────────────────────────────────────────
