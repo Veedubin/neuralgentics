@@ -790,7 +790,10 @@ setup_path() {
 
     # PWD-local install: BIN_LINK_DIR == INSTALL_BIN, the binary is already
     # in place at $PREFIX/bin/. No symlink, no PATH-add. Just print a tip.
-    if [[ "$BIN_LINK_DIR" == "$INSTALL_BIN" ]]; then
+    # EXCEPTION: if PREFIX is under $HOME (e.g. ~/.neuralgentics), always
+    # add to PATH — the user ran the install from their home directory and
+    # expects the binary to be globally available, not project-scoped.
+    if [[ "$BIN_LINK_DIR" == "$INSTALL_BIN" ]] && [[ "$PREFIX" != "$HOME"/* ]]; then
         log "Project-local install at $PREFIX — invoke with: $PREFIX/bin/neuralgentics"
         log "Or add to your shell: export PATH=\"$PREFIX/bin:\$PATH\""
         return 0
@@ -2222,6 +2225,22 @@ EOF
   Docs:          https://github.com/${REPO}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EOF
+
+    # ── OpenCode setup ──────────────────────────────────────────────────
+    # neuralgentics is a plugin for OpenCode. The .opencode/ directory
+    # (agent personas, skills, MCP configs) is bundled in the install
+    # prefix. OpenCode loads it from the project root via a symlink.
+    echo "" >&2
+    if command -v opencode >/dev/null 2>&1; then
+        printf "  OpenCode detected. To activate neuralgentics in a project:\n" >&2
+        printf "    cd your-project && ln -s %s/.opencode .opencode && opencode\n" "$PREFIX" >&2
+    else
+        printf "  OpenCode not found — install it to use neuralgentics:\n" >&2
+        printf "    sudo snap install opencode\n" >&2
+        printf "  Then activate in any project:\n" >&2
+        printf "    cd your-project && ln -s %s/.opencode .opencode && opencode\n" "$PREFIX" >&2
+    fi
+    echo "" >&2
 }
 
 main "$@"
