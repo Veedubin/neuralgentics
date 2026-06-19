@@ -141,7 +141,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run)         DRY_RUN=true; shift ;;
         -y|--yes|--non-interactive)
                            NON_INTERACTIVE=true; shift ;;
-        --home-dir)
+        --home-dir|-home-dir)
                            INSTALL_HOME=true; shift ;;
         --existing)
                            USE_EXISTING_DB=true
@@ -765,34 +765,6 @@ ENVEOF
 }
 
 # ─── PATH setup ──────────────────────────────────────────────────────────────
-
-# Find the shell rc file that setup_path would write to.
-_find_rc_file() {
-    local current_shell
-    current_shell="$(basename "${SHELL:-bash}")"
-    case "$current_shell" in
-        fish)  echo "$HOME/.config/fish/config.fish" ;;
-        zsh)
-            for f in "${ZDOTDIR:-$HOME}/.zshrc" "${ZDOTDIR:-$HOME}/.zshenv" "$HOME/.config/zsh/.zshrc"; do
-                if [[ -f "$f" ]]; then echo "$f"; return 0; fi
-            done
-            echo "${ZDOTDIR:-$HOME}/.zshrc"
-            ;;
-        bash)
-            for f in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
-                if [[ -f "$f" ]]; then echo "$f"; return 0; fi
-            done
-            echo "$HOME/.bashrc"
-            ;;
-        ash|sh)
-            for f in "$HOME/.ashrc" "$HOME/.profile"; do
-                if [[ -f "$f" ]]; then echo "$f"; return 0; fi
-            done
-            echo "$HOME/.profile"
-            ;;
-        *)   echo "" ;;
-    esac
-}
 
 add_to_path() {
     local config_file="$1"
@@ -2252,16 +2224,6 @@ main() {
     # 8. PATH setup
     setup_path
 
-    # Source the rc file so neuralgentics is on PATH immediately in this
-    # session. No restart needed.
-    if ! $NO_PATH && ! $DRY_RUN; then
-        local rc_file="$(_find_rc_file)"
-        if [[ -n "$rc_file" && -f "$rc_file" ]]; then
-            # shellcheck disable=SC1090
-            source "$rc_file" 2>/dev/null || true
-        fi
-    fi
-
     # 9. Interactive prompt: database (after install, before verification).
     #    If this returns non-zero (e.g. --existing was passed but .env is
     #    missing, or no container runtime was found), abort the install.
@@ -2328,6 +2290,13 @@ EOF
     cat <<EOF >&2
   Docs:          https://github.com/${REPO}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ═══════════════════════════════════════════════════════════════
+   IMPORTANT: The PATH was added to your shell config but this
+   terminal session doesn't know about it yet. Run this now:
+
+     source ~/.bashrc
+  ═══════════════════════════════════════════════════════════════
 EOF
 
     # ── Activation ─────────────────────────────────────────────────────
