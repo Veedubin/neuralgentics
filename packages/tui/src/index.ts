@@ -889,6 +889,9 @@ function ensureOpenCodeConfig(): void {
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
 
+/** Renderer reference for cleanup on crash. Set after createCliRenderer succeeds. */
+let renderer: Awaited<ReturnType<typeof createCliRenderer>> | null = null;
+
 async function main(): Promise<void> {
   // ── CLI: neuralgentics init ──────────────────────────────────────────────
   // Creates the .opencode/ symlink from the install prefix into the current
@@ -929,7 +932,7 @@ async function main(): Promise<void> {
   // home dir, project dir, anywhere — without manual setup.
   ensureOpenCodeConfig();
 
-  const renderer = await createCliRenderer({ exitOnCtrlC: true });
+  renderer = await createCliRenderer({ exitOnCtrlC: true });
   renderer.setBackgroundColor(COLORS.bg);
 
   // ── Database health check ──────────────────────────────────────────────
@@ -1134,5 +1137,12 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error("Neuralgentics TUI failed to start:", err);
+  // CRITICAL: destroy the renderer before exiting. createCliRenderer puts
+  // the terminal in raw mode via setupTerminal(). If we exit without
+  // calling destroy(), the terminal stays in raw mode — every keystroke
+  // becomes raw escape sequences and the user has to kill the terminal.
+  if (renderer && !renderer.isDestroyed) {
+    try { renderer.destroy(); } catch { /* best effort */ }
+  }
   process.exit(1);
 });
