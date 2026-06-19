@@ -2292,10 +2292,14 @@ EOF
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   ═══════════════════════════════════════════════════════════════
-   IMPORTANT: The PATH was added to your shell config but this
-   terminal session doesn't know about it yet. Run this now:
+   PATH was written to your shell config but this terminal
+   session doesn't see it yet (curl|bash runs in a subshell).
+   Run this exact command now to use neuralgentics immediately:
 
-     source ~/.bashrc
+     export PATH="${BIN_LINK_DIR}:\$PATH"
+
+   (Also run 'source ~/.bashrc' or restart your terminal for
+    permanent effect across all future sessions.)
   ═══════════════════════════════════════════════════════════════
 EOF
 
