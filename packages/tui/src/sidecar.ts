@@ -456,15 +456,15 @@ export function checkSidecarHealth(
 /**
  * Register process exit handlers to clean up sidecar on TUI exit.
  * Only kills sidecar if TUI spawned it.
+ *
+ * NOTE: Does NOT register SIGINT/SIGTERM handlers. The renderer
+ * (createCliRenderer with exitOnCtrlC: true) owns terminal cleanup
+ * and exit signaling. Registering our own signal handlers would
+ * bypass the renderer's destroy() call and leave the terminal in
+ * raw mode. We only hook process.on("exit") which fires AFTER the
+ * renderer has restored the terminal.
  */
 export function registerSidecarShutdown(): void {
-  const handler = () => {
-    shutdownSidecar();
-    process.exit(0);
-  };
-
-  process.on("SIGINT", handler);
-  process.on("SIGTERM", handler);
   process.on("exit", () => {
     shutdownSidecar();
   });

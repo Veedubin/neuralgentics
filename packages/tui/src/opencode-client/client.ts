@@ -245,16 +245,17 @@ export class OpenCodeClient {
   }
 
   /**
-   * Register process signal handlers for clean shutdown.
-   * Kills the child process on TUI exit (SIGTERM, SIGINT).
+   * Register process exit handler for clean shutdown.
+   * Kills the child process on TUI exit.
+   *
+   * NOTE: Does NOT register SIGINT/SIGTERM handlers. The renderer
+   * (createCliRenderer with exitOnCtrlC: true) owns terminal cleanup
+   * and exit signaling. Registering our own signal handlers would
+   * bypass the renderer's destroy() call and leave the terminal in
+   * raw mode. We only hook process.on("exit") which fires AFTER the
+   * renderer has restored the terminal.
    */
   registerShutdownHandlers(): void {
-    const handler = () => {
-      this.shutdown().then(() => process.exit(0));
-    };
-
-    process.on("SIGTERM", handler);
-    process.on("SIGINT", handler);
     process.on("exit", () => {
       // Synchronous cleanup on exit
       if (this.serverClose) {
