@@ -140,33 +140,6 @@ jobs:
           fi
         shell: bash
 
-      # ── Build TUI (standalone binary) ──────────────────────────────────
-      - name: Build TUI (${{ matrix.target }})
-        if: matrix.bun_target != 'none'
-        run: |
-          cd packages/tui
-          bun install
-          # On Windows, bun --compile already appends .exe; write to the
-          # .exe path directly to avoid a "same file" mv error.
-          OUTFILE="dist/neuralgentics"
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            OUTFILE="dist/neuralgentics.exe"
-          fi
-          bun build --compile \
-            --target=${{ matrix.bun_target }} \
-            --outfile="${OUTFILE}" \
-            src/index.ts
-        shell: bash
-
-      # ── Build TUI (bundle fallback — Windows ARM64) ───────────────────
-      - name: Build TUI — bundle fallback (${{ matrix.target }})
-        if: matrix.bun_target == 'none'
-        run: |
-          cd packages/tui
-          bun install
-          bun build src/index.ts --outdir=dist --target=bun
-        shell: bash
-
       # ── Assemble archive ──────────────────────────────────────────────
       - name: Assemble archive
         run: |
@@ -174,14 +147,6 @@ jobs:
 
           # Go backend
           cp packages/backend-go/neuralgentics-backend* dist/neuralgentics/bin/ 2>/dev/null || true
-
-          # TUI binary (or bundle fallback)
-          if [ "${{ matrix.bun_target }}" != "none" ]; then
-            cp packages/tui/dist/neuralgentics* dist/neuralgentics/bin/ 2>/dev/null || true
-          else
-            # Windows ARM64: copy bundle output alongside bun binary reference
-            cp -r packages/tui/dist/* dist/neuralgentics/bin/ 2>/dev/null || true
-          fi
 
           # Python sidecar source (no venv — users install deps separately)
           if [ -d "packages/memory/cmd/embedding-sidecar" ]; then
