@@ -1141,8 +1141,21 @@ main().catch((err) => {
   // the terminal in raw mode via setupTerminal(). If we exit without
   // calling destroy(), the terminal stays in raw mode — every keystroke
   // becomes raw escape sequences and the user has to kill the terminal.
+  //
+  // destroy() is async — it emits a 'destroy' event when terminal
+  // cleanup is complete. We must wait for that event before exiting.
+  // process.exit() kills the process immediately, bypassing cleanup.
   if (renderer && !renderer.isDestroyed) {
-    try { renderer.destroy(); } catch { /* best effort */ }
+    // Timeout fallback: if destroy event doesn't fire in 2s, force exit.
+    // Better to exit with a broken terminal than hang forever.
+    const forceExit = setTimeout(() => process.exit(1), 2000);
+    forceExit.unref(); // don't keep the process alive for this timer
+    renderer.once("destroy", () => {
+      clearTimeout(forceExit);
+      process.exit(1);
+    });
+    try { renderer.destroy(); } catch { process.exit(1); }
+  } else {
+    process.exit(1);
   }
-  process.exit(1);
 });
