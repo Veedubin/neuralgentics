@@ -1,21 +1,16 @@
 # docker-compose.yml — Neuralgentics container stack
-# Compatible with both `docker compose` (v2.38+) and `podman-compose` (v1.x, with models: ignored).
+# Compatible with both `docker compose` (v2.38+) and `podman-compose` (v1.x).
 # Usage: docker compose up
 #        podman-compose up
 #
 # For Podman on Fedora/RHEL, prefer podman-compose.yml which has SELinux labels.
-#
-# Docker Model Runner (DMR) integration: The `models:` block at the bottom of
-# this file declares a named LLM resource. DMR runs on the host (Docker Desktop
-# 4.40+) and is reachable from containers at http://host.docker.internal:12434.
-# The Go backend and TUI are wired to consume it via the `models: [llm]` key.
 
 version: "3.9"
 
 services:
-  # ── PostgreSQL 18 + pgvector ──────────────────────────────────────────────
+  # ── PostgreSQL 18 + pgvector + TimescaleDB ────────────────────────────────
   neuralgentics-postgres:
-    image: ghcr.io/veedubin/neuralgentics-postgres:${NEURALGENTICS_VERSION:-v0.2.0}
+    image: ghcr.io/veedubin/neuralgentics-postgres:${NEURALGENTICS_VERSION:-latest}
     build:
       context: .
       dockerfile: docker/postgres.Dockerfile
@@ -40,7 +35,7 @@ services:
 
   # ── Python gRPC embedding sidecar ────────────────────────────────────────
   neuralgentics-sidecar:
-    image: ghcr.io/veedubin/neuralgentics-sidecar:${NEURALGENTICS_VERSION:-v0.2.0}
+    image: ghcr.io/veedubin/neuralgentics-sidecar:${NEURALGENTICS_VERSION:-latest}
     build:
       context: .
       dockerfile: docker/sidecar.Dockerfile
@@ -63,14 +58,14 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  # ── Go backend (JSON-RPC over stdio + optional HTTP health on :8080) ──────
+  # ── Go backend (JSON-RPC over stdio + HTTP health on :8080) ──────────────
   neuralgentics-backend:
-    image: ghcr.io/veedubin/neuralgentics-backend:${NEURALGENTICS_VERSION:-v0.2.0}
+    image: ghcr.io/veedubin/neuralgentics-backend:${NEURALGENTICS_VERSION:-latest}
     build:
       context: .
       dockerfile: docker/backend.Dockerfile
       args:
-        VERSION: ${NEURALGENTICS_VERSION:-v0.2.0}
+        VERSION: ${NEURALGENTICS_VERSION:-latest}
     container_name: neuralgentics-backend
     environment:
       NEURALGENTICS_DB_URL: postgresql://${NEURALGENTICS_DB_USER:-postgres}:${NEURALGENTICS_DB_PASSWORD:-neuralgentics}@neuralgentics-postgres:5432/${NEURALGENTICS_DB_NAME:-neuralgentics}
@@ -79,10 +74,6 @@ services:
       MEMINI_MEMORY_GRAPH: "true"
       MEMINI_KG_ENABLED: "true"
       THOUGHT_CHAINS: "true"
-      LLM_URL: "http://host.docker.internal:12434/engines/v1"  # Falls back if models: block is ignored
-      LLM_MODEL: "ai/qwen2.5-coder:7b"
-    models:
-      - llm
     networks:
       - neuralgentics-net
     depends_on:
@@ -91,53 +82,6 @@ services:
       neuralgentics-sidecar:
         condition: service_healthy
     restart: unless-stopped
-
-  # ── TUI (interactive — comment/uncomment as needed) ─────────────────────
-  # The TUI is commented out by default. Most users interact with the backend
-  # programmatically. Uncomment to attach a TUI session to a running stack:
-  #   docker compose run --rm neuralgentics-tui
-  #
-  neuralgentics-tui:
-    image: ghcr.io/veedubin/neuralgentics-tui:${NEURALGENTICS_VERSION:-v0.2.0}
-    build:
-      context: .
-      dockerfile: docker/tui.Dockerfile
-      args:
-        VERSION: ${NEURALGENTICS_VERSION:-v0.2.0}
-    container_name: neuralgentics-tui
-    environment:
-      NEURALGENTICS_BACKEND_URL: ws://neuralgentics-backend:8080
-      LLM_URL: "http://host.docker.internal:12434/engines/v1"  # Falls back if models: block is ignored
-      LLM_MODEL: "ai/qwen2.5-coder:7b"
-    models:
-      - llm
-    networks:
-      - neuralgentics-net
-    depends_on:
-      - neuralgentics-backend
-    stdin_open: true
-    tty: true
-
-# ── Named model resources (Docker Compose v2.38+) ──────────────────────
-# These reference models served by Docker Model Runner (DMR), a host-level
-# component of Docker Desktop 4.40+. The actual model execution happens via
-# DMR's OpenAI-compatible API at http://host.docker.internal:12434/engines/v1
-# (or http://localhost:12434/engines/v1 when running on the host).
-#
-# Services that opt into a model reference via `models: [llm]` get env vars
-# auto-injected:
-#   - LLM_URL
-#   - LLM_MODEL
-# Compose requires Docker Engine 4.40+ and Compose v2.38+. Older versions
-# will warn and ignore the block. We pin the version in the README and the
-# GH release notes.
-models:
-  llm:
-    model: ai/qwen2.5-coder:7b
-    context_size: 4096
-    runtime_flags:
-      - --temp
-      - "0.1"
 
 volumes:
   neuralgentics-db:

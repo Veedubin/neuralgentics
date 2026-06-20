@@ -10,12 +10,12 @@
 #   curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash
 #   curl ... | bash -s -- --home-dir              # install to ~/.neuralgentics
 #   curl ... | bash -s -- --prefix /opt/ng        # custom install root
-#   curl ... | bash -s -- --version 0.7.2         # specific version
+#   curl ... | bash -s -- --version 0.7.3         # specific version
 #   curl ... | bash -s -- --dry-run               # preview without installing
 set -euo pipefail
 
 APP="neuralgentics"
-DEFAULT_VERSION="0.7.2"
+DEFAULT_VERSION="0.7.3"
 REPO="${NEURALGENTICS_REPO:-Veedubin/neuralgentics}"
 
 # ─── Defaults ────────────────────────────────────────────────────────────────
@@ -105,7 +105,7 @@ log "Installing neuralgentics v${VERSION} to ${PREFIX}"
 # ─── Download ────────────────────────────────────────────────────────────────
 
 ARCHIVE="neuralgentics-${VERSION}-plugin.tar.gz"
-# Fallback: if the plugin-only archive doesn't exist yet (pre-v0.7.2),
+# Fallback: if the plugin-only archive doesn't exist yet (pre-v0.7.3),
 # try the old multi-platform archive name.
 ARCHIVE_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${ARCHIVE}"
 CHECKSUMS_URL="https://github.com/${REPO}/releases/download/v${VERSION}/checksums.txt"
@@ -159,7 +159,7 @@ fi
 log "Extracting to ${PREFIX}..."
 mkdir -p "$PREFIX"
 
-# Strip the top-level directory from the archive (e.g. neuralgentics-0.7.2/)
+# Strip the top-level directory from the archive (e.g. neuralgentics-0.7.3/)
 tar -xzf "$ARCHIVE_PATH" -C "$PREFIX" --strip-components=1 2>/dev/null || {
     # Fallback for non-GNU tar
     TMP_EXTRACT="${TMPDIR}/${APP}_extract_$$"
@@ -208,6 +208,10 @@ cat <<EOF >&2
     cd your-project
     ln -s ${PREFIX}/.opencode .opencode
     opencode
+
+  Memory backend (PostgreSQL + pgvector + TimescaleDB):
+    docker compose -f ${PREFIX}/docker-compose.yml up -d
+    (or: podman-compose -f ${PREFIX}/docker-compose.yml up -d)
 
   (If opencode is not installed: curl -fsSL https://opencode.ai/install.sh | bash)
 EOF
