@@ -1945,6 +1945,12 @@ register_project() {
         if $DRY_RUN; then
             printf "  [dry-run] ln -sf %s %s\n" "$prefix_opencode" "$project_opencode" >&2
         else
+            # CRITICAL: rm -f the existing symlink/file first. ln -sf
+            # dereferences existing symlinks — if $project_opencode is
+            # already a symlink to $prefix_opencode, ln follows it and
+            # creates .opencode/.opencode -> .opencode (self-referential
+            # loop) instead of replacing the symlink.
+            rm -f "$project_opencode"
             ln -sf "$prefix_opencode" "$project_opencode"
             log "Symlinked $project_opencode -> $prefix_opencode"
         fi
