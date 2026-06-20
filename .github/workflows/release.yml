@@ -1,16 +1,14 @@
 # ─── Neuralgentics Release Pipeline ──────────────────────────────────────────
-# Builds 5 platform targets, aggregates checksums, creates GitHub Release,
-# and pushes container images to GHCR.
+# Builds a single platform-independent tarball containing:
+#   - @neuralgentics/plugin (compiled TypeScript overlay)
+#   - .opencode/ config (agents, skills, opencode.json, AGENTS.md)
+#
+# No Go binaries. No TUI. No sidecar. No containers. Just the plugin
+# that opencode loads and the config that makes it work.
 #
 # Triggers:
-#   - Push of v* tag (e.g. v0.1.0, v0.1.1, v0.2.0)
+#   - Push of v* tag (e.g. v0.7.2)
 #   - Manual workflow_dispatch for testing
-#
-# Build matrix:
-#   linux-amd64, linux-arm64, darwin-arm64, windows-amd64, windows-arm64
-#
-# Note: windows-arm64 has no bun build --compile target; falls back to
-#       bun build bundle + requires Bun runtime on the target machine.
 # ────────────────────────────────────────────────────────────────────────────────
 
 name: Release
@@ -22,371 +20,132 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag (e.g. v0.1.0-rc1)'
+        description: 'Release tag (e.g. v0.7.2-rc1)'
         required: true
         type: string
 
 permissions:
   contents: write
-  packages: write
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 env:
-  # Opt in to Node.js 24 for all JavaScript actions (silences Node 20
-  # deprecation warnings and ensures forward-compatibility after
-  # September 16, 2026 when Node 20 is removed from GH runners).
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-  # Extract version from tag, stripping the leading 'v'
-  VERSION: ${{ github.ref_name != '' && startsWith(github.ref_name, 'v') && github.ref_name || inputs.tag }}
+  VERSION: ${{ github.ref_name != '' && startsWith(github.ref_name, 'v') && github.ref_name || inputs.tag || '0.0.0-dev' }}
 
 jobs:
-  # ── Job 1: Build binaries for all 5 targets ────────────────────────────────
-  build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # ── Linux x86_64 (ubiquitous) ──
-          - target: linux-amd64
-            runner: ubuntu-latest
-            goos: linux
-            goarch: amd64
-            bun_target: bun-linux-x64
-            archive_fmt: tar.gz
-
-          # ── Linux ARM64 (Graviton, Raspberry Pi 4/5 64-bit) ──
-          - target: linux-arm64
-            runner: ubuntu-24.04-arm
-            goos: linux
-            goarch: arm64
-            bun_target: bun-linux-arm64
-            archive_fmt: tar.gz
-
-          # ── macOS ARM64 (Apple Silicon only) ──
-          - target: darwin-arm64
-            runner: macos-latest
-            goos: darwin
-            goarch: arm64
-            bun_target: bun-darwin-arm64
-            archive_fmt: tar.gz
-
-          # ── Windows x86_64 ──
-          - target: windows-amd64
-            runner: windows-2022
-            goos: windows
-            goarch: amd64
-            bun_target: bun-windows-x64
-            archive_fmt: zip
-
-          # ── Windows ARM64 (Snapdragon X, Surface Pro X) ──
-          # NOTE: bun build --compile has no bun-windows-arm64 target.
-          #       TUI ships as a bun bundle requiring the Bun runtime.
-          - target: windows-arm64
-            runner: windows-2022
-            goos: windows
-            goarch: arm64
-            bun_target: none
-            archive_fmt: zip
-
+  # ── Single job: compile plugin + bundle config + create release ──────────
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Go 1.25
-        uses: actions/setup-go@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          go-version: '1.25'
+          node-version: '22'
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: '1.3'
-
-      - name: Go module cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ hashFiles('packages/*/go.sum') }}
-          restore-keys: go-${{ runner.os }}-
-
-      # ── Build Go backend ────────────────────────────────────────────────
-      - name: Build Go backend (${{ matrix.goos }}/${{ matrix.goarch }})
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
-          GOWORK: off
+      # ── Compile the overlay TypeScript plugin ────────────────────────────
+      - name: Compile overlay plugin
         run: |
-          cd packages/backend-go
-          VERSION="${GITHUB_REF_NAME#v}"
-          # For workflow_dispatch, use the input tag
-          if [ -n "${{ inputs.tag }}" ]; then
-            VERSION="${{ inputs.tag }}"
-            VERSION="${VERSION#v}"
-          fi
-          go build -trimpath \
-            -ldflags="-s -w -X main.version=${VERSION}" \
-            -o neuralgentics-backend ./cmd/backend/
-          # On Windows, rename to .exe
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            mv neuralgentics-backend neuralgentics-backend.exe
-          fi
-        shell: bash
-
-      # ── Assemble archive ──────────────────────────────────────────────
-      - name: Assemble archive
-        run: |
-          mkdir -p dist/neuralgentics/bin dist/neuralgentics/lib/embedding-sidecar
-
-          # Go backend
-          cp packages/backend-go/neuralgentics-backend* dist/neuralgentics/bin/ 2>/dev/null || true
-
-          # Python sidecar source (no venv — users install deps separately)
-          if [ -d "packages/memory/cmd/embedding-sidecar" ]; then
-            cp -r packages/memory/cmd/embedding-sidecar/embedding_sidecar/ \
-                  dist/neuralgentics/lib/embedding-sidecar/ 2>/dev/null || true
-            cp packages/memory/cmd/embedding-sidecar/main.py \
-               packages/memory/cmd/embedding-sidecar/requirements.txt \
-               dist/neuralgentics/lib/embedding-sidecar/ 2>/dev/null || true
-            if [ -d "packages/memory/cmd/embedding-sidecar/proto" ]; then
-              cp -r packages/memory/cmd/embedding-sidecar/proto/ \
-                    dist/neuralgentics/lib/embedding-sidecar/ 2>/dev/null || true
-            fi
-          fi
-
-          # ── OpenCode agent system ────────────────────────────────────
-          # Compile the overlay TypeScript plugin (runs inside OpenCode as
-          # the neuralgentics orchestrator, memory client, routing, etc.)
           cd overlay/packages/opencode
           npm install --no-audit --no-fund
           npx tsc
           cd "${{ github.workspace }}"
 
-          # Bundle the compiled overlay as a local plugin package so
-          # OpenCode can load it without an npm publish step.
-          mkdir -p dist/neuralgentics/node_modules/@neuralgentics/plugin
+      # ── Assemble archive ────────────────────────────────────────────────
+      - name: Assemble archive
+        run: |
+          VERSION_STR="$(echo "$VERSION" | sed 's/^v//')"
+          ARCHIVE_DIR="neuralgentics-${VERSION_STR}"
+          mkdir -p "dist/${ARCHIVE_DIR}"
+
+          # ── Plugin (compiled overlay) ──────────────────────────────────
+          mkdir -p "dist/${ARCHIVE_DIR}/node_modules/@neuralgentics/plugin"
           cp overlay/packages/opencode/package.json \
-             dist/neuralgentics/node_modules/@neuralgentics/plugin/
+             "dist/${ARCHIVE_DIR}/node_modules/@neuralgentics/plugin/"
           cp -r overlay/packages/opencode/dist/* \
-                dist/neuralgentics/node_modules/@neuralgentics/plugin/
+                "dist/${ARCHIVE_DIR}/node_modules/@neuralgentics/plugin/"
 
-          # Agent personas, skills, and OpenCode config (source files only —
-          # node_modules is resolved by npm install at install time).
-          mkdir -p dist/neuralgentics/.opencode/agents dist/neuralgentics/.opencode/skills
-          cp .opencode/agents/*.md dist/neuralgentics/.opencode/agents/
-          cp -r .opencode/skills/* dist/neuralgentics/.opencode/skills/
-          cp .opencode/opencode.json dist/neuralgentics/.opencode/
-          cp .opencode/package.json dist/neuralgentics/.opencode/
-          cp .opencode/package-lock.json dist/neuralgentics/.opencode/
-          cp .opencode/.gitignore dist/neuralgentics/.opencode/
+          # ── .opencode/ config ──────────────────────────────────────────
+          mkdir -p "dist/${ARCHIVE_DIR}/.opencode/agents" \
+                   "dist/${ARCHIVE_DIR}/.opencode/skills"
+          cp .opencode/agents/*.md "dist/${ARCHIVE_DIR}/.opencode/agents/"
+          cp -r .opencode/skills/* "dist/${ARCHIVE_DIR}/.opencode/skills/"
+          cp .opencode/opencode.json "dist/${ARCHIVE_DIR}/.opencode/"
+          cp .opencode/package.json "dist/${ARCHIVE_DIR}/.opencode/"
+          cp .opencode/package-lock.json "dist/${ARCHIVE_DIR}/.opencode/"
+          cp .opencode/.gitignore "dist/${ARCHIVE_DIR}/.opencode/"
 
-          # Add the local overlay plugin as a file: dependency so npm
-          # install resolves it from the bundled node_modules/ directory.
-          # The opencode.json plugin field stays as "@neuralgentics/plugin"
-          # — npm/node_modules resolution handles the rest.
-          node -e "const pkg=require('./dist/neuralgentics/.opencode/package.json'); pkg.dependencies['@neuralgentics/plugin']='file:../node_modules/@neuralgentics/plugin'; require('fs').writeFileSync('./dist/neuralgentics/.opencode/package.json', JSON.stringify(pkg, null, 2)+'\n')"
+          # Add the local overlay plugin as a file: dependency
+          node -e "
+            const pkg = require('./dist/${ARCHIVE_DIR}/.opencode/package.json');
+            pkg.dependencies['@neuralgentics/plugin'] = 'file:../node_modules/@neuralgentics/plugin';
+            require('fs').writeFileSync(
+              './dist/${ARCHIVE_DIR}/.opencode/package.json',
+              JSON.stringify(pkg, null, 2) + '\n'
+            );
+          "
 
-          # Project instructions (loaded by OpenCode via the "instructions"
-          # field in opencode.json). Placed inside .opencode/ so the
-          # relative path "AGENTS.md" resolves correctly regardless of
-          # which project directory the user runs opencode from.
-          cp AGENTS.md dist/neuralgentics/.opencode/AGENTS.md
+          # Project instructions
+          cp AGENTS.md "dist/${ARCHIVE_DIR}/.opencode/AGENTS.md"
 
           # Install script
           if [ -f "scripts/install.sh" ]; then
-            cp scripts/install.sh dist/neuralgentics/install.sh
-            chmod +x dist/neuralgentics/install.sh
+            cp scripts/install.sh "dist/${ARCHIVE_DIR}/install.sh"
+            chmod +x "dist/${ARCHIVE_DIR}/install.sh"
           fi
 
-          # Make binaries executable
-          chmod +x dist/neuralgentics/bin/* 2>/dev/null || true
-
-          # Create archive
+          # Create tarball
           cd dist
-          ARCHIVE_NAME="neuralgentics-$(echo "${{ github.ref_name }}" | sed 's/^v//')-${{ matrix.target }}"
-          # For workflow_dispatch, prefer the input tag
-          if [ -n "${{ inputs.tag }}" ]; then
-            ARCHIVE_NAME="neuralgentics-$(echo "${{ inputs.tag }}" | sed 's/^v//')-${{ matrix.target }}"
-          fi
-
-          if [ "${{ matrix.archive_fmt }}" = "tar.gz" ]; then
-            tar -czf "${ARCHIVE_NAME}.tar.gz" neuralgentics/
-            echo "archive=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_OUTPUT
-          else
-            # Windows: use PowerShell Compress-Archive
-            powershell -Command "Compress-Archive -Path 'neuralgentics' -DestinationPath '${ARCHIVE_NAME}.zip' -Force"
-            echo "archive=${ARCHIVE_NAME}.zip" >> $GITHUB_OUTPUT
-          fi
+          tar -czf "${ARCHIVE_DIR}.tar.gz" "${ARCHIVE_DIR}/"
+          echo "archive=${ARCHIVE_DIR}.tar.gz" >> $GITHUB_OUTPUT
+          echo "archive_dir=${ARCHIVE_DIR}" >> $GITHUB_OUTPUT
         shell: bash
         id: archive
 
-      # ── Generate SHA256 ───────────────────────────────────────────────
+      # ── Generate SHA256 ─────────────────────────────────────────────────
       - name: Generate SHA256
         run: |
           cd dist
-          if command -v sha256sum &>/dev/null; then
-            sha256sum "${{ steps.archive.outputs.archive }}" >> checksum-${{ matrix.target }}.txt
-          else
-            # macOS fallback
-            shasum -a 256 "${{ steps.archive.outputs.archive }}" >> checksum-${{ matrix.target }}.txt
-          fi
-          cat checksum-${{ matrix.target }}.txt
-        shell: bash
-
-      # ── Upload as build artifact (for checksum aggregation) ───────────
-      - name: Upload archive
-        uses: actions/upload-artifact@v5
-        with:
-          name: neuralgentics-${{ matrix.target }}
-          path: dist/${{ steps.archive.outputs.archive }}
-          retention-days: 1
-
-      - name: Upload checksum
-        uses: actions/upload-artifact@v5
-        with:
-          name: checksum-${{ matrix.target }}
-          path: dist/checksum-${{ matrix.target }}.txt
-          retention-days: 1
-
-  # ── Job 2: Assemble checksums + create GitHub Release ──────────────────
-  # Only runs on tag pushes (v*). Main branch pushes run the build matrix
-  # for validation but skip release creation.
-  release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [build]
-    if: success() && startsWith(github.ref, 'refs/tags/v')
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v5
-        with:
-          path: artifacts/
-
-      - name: Merge checksums
-        run: |
-          cat artifacts/checksum-*/*.txt > checksums.txt
+          sha256sum "${{ steps.archive.outputs.archive }}" > checksums.txt
           cat checksums.txt
-
-      - name: Move archives to staging
-        run: |
-          mkdir -p staging
-          find artifacts/neuralgentics-* -type f \( -name '*.tar.gz' -o -name '*.zip' \) \
-            -exec cp {} staging/ \;
-          cp checksums.txt staging/
-          ls -lh staging/
-
-      - name: Stage extra release assets
-        run: |
-          cp scripts/install.sh staging/install.sh
-          cp docker-compose.yml staging/docker-compose.yml
-          cp podman-compose.yml staging/podman-compose.yml
-          cp compose.example.env staging/compose.example.env
-          cp docker/postgres.Dockerfile staging/postgres.Dockerfile
-          cp docker/sidecar.Dockerfile staging/sidecar.Dockerfile
-          cp docker/backend.Dockerfile staging/backend.Dockerfile
-          cp docker/tui.Dockerfile staging/tui.Dockerfile
-          ls -lh staging/
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          name: "Neuralgentics ${{ github.ref_name }}"
-          body_path: docs/changelog.md
-          files: staging/*
-          generate_release_notes: true
-          fail_on_unmatched_files: true
-
-      - name: Update latest tag alias (best-effort)
-        continue-on-error: true
-        run: |
-          # Move the 'latest' mutable tag to point to this release.
-          # NOTE: The default GITHUB_TOKEN does not have `workflows` permission
-          # to push a tag whose name matches a workflow file path. This step
-          # is best-effort; the maintainer manually updates the `latest` alias
-          # after each release using a personal access token:
-          #   git tag -f latest <sha>
-          #   git push origin latest --force
-          # Alternatively, GitHub's release-marking (`releases/latest`) is
-          # # authoritative for the "Latest" badge on the releases page.
-          git tag -f latest ${{ github.sha }}
-          git push origin latest --force
         shell: bash
 
-  # ── Job 3: Build and push container images ─────────────────────────────
-  containers:
-    name: Build & Push Container Images
-    runs-on: ubuntu-latest
-    needs: [build]
-    if: success() || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Login to GHCR
-        uses: docker/login-action@v4
+      # ── Create GitHub Release (tag pushes only) ─────────────────────────
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          name: "${{ steps.archive.outputs.archive_dir }}"
+          body: |
+            ## neuralgentics ${{ steps.archive.outputs.archive_dir }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+            OpenCode plugin — agent personas, skills, routing enforcement, and MCP tools.
 
-      - name: Build & Push PostgreSQL + pgvector
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/postgres.Dockerfile
-          push: true
-          tags: |
-            ghcr.io/veedubin/neuralgentics-postgres:${{ github.ref_name }}
-            ghcr.io/veedubin/neuralgentics-postgres:latest
+            ### Install
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash -s -- --home-dir --existing
+            ```
 
-      - name: Build & Push embedding sidecar
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/sidecar.Dockerfile
-          push: true
-          tags: |
-            ghcr.io/veedubin/neuralgentics-sidecar:${{ github.ref_name }}
-            ghcr.io/veedubin/neuralgentics-sidecar:latest
+            ### Activate
+            ```bash
+            cd your-project
+            ln -s ~/.neuralgentics/.opencode .opencode
+            opencode
+            ```
 
-      - name: Build & Push Go backend
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/backend.Dockerfile
-          push: true
-          build-args: |
-            VERSION=${{ github.ref_name }}
-          tags: |
-            ghcr.io/veedubin/neuralgentics-backend:${{ github.ref_name }}
-            ghcr.io/veedubin/neuralgentics-backend:latest
-
-      - name: Build & Push TUI
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/tui.Dockerfile
-          push: true
-          build-args: |
-            VERSION=${{ github.ref_name }}
-          tags: |
-            ghcr.io/veedubin/neuralgentics-tui:${{ github.ref_name }}
-            ghcr.io/veedubin/neuralgentics-tui:latest
+            ### What's included
+            - `@neuralgentics/plugin` — compiled TypeScript overlay (orchestrator, memory client, routing)
+            - `.opencode/agents/` — 8 agent personas (architect, coder, explorer, git, orchestrator, reviewer, tester, writer)
+            - `.opencode/skills/` — 5 skills (boomerang-orchestrator, kanban-board-manager, skill-self-audit, todo-list-updater, update-gh-docs)
+            - `.opencode/opencode.json` — OpenCode config with Ollama Cloud models, MCP servers, LSP, formatter
+            - `.opencode/AGENTS.md` — Project instructions and agent protocol
+          files: |
+            dist/${{ steps.archive.outputs.archive }}
+            dist/checksums.txt
+            scripts/install.sh
