@@ -15,7 +15,7 @@
 set -euo pipefail
 
 APP="neuralgentics"
-DEFAULT_VERSION="0.6.8"
+DEFAULT_VERSION="0.7.0"
 
 # ─── Defaults ────────────────────────────────────────────────────────────────
 
@@ -684,18 +684,16 @@ extract_archive() {
 post_install() {
     log "Setting up binaries..."
 
-    # chmod +x all binaries
+    # chmod +x backend binary
     if $DRY_RUN; then
         printf "  [dry-run] chmod +x %s/bin/*\n" "$PREFIX" >&2
     else
-        chmod +x "$INSTALL_BIN"/neuralgentics* 2>/dev/null || true
         chmod +x "$INSTALL_BIN"/neuralgentics-backend* 2>/dev/null || true
     fi
 
     # macOS quarantine removal
     if [[ "$DETECTED_OS" == "darwin" ]]; then
         if ! $DRY_RUN; then
-            xattr -d com.apple.quarantine "$INSTALL_BIN"/neuralgentics* 2>/dev/null || true
             xattr -d com.apple.quarantine "$INSTALL_BIN"/neuralgentics-backend* 2>/dev/null || true
         fi
         verbose "Removed macOS quarantine attribute"
@@ -904,9 +902,7 @@ verify_install() {
     log "Verifying installation..."
 
     local checks=(
-        "$INSTALL_BIN/neuralgentics:TUI binary"
         "$INSTALL_BIN/neuralgentics-backend:Backend binary"
-        "$BIN_LINK_DIR/neuralgentics:neuralgentics symlink"
     )
 
     local entry
@@ -920,19 +916,6 @@ verify_install() {
             errors=$((errors + 1))
         fi
     done
-
-    # TUI binary: executable + size check (TUI has no --version mode; running it
-    # would open a full TUI render and hang the install script forever — Bug #6)
-    if [[ -x "$INSTALL_BIN/neuralgentics" ]]; then
-        local tui_size
-        tui_size=$(stat -c '%s' "$INSTALL_BIN/neuralgentics" 2>/dev/null || stat -f '%z' "$INSTALL_BIN/neuralgentics" 2>/dev/null || echo 0)
-        if [[ "$tui_size" -gt 50000000 ]]; then
-            printf "  ✓ %-30s %s (%d bytes)\n" "TUI binary" "$INSTALL_BIN/neuralgentics" "$tui_size" >&2
-        else
-            printf "  ✗ %-30s %s (suspiciously small: %d bytes)\n" "TUI binary" "$INSTALL_BIN/neuralgentics" "$tui_size" >&2
-            errors=$((errors + 1))
-        fi
-    fi
 
     if [[ -x "$INSTALL_BIN/neuralgentics-backend" ]]; then
         local bout
@@ -1968,72 +1951,6 @@ register_project() {
     fi
 }
 
-# ─── OpenCode runtime ──────────────────────────────────────────────────────────
-# neuralgentics spawns opencode internally via the SDK. The user never runs
-# 'opencode' directly — they run 'neuralgentics'. But the opencode binary
-# must be on PATH for the TUI to spawn it. Download it from GitHub releases
-# into $PREFIX/bin/ alongside neuralgentics.
-
-_install_opencode() {
-    # Already installed? Check both the install prefix and system PATH.
-    if command -v opencode >/dev/null 2>&1; then
-        log "OpenCode runtime already on PATH ($(opencode --version 2>/dev/null || echo 'unknown'))"
-        return 0
-    fi
-    if [[ -x "$PREFIX/bin/opencode" ]]; then
-        log "OpenCode runtime already in $PREFIX/bin/"
-        return 0
-    fi
-
-    log "Installing OpenCode runtime (required by neuralgentics TUI)..."
-
-    # Map our OS/arch to opencode's release naming
-    local oc_os oc_arch
-    case "$DETECTED_OS" in
-        linux)   oc_os="linux" ;;
-        darwin)  oc_os="mac" ;;
-        *)       warn "Unsupported OS for opencode: $DETECTED_OS — install manually"; return 0 ;;
-    esac
-    case "$DETECTED_ARCH" in
-        amd64|x86_64) oc_arch="x86_64" ;;
-        arm64|aarch64) oc_arch="arm64" ;;
-        *)            warn "Unsupported arch for opencode: $DETECTED_ARCH — install manually"; return 0 ;;
-    esac
-
-    local oc_version="0.0.55"  # latest stable as of 2026-06-18
-    local oc_archive="opencode-${oc_os}-${oc_arch}.tar.gz"
-    local oc_url="https://github.com/opencode-ai/opencode/releases/download/v${oc_version}/${oc_archive}"
-
-    if $DRY_RUN; then
-        printf "  [dry-run] download %s → %s/bin/opencode\n" "$oc_url" "$PREFIX" >&2
-        return 0
-    fi
-
-    local tmp_dir="${TMPDIR:-/tmp}/opencode_install_$$"
-    mkdir -p "$tmp_dir"
-    local oc_path="$tmp_dir/$oc_archive"
-
-    log "Downloading $oc_archive..."
-    if ! curl -fsSL "$oc_url" -o "$oc_path" 2>/dev/null; then
-        warn "Failed to download opencode from $oc_url"
-        warn "Install manually: curl -fsSL https://opencode.ai/install.sh | bash"
-        rm -rf "$tmp_dir"
-        return 0
-    fi
-
-    # Extract — the archive contains a single 'opencode' binary at the root
-    tar -xzf "$oc_path" -C "$tmp_dir" opencode 2>/dev/null
-    if [[ -f "$tmp_dir/opencode" ]]; then
-        chmod +x "$tmp_dir/opencode"
-        mv "$tmp_dir/opencode" "$PREFIX/bin/opencode"
-        log "OpenCode runtime installed to $PREFIX/bin/opencode"
-    else
-        warn "opencode binary not found in archive — install manually"
-    fi
-
-    rm -rf "$tmp_dir"
-}
-
 # ─── Sidecar auto-setup ────────────────────────────────────────────────────────
 # When a GPU is detected, download the embedding sidecar source files,
 # create a Python venv, install dependencies, and pre-download the
@@ -2216,15 +2133,7 @@ main() {
     # 7. Post-install
     post_install
 
-    # 7.5. OpenCode runtime — neuralgentics spawns opencode internally via
-    #      the SDK. Download it from GitHub releases into $PREFIX/bin/ so
-    #      it's always available alongside neuralgentics.
-    _install_opencode
-
-    # 8. PATH setup
-    setup_path
-
-    # 9. Interactive prompt: database (after install, before verification).
+    # 8. Interactive prompt: database (after install, before verification).
     #    If this returns non-zero (e.g. --existing was passed but .env is
     #    missing, or no container runtime was found), abort the install.
     if ! prompt_database; then
@@ -2254,7 +2163,7 @@ main() {
 
    Install root:  ${PREFIX}
    Data dir:      ${NEURALGENTICS_DATA_DIR}
-   Binary link:   ${BIN_LINK_DIR}/neuralgentics
+   Backend:       ${INSTALL_BIN}/neuralgentics-backend
    Env:           source ${NEURALGENTICS_DATA_DIR}/install.env
 EOF
 
@@ -2290,27 +2199,14 @@ EOF
     cat <<EOF >&2
   Docs:          https://github.com/${REPO}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  ═══════════════════════════════════════════════════════════════
-   PATH was written to your shell config but this terminal
-   session doesn't see it yet (curl|bash runs in a subshell).
-   Run this exact command now to use neuralgentics immediately:
-
-     export PATH="${BIN_LINK_DIR}:\$PATH"
-
-   (Also run 'source ~/.bashrc' or restart your terminal for
-    permanent effect across all future sessions.)
-  ═══════════════════════════════════════════════════════════════
 EOF
 
     # ── Activation ─────────────────────────────────────────────────────
     # The .opencode/ config (agent personas, skills, MCP servers) lives in
-    # the install prefix. The TUI auto-detects it on startup — no manual
-    # symlink needed. For explicit setup, run 'neuralgentics init'.
+    # the install prefix. Symlink it into your project and run opencode.
     echo "" >&2
     printf "  To activate in a project:\n" >&2
-    printf "    cd your-project && neuralgentics init && neuralgentics\n" >&2
-    printf "  (The TUI auto-links .opencode/ on startup — 'init' is optional)\n" >&2
+    printf "    cd your-project && ln -s %s/.opencode .opencode && opencode\n" "$PREFIX" >&2
     echo "" >&2
 }
 
