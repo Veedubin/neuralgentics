@@ -152,17 +152,22 @@ log "Extracting to ${PREFIX}..."
 mkdir -p "$PREFIX"
 
 # Strip the top-level directory from the archive (e.g. neuralgentics-0.7.4/)
-tar -xzf "$ARCHIVE_PATH" -C "$PREFIX" --strip-components=1 2>/dev/null || {
-    # Fallback for non-GNU tar
+if ! tar -xzf "$ARCHIVE_PATH" -C "$PREFIX" --strip-components=1 2>/dev/null; then
+    # Fallback for non-GNU tar (macOS, busybox)
     TMP_EXTRACT="${TMPDIR}/${APP}_extract_$$"
     mkdir -p "$TMP_EXTRACT"
-    tar -xzf "$ARCHIVE_PATH" -C "$TMP_EXTRACT"
+    tar -xzf "$ARCHIVE_PATH" -C "$TMP_EXTRACT" || err "Failed to extract archive"
     INNER="$(find "$TMP_EXTRACT" -mindepth 1 -maxdepth 1 -type d | head -1)"
     if [[ -n "$INNER" ]]; then
         find "$INNER" -mindepth 1 -maxdepth 1 -exec mv {} "$PREFIX/" \;
     fi
     rm -rf "$TMP_EXTRACT"
-}
+fi
+
+# Verify extraction: the key files must exist
+if [[ ! -f "$PREFIX/.opencode/agents/coder.md" ]]; then
+    err "Extraction failed — .opencode/agents/coder.md not found in ${PREFIX}. The archive may be corrupt or the disk may be full."
+fi
 
 # ── Install npm dependencies ────────────────────────────────────────────────
 
