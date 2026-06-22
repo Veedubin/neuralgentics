@@ -1,6 +1,6 @@
 {
   "name": "@neuralgentics/tui",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "Neuralgentics TUI — OpenTUI-based terminal interface",
   "type": "module",
   "main": "src/index.ts",

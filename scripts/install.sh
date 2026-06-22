@@ -10,12 +10,12 @@
 #   curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash
 #   curl ... | bash -s -- --home-dir              # install to ~/.neuralgentics
 #   curl ... | bash -s -- --prefix /opt/ng        # custom install root
-#   curl ... | bash -s -- --version 0.7.3         # specific version
+#   curl ... | bash -s -- --version 0.7.4         # specific version
 #   curl ... | bash -s -- --dry-run               # preview without installing
 set -euo pipefail
 
 APP="neuralgentics"
-DEFAULT_VERSION="0.7.3"
+DEFAULT_VERSION="0.7.4"
 REPO="${NEURALGENTICS_REPO:-Veedubin/neuralgentics}"
 
 # ─── Defaults ────────────────────────────────────────────────────────────────
@@ -104,9 +104,7 @@ log "Installing neuralgentics v${VERSION} to ${PREFIX}"
 
 # ─── Download ────────────────────────────────────────────────────────────────
 
-ARCHIVE="neuralgentics-${VERSION}-plugin.tar.gz"
-# Fallback: if the plugin-only archive doesn't exist yet (pre-v0.7.3),
-# try the old multi-platform archive name.
+ARCHIVE="neuralgentics-${VERSION}.tar.gz"
 ARCHIVE_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${ARCHIVE}"
 CHECKSUMS_URL="https://github.com/${REPO}/releases/download/v${VERSION}/checksums.txt"
 
@@ -125,13 +123,7 @@ ARCHIVE_PATH="${TMP_DIR}/${ARCHIVE}"
 
 log "Downloading ${ARCHIVE}..."
 if ! curl -fsSL --retry 3 --retry-delay 2 "$ARCHIVE_URL" -o "$ARCHIVE_PATH"; then
-    # Try the old archive name as fallback
-    OLD_ARCHIVE="neuralgentics-${VERSION}-linux-amd64.tar.gz"
-    OLD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${OLD_ARCHIVE}"
-    log "Plugin archive not found, trying legacy archive: ${OLD_ARCHIVE}..."
-    if ! curl -fsSL --retry 3 --retry-delay 2 "$OLD_URL" -o "$ARCHIVE_PATH"; then
-        err "Download failed. Check that version ${VERSION} exists at: https://github.com/${REPO}/releases"
-    fi
+    err "Download failed. Check that version ${VERSION} exists at: https://github.com/${REPO}/releases"
 fi
 
 # ── Verify SHA256 (best-effort) ─────────────────────────────────────────────
@@ -159,7 +151,7 @@ fi
 log "Extracting to ${PREFIX}..."
 mkdir -p "$PREFIX"
 
-# Strip the top-level directory from the archive (e.g. neuralgentics-0.7.3/)
+# Strip the top-level directory from the archive (e.g. neuralgentics-0.7.4/)
 tar -xzf "$ARCHIVE_PATH" -C "$PREFIX" --strip-components=1 2>/dev/null || {
     # Fallback for non-GNU tar
     TMP_EXTRACT="${TMPDIR}/${APP}_extract_$$"
