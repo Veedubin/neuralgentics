@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
@@ -18,10 +19,12 @@ import (
 // GRPCEmbedder connects to the Python embedding sidecar via gRPC
 // and implements the core.Embedder interface.
 type GRPCEmbedder struct {
-	conn   *grpc.ClientConn
-	client pb.EmbeddingServiceClient
-	addr   string
-	logger *slog.Logger
+	conn         *grpc.ClientConn
+	client       pb.EmbeddingServiceClient
+	addr         string
+	logger       *slog.Logger
+	healthy      atomic.Bool  // true when last health check succeeded
+	healthTicker *time.Ticker // stopped by Close()
 }
 
 // NewGRPCEmbedder creates a new gRPC embedder client.
@@ -31,10 +34,12 @@ func NewGRPCEmbedder(addr string, logger *slog.Logger) *GRPCEmbedder {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &GRPCEmbedder{
+	g := &GRPCEmbedder{
 		addr:   addr,
 		logger: logger,
 	}
+	g.healthy.Store(true) // optimistic until first health check
+	return g
 }
 
 // Connect establishes the gRPC connection to the sidecar.
@@ -81,7 +86,7 @@ func (g *GRPCEmbedder) embedWithModel(ctx context.Context, text, model string) (
 	if err != nil {
 		g.logger.Warn("embed RPC failed, attempting reconnect", "error", err)
 		if reconnectErr := g.reconnect(ctx); reconnectErr != nil {
-			return nil, fmt.Errorf("embed failed and reconnect failed: original=%w, reconnect=%w", err, reconnectErr)
+			return nil, fmt.Errorf("embed failed and reconnect failed: original=%w, reconnect=%w (hint: run scripts/sidecar.sh status)", err, reconnectErr)
 		}
 		resp, err = g.client.Embed(ctx, &pb.EmbedRequest{Text: text, Model: model})
 		if err != nil {
@@ -107,7 +112,7 @@ func (g *GRPCEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]floa
 
 	stream, err := g.client.EmbedBatch(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("embed batch open stream: %w", err)
+		return nil, fmt.Errorf("embed batch open stream: %w (hint: run scripts/sidecar.sh status)", err)
 	}
 
 	for _, text := range texts {
@@ -126,7 +131,7 @@ func (g *GRPCEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]floa
 			break
 		}
 		if recvErr != nil {
-			return nil, fmt.Errorf("embed batch receive: %w", recvErr)
+			return nil, fmt.Errorf("embed batch receive: %w (hint: run scripts/sidecar.sh status)", recvErr)
 		}
 		results = append(results, float32SliceToFloat64(resp.Vector))
 	}
@@ -147,7 +152,7 @@ func (g *GRPCEmbedder) Health(ctx context.Context) error {
 
 	resp, err := g.client.Health(ctx, &pb.HealthRequest{})
 	if err != nil {
-		return fmt.Errorf("health check: %w", err)
+		return fmt.Errorf("health check: %w (hint: run scripts/sidecar.sh status)", err)
 	}
 	if resp.Status != "ready" {
 		return fmt.Errorf("sidecar not ready: %s", resp.Status)
@@ -155,12 +160,45 @@ func (g *GRPCEmbedder) Health(ctx context.Context) error {
 	return nil
 }
 
-// Close shuts down the gRPC connection.
+// Close shuts down the gRPC connection and stops the health check ticker.
 func (g *GRPCEmbedder) Close(ctx context.Context) error {
+	if g.healthTicker != nil {
+		g.healthTicker.Stop()
+	}
 	if g.conn != nil {
 		return g.conn.Close()
 	}
 	return nil
+}
+
+// StartHealthCheck launches a background goroutine that calls Health periodically.
+// It returns a *time.Ticker so the caller can Stop() it on shutdown.
+// The health status is accessible via IsHealthy().
+func (g *GRPCEmbedder) StartHealthCheck(ctx context.Context, interval time.Duration) *time.Ticker {
+	ticker := time.NewTicker(interval)
+	g.healthTicker = ticker
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := g.Health(ctx); err != nil {
+					g.healthy.Store(false)
+					g.logger.Warn("sidecar health check failed", "error", err,
+						"hint", "run: scripts/sidecar.sh status && scripts/sidecar.sh start")
+				} else {
+					g.healthy.Store(true)
+				}
+			}
+		}
+	}()
+	return ticker
+}
+
+// IsHealthy returns true if the last background health check succeeded.
+func (g *GRPCEmbedder) IsHealthy() bool {
+	return g.healthy.Load()
 }
 
 // reconnect attempts to re-establish the gRPC connection with a brief backoff.

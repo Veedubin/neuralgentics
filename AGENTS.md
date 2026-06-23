@@ -89,6 +89,86 @@ This ensures shared knowledge reflects verified outcomes, not speculative predic
 | Reviewer | Primary | Code quality, security audit, and logic verification |
 | Explorer | Secondary | File finding and codebase mapping |
 | Tester | Secondary | Unit, integration, and E2E test generation |
+| Git | Secondary | Version control, commits, branches, tags |
+| Writer | Secondary | Documentation and markdown writing |
+
+## Architecture (v0.7.x — Plugin-Only)
+
+Neuralgentics is an **OpenCode plugin** — not a standalone TUI. The user runs `opencode`, which loads `@neuralgentics/plugin` from `.opencode/opencode.json`. The plugin provides:
+
+- **MCP tools**: routing validation, memory save/query, compaction backup/restore, stateless agent dispatch, self-evolution gate
+- **Lifecycle hooks**: session.created, session.idle, session.compacting
+- **Config merger**: injects neuralgentics version + memory URL into opencode config
+
+### Container Stack (memory backend)
+```
+docker compose -f ~/.neuralgentics/docker-compose.yml up -d
+```
+- **neuralgentics-postgres**: PostgreSQL 18 + pgvector + TimescaleDB (port 6000)
+- **neuralgentics-sidecar**: Python gRPC embedding service (BGE-Large, port 50051)
+- **neuralgentics-backend**: Go JSON-RPC memory server (trust engine, knowledge graph, thought chains)
+
+### Install Flow
+```bash
+curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash -s -- --home-dir
+cd your-project
+ln -s ~/.neuralgentics/.opencode .opencode
+opencode
+```
+
+### What's in the archive
+- `@neuralgentics/plugin` — compiled TypeScript overlay (orchestrator, memory client, routing)
+- `.opencode/agents/` — 8 agent personas (architect, coder, explorer, git, orchestrator, reviewer, tester, writer)
+- `.opencode/skills/` — 5 skills (boomerang-orchestrator, kanban-board-manager, skill-self-audit, todo-list-updater, update-gh-docs)
+- `.opencode/opencode.json` — OpenCode config with Ollama Cloud models, MCP servers, LSP, formatter
+- `.opencode/AGENTS.md` — Project instructions and agent protocol
+- `docker-compose.yml` + `docker/*.Dockerfile` — Container stack for memory backend
+
+### What was REMOVED (v0.7.0+)
+- **TUI binary** — the `neuralgentics` command no longer exists. Run `opencode` instead.
+- **Go backend binary in archive** — backend runs as a container, not a downloaded binary
+- **Sidecar auto-setup in installer** — sidecar runs as a container
+- **PATH setup** — no binary to put on PATH
+- **GPU detection** — handled by container runtime
+- **5-platform build matrix** — single platform-independent tarball
+
+## Container Deletion Policy (MANDATORY)
+
+**All agents MUST NOT delete, remove, `podman rm`, `podman rm -f`, `podman system prune`, `docker system prune`, `docker rm`, or otherwise destroy ANY container, volume, image, named volume, bind mount, or podman network/storage artifact for ANY reason — without explicit, case-by-case permission from the user.**
+
+This includes (but is not limited to):
+- `podman rm [-f|-a|-all] <container>`
+- `podman volume rm <volume>`
+- `podman rmi [-f] <image>`
+- `podman network rm <network>`
+- `podman system reset / podman system prune / podman system prune -a`
+- Any `rm -rf` against `/home/jcharles/.local/share/containers/storage/volumes/*`
+- Removing rows from `db.sql` (the podman container/volume/image state DB)
+- Wiping `/home/jcharles/Projects/MCP-Servers/PGVector-Data/`, `/home/jcharles/Projects/MCP-Servers/qdrant_storage/`, or any other project data directory
+
+**If an agent believes a container, volume, image, or artifact needs to be removed**, the agent must:
+1. **STOP and ASK the user** with the exact `podman rm` / `podman volume rm` / etc. command shown in full.
+2. Wait for explicit "yes, do it" approval.
+3. Only then execute.
+
+The same rule applies to containers the user previously had running that are currently stopped. A stopped container may still contain irreplaceable data, configuration, or state the user wants preserved.
+
+## Currently-Running Containers (as of 2026-06-20)
+
+| Container | Image | Port | State | Purpose |
+|-----------|-------|------|-------|---------|
+| `memini-postgres` | `docker.io/timescale/timescaledb-ha:pg18` | 5434 → 5432 | Running | Postgres 18 + TimescaleDB + pgvector. User's production DB. |
+| `neuralgentics-postgres` | `localhost/neuralgentics-postgres:test` | 6000 → 5432 | Running | Neuralgentics test DB. 14 tables initialized. |
+
+**DO NOT `podman rm` either of these containers without explicit user permission.**
+
+## Release Engineering Notes
+
+- **v0.7.3** is the latest tagged release (2026-06-20). Plugin-only tarball + container images.
+- **Release workflow**: single job compiles overlay plugin (`npx tsc`), bundles `.opencode/` config, creates tarball. Container job builds+pushes postgres/sidecar/backend to ghcr.io.
+- **Install script**: ~180 lines. Downloads tarball, extracts, runs `npm install`. No binary management, no PATH wrangling.
+- **Pre-release validation**: `scripts/validate-release.sh` — 8 checks (shell syntax, YAML, JSON, version consistency, file existence, TypeScript typecheck, Go vet, git status). Run before every `git tag`.
+- **Archive naming**: `neuralgentics-X.Y.Z.tar.gz` (single platform-independent tarball).
 
 ## Execution Ordering Rules (MANDATORY)
 

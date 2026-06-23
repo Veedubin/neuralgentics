@@ -138,6 +138,50 @@ See [Installation Guide](getting-started/installation.md) for the container quic
 
 See [Permission Model](architecture/permission-model.md) for the full matrix and [Broker Flow](architecture/broker-flow.md) for the request path.
 
+### Sidecar Lifecycle
+
+The embedding sidecar provides gRPC embedding services over a Unix domain socket. It can be managed two ways:
+
+**Systemd (Linux)** — `install.sh` generates a user service at `~/.config/systemd/user/neuralgentics-sidecar.service`:
+
+```bash
+systemctl --user start neuralgentics-sidecar
+systemctl --user stop neuralgentics-sidecar
+systemctl --user status neuralgentics-sidecar
+systemctl --user enable neuralgentics-sidecar   # auto-start on login
+journalctl --user -u neuralgentics-sidecar -f   # view logs
+```
+
+**PID-file wrapper (containers, WSL1, macOS)** — use `scripts/sidecar.sh`:
+
+```bash
+./scripts/sidecar.sh start     # idempotent, refuses if already running
+./scripts/sidecar.sh stop      # graceful, then SIGKILL after 10s
+./scripts/sidecar.sh restart   # stop + start
+./scripts/sidecar.sh status    # check if running
+```
+
+Key env vars (`scripts/.env.example` has the full list):
+
+| Var | Default | Purpose |
+|---|---|---|
+| `NEURALGENTICS_EMBED_DEVICE` | `cpu` | `cpu` or `cuda` (GPU, 16x faster for batches) |
+| `NEURALGENTICS_EMBED_DTYPE` | `fp32` | `fp16` halves VRAM (BGE-Large: 1.3GB → 640MB) |
+| `NEURAL_EMBED_ADDR` | `unix:///tmp/neuralgentics-embed.sock` | gRPC listen address |
+| `EMBEDDING_MODE` | `auto` | `auto` enables dual-write (384 + 1024 dim) |
+| `SIDECAR_AUTO_START` | `false` | Experimental, requires v0.9.0 |
+
+Common issues:
+
+| Symptom | Fix |
+|---|---|
+| `Failed to connect to sidecar at unix:///tmp/...` | Run `./scripts/sidecar.sh status` or `systemctl --user status neuralgentics-sidecar`. Start if stopped. |
+| `connect: connection refused` (TCP) | Check `NEURAL_EMBED_ADDR` matches in both sidecar and Go backend's `MEMINI_EMBEDDING_ADDR`. |
+| Slow embeddings (~200ms each) | Switch `NEURALGENTICS_EMBED_DEVICE=cuda NEURALGENTICS_EMBED_DTYPE=fp16` and restart. |
+| Out of memory on GPU | Check `nvidia-smi` for VRAM usage. FP16 halves BGE-Large's footprint. |
+
+See the [README](https://github.com/Veedubin/neuralgentics#sidecar-lifecycle) for the full reference.
+
 ### Kanban Board -- A Real FSM, Not a TODO List
 
 Tasks are first-class objects with a 7-state finite state machine: `triage → todo → ready ↔ running ↔ blocked → done → archived`. Every transition is a logged event. `failureLimit=2` auto-archives a card that keeps failing. The kanban is the durable source of truth for "what is being worked on" -- agents and humans read the same board, and the orchestrator only dispatches cards in `ready` status.
