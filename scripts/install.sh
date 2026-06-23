@@ -15,7 +15,7 @@
 set -euo pipefail
 
 APP="neuralgentics"
-DEFAULT_VERSION="0.7.4"
+DEFAULT_VERSION="0.8.0"
 REPO="${NEURALGENTICS_REPO:-Veedubin/neuralgentics}"
 
 # ─── Defaults ────────────────────────────────────────────────────────────────
@@ -31,6 +31,101 @@ YES=false
 log()     { printf "[%s] %s\n" "$APP" "$*" >&2; }
 warn()    { printf "[warn] %s\n" "$*" >&2; }
 err()     { printf "[ERROR] %s\n" "$*" >&2; exit 1; }
+
+# ─── Systemd detection ──────────────────────────────────────────────────────
+
+has_systemd() {
+    # Check for systemd user instance (works on most Linux dev workstations)
+    [[ -d "$HOME/.config/systemd/user" ]] && command -v systemctl >/dev/null 2>&1
+}
+
+# ─── Env file generation ────────────────────────────────────────────────────
+
+install_env_file() {
+    local env_file="$HOME/.neuralgentics/.env"
+    if [[ -f "$env_file" ]]; then
+        log "env file already exists at ${env_file}, skipping"
+        return 0
+    fi
+    if $DRY_RUN; then
+        log "[dry-run] Would create ${env_file}"
+        return 0
+    fi
+    cat > "$env_file" <<'ENVEOF'
+# Neuralgentics sidecar configuration
+NEURALGENTICS_EMBED_DEVICE=cpu
+NEURALGENTICS_EMBED_DTYPE=fp32
+NEURAL_EMBED_ADDR=unix:///tmp/neuralgentics-embed.sock
+EMBEDDING_MODE=auto
+ENVEOF
+    log "Created env file at ${env_file}"
+}
+
+# ─── Systemd unit file generation ────────────────────────────────────────────
+
+install_systemd_unit() {
+    local unit_dir="$HOME/.config/systemd/user"
+    local unit_file="${unit_dir}/neuralgentics-sidecar.service"
+
+    if $DRY_RUN; then
+        log "[dry-run] Would create ${unit_file}"
+        return 0
+    fi
+
+    mkdir -p "$unit_dir"
+
+    cat > "$unit_file" <<EOF
+[Unit]
+Description=Neuralgentics Embedding Sidecar (gRPC)
+Documentation=https://github.com/${REPO}
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.neuralgentics/.env
+ExecStart=%h/.neuralgentics/packages/memory/cmd/embedding-sidecar/.venv/bin/python main.py
+WorkingDirectory=%h/.neuralgentics/packages/memory/cmd/embedding-sidecar
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=3
+StartLimitIntervalSec=60
+WatchdogSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=neuralgentics-sidecar
+NoNewPrivileges=yes
+MemoryHigh=4G
+MemoryMax=6G
+CPUQuota=200%
+
+[Install]
+WantedBy=default.target
+EOF
+
+    log "Created systemd unit at ${unit_file}"
+    systemctl --user daemon-reload
+    log "Reloaded systemd user daemon"
+}
+
+# ─── Linger prompt ──────────────────────────────────────────────────────────
+
+prompt_enable_linger() {
+    # Only prompt if systemd was detected AND --yes was NOT passed
+    if $YES; then
+        return 0
+    fi
+    printf "Enable systemd user-linger so the sidecar runs without an active login session? [y/N] " >&2
+    local answer=""
+    read -r answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+        local current_user="${USER:-$(id -un)}"
+        if loginctl enable-linger "$current_user" 2>/dev/null; then
+            log "Linger enabled for ${current_user} — sidecar will persist after logout"
+        else
+            warn "Failed to enable linger. You may need to run: loginctl enable-linger ${current_user}"
+        fi
+    fi
+}
 
 # ─── Argument parsing ───────────────────────────────────────────────────────
 
@@ -112,6 +207,12 @@ if $DRY_RUN; then
     log "[dry-run] Would download ${ARCHIVE_URL}"
     log "[dry-run] Would extract to ${PREFIX}"
     log "[dry-run] Would run: cd ${PREFIX}/.opencode && npm install"
+    install_env_file
+    if has_systemd; then
+        install_systemd_unit
+    else
+        warn "[dry-run] systemd not detected — sidecar will use scripts/sidecar.sh (PID-file wrapper)"
+    fi
     log "[dry-run] Done."
     exit 0
 fi
@@ -182,6 +283,19 @@ if [[ -f "$PREFIX/.opencode/package.json" ]]; then
         warn "npm not found — plugin dependencies not installed."
         warn "Install Node.js 20+ and run: cd ${PREFIX}/.opencode && npm install"
     fi
+fi
+
+# ── Env file ────────────────────────────────────────────────────────────────
+
+install_env_file
+
+# ── Systemd integration ─────────────────────────────────────────────────────
+
+if has_systemd; then
+    install_systemd_unit
+    prompt_enable_linger
+else
+    warn "systemd not detected — sidecar will use scripts/sidecar.sh (PID-file wrapper)"
 fi
 
 # ── Cleanup ─────────────────────────────────────────────────────────────────

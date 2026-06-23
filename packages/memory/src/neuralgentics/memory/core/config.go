@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"time"
 )
@@ -52,6 +53,10 @@ type Config struct {
 	IndexerEnabled bool `envconfig:"MEMINI_INDEXER_ENABLED"`
 	AuditEnabled   bool `envconfig:"MEMINI_AUDIT_ENABLED"`
 
+	// Sidecar (experimental — not yet wired into the backend)
+	SidecarAutoStart bool   `envconfig:"SIDECAR_AUTO_START" default:"false"` // when true, Go backend attempts to spawn sidecar via sidecar.sh
+	SidecarEnvFile   string `envconfig:"SIDECAR_ENV_FILE" default:""`        // optional path to env file (used by sidecar.sh)
+
 	// Operational
 	SchemaVersion string `envconfig:"MEMINI_SCHEMA_VERSION" default:"1"`
 	LogLevel      string `envconfig:"MEMINI_LOG_LEVEL" default:"info"`
@@ -87,6 +92,11 @@ func (c *Config) Validate() error {
 	}
 	if c.RRFK == 0 {
 		c.RRFK = 60 // default when env var is unset
+	}
+
+	// SidecarAutoStart is experimental — warn if enabled
+	if c.SidecarAutoStart {
+		log.Printf("WARNING: SidecarAutoStart=true is experimental and not yet wired into the backend (will be enabled in v0.9.0)")
 	}
 
 	return nil
@@ -128,16 +138,18 @@ func ResolveDatabaseURL() string {
 // still needs Validate() called if you want range checks.
 func LoadConfigFromEnv() *Config {
 	return &Config{
-		DatabaseURL:   ResolveDatabaseURL(),
-		ProjectID:     envOr("MEMINI_PROJECT_ID", "neuralgentics-default"),
-		EmbeddingAddr: envOr("MEMINI_EMBEDDING_ADDR", "unix:///tmp/neuralgentics-embed.sock"),
-		EmbeddingMode: EmbeddingMode(envOr("EMBEDDING_MODE", "auto")),
-		RRFK:          envIntOr("RRF_K", 60),
-		LLMBaseURL:    envOr("NEURAL_LLM_BASE_URL", "http://localhost:8903/v1"),
-		LLMAPIKey:     os.Getenv("NEURAL_LLM_API_KEY"),
-		LLMModel:      envOr("NEURAL_LLM_MODEL", "qwen3-0.6b"),
-		LogLevel:      envOr("MEMINI_LOG_LEVEL", "info"),
-		SchemaVersion: envOr("MEMINI_SCHEMA_VERSION", "1"),
+		DatabaseURL:      ResolveDatabaseURL(),
+		ProjectID:        envOr("MEMINI_PROJECT_ID", "neuralgentics-default"),
+		EmbeddingAddr:    envOr("MEMINI_EMBEDDING_ADDR", "unix:///tmp/neuralgentics-embed.sock"),
+		EmbeddingMode:    EmbeddingMode(envOr("EMBEDDING_MODE", "auto")),
+		RRFK:             envIntOr("RRF_K", 60),
+		LLMBaseURL:       envOr("NEURAL_LLM_BASE_URL", "http://localhost:8903/v1"),
+		LLMAPIKey:        os.Getenv("NEURAL_LLM_API_KEY"),
+		LLMModel:         envOr("NEURAL_LLM_MODEL", "qwen3-0.6b"),
+		SidecarAutoStart: envBoolOr("SIDECAR_AUTO_START", false),
+		SidecarEnvFile:   envOr("SIDECAR_ENV_FILE", ""),
+		LogLevel:         envOr("MEMINI_LOG_LEVEL", "info"),
+		SchemaVersion:    envOr("MEMINI_SCHEMA_VERSION", "1"),
 	}
 }
 
@@ -163,4 +175,19 @@ func envIntOr(key string, fallback int) int {
 		n = n*10 + int(c-'0')
 	}
 	return n
+}
+
+// envBoolOr returns the env var value parsed as bool, or the fallback.
+// Accepts "true", "1", "yes" (case-insensitive) as true; everything else is false.
+func envBoolOr(key string, fallback bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	switch v {
+	case "true", "1", "yes", "TRUE", "True", "YES", "Yes":
+		return true
+	default:
+		return false
+	}
 }

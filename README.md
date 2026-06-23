@@ -88,6 +88,71 @@ A task enters the orchestrator, gets routed to a specialist, who calls the broke
 
 ---
 
+## Sidecar Lifecycle
+
+The embedding sidecar (`packages/memory/cmd/embedding-sidecar/`) provides gRPC embedding
+services over a Unix domain socket. It can be managed two ways, depending on your system:
+
+### Systemd (Linux dev workstations)
+
+If your system has systemd (most Linux), `install.sh` generates a user service at
+`~/.config/systemd/user/neuralgentics-sidecar.service`:
+
+```bash
+# Start
+systemctl --user start neuralgentics-sidecar
+
+# Stop
+systemctl --user stop neuralgentics-sidecar
+
+# Status (with last 20 log lines)
+systemctl --user status neuralgentics-sidecar
+
+# Auto-start on login (optional)
+systemctl --user enable neuralgentics-sidecar
+
+# View logs (journald)
+journalctl --user -u neuralgentics-sidecar -f
+```
+
+### PID-file wrapper (everywhere else)
+
+For non-systemd environments (containers, WSL1, macOS), use `scripts/sidecar.sh`:
+
+```bash
+./scripts/sidecar.sh start    # Start (idempotent, refuses if already running)
+./scripts/sidecar.sh stop     # Stop (graceful, then SIGKILL after 10s)
+./scripts/sidecar.sh restart  # Stop + start
+./scripts/sidecar.sh status   # Check if running
+```
+
+Logs: `/tmp/neuralgentics-embed.log`. Socket: `/tmp/neuralgentics-embed.sock`. PID file: `/tmp/neuralgentics-embed.pid`.
+
+### Configuration
+
+All env vars are documented in `scripts/.env.example`. Key settings:
+
+| Var | Default | Purpose |
+|---|---|---|
+| `NEURALGENTICS_EMBED_DEVICE` | `cpu` | `cpu` (safe) or `cuda` (GPU, 16x faster for batches) |
+| `NEURALGENTICS_EMBED_DTYPE` | `fp32` | `fp16` halves VRAM on GPU (BGE-Large: 1.3GB → 640MB) |
+| `NEURAL_EMBED_ADDR` | `unix:///tmp/neuralgentics-embed.sock` | gRPC listen address |
+| `EMBEDDING_MODE` | `auto` | `auto` enables dual-write (384 + 1024 dim) |
+| `SIDECAR_AUTO_START` | `false` | Experimental, requires v0.9.0 |
+
+The env file at `~/.neuralgentics/.env` is the source of truth — both `sidecar.sh` and the systemd unit read from it.
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `Failed to connect to sidecar at unix:///tmp/...` | Run `./scripts/sidecar.sh status` (or `systemctl --user status neuralgentics-sidecar`). If stopped, start it. |
+| `connect: connection refused` (TCP) | Check `NEURAL_EMBED_ADDR` matches in both the sidecar and the Go backend's `MEMINI_EMBEDDING_ADDR`. |
+| Slow embeddings (~200ms each) | Switch `NEURALGENTICS_EMBED_DEVICE=cuda NEURALGENTICS_EMBED_DTYPE=fp16` and restart. |
+| Out of memory on GPU | Another process (e.g. another ML model) is using VRAM. Check `nvidia-smi`. The FP16 setting halves BGE-Large's footprint. |
+
+---
+
 ## What ships
 
 | Component | Size | Purpose |

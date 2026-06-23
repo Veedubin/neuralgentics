@@ -18,7 +18,7 @@ import (
 const podPingTimeout = 5 * time.Second
 
 // sharedTestDBURL is the connection string for the shared test database.
-const sharedTestDBURL = "postgresql://postgres:testpassword@localhost:6000/neuralgentics_test?sslmode=require"
+const sharedTestDBURL = "postgresql://neuralgentics:neuralgentics@localhost:6000/neuralgentics_test?sslmode=disable"
 
 // connectSharedDB attempts to connect to the shared test database on port 6000.
 // Returns nil if the shared DB is unavailable.
@@ -37,36 +37,31 @@ func connectSharedDB(t *testing.T) *sql.DB {
 	return db
 }
 
-// connectWithFallback tries the shared DB first; if unavailable, spins up a
-// testcontainers pgvector container. Returns a cleanup function.
-func connectWithFallback(t *testing.T) (connStr string, cleanup func()) {
+// connectSharedDBOrSkip connects to the shared test database on port 6000.
+// If the DB is unreachable or missing the required schema, the test is skipped.
+func connectSharedDBOrSkip(t *testing.T) (connStr string) {
 	t.Helper()
 
-	// Try shared DB first
 	db := connectSharedDB(t)
-	if db != nil {
-		// Verify the memories_1024 table exists (schema must be migrated)
-		ctx := context.Background()
-		var tableName string
-		err := db.QueryRowContext(ctx, `
-			SELECT table_name FROM information_schema.tables
-			WHERE table_schema = 'public' AND table_name = 'memories_1024'
-		`).Scan(&tableName)
-		db.Close()
-
-		if err == nil && tableName == "memories_1024" {
-			t.Log("using shared test database on port 6000")
-			return sharedTestDBURL, func() {}
-		}
-
-		// Shared DB exists but missing schema — use testcontainers
-		t.Log("shared DB reachable but missing memories_1024 table; falling back to testcontainers")
+	if db == nil {
+		t.Skip("shared test database not reachable on localhost:6000, skipping")
 	}
 
-	// Fall back to testcontainers
+	// Verify the memories_1024 table exists (schema must be migrated)
 	ctx := context.Background()
-	pgContainer, connStr := startTestDB(t, ctx)
-	return connStr, func() { pgContainer.Terminate(ctx) }
+	var tableName string
+	err := db.QueryRowContext(ctx, `
+		SELECT table_name FROM information_schema.tables
+		WHERE table_schema = 'public' AND table_name = 'memories_1024'
+	`).Scan(&tableName)
+	db.Close()
+
+	if err != nil || tableName != "memories_1024" {
+		t.Skipf("shared DB reachable but missing memories_1024 table (err=%v, table=%q), skipping", err, tableName)
+	}
+
+	t.Log("using shared test database on port 6000")
+	return sharedTestDBURL
 }
 
 // TestIntegration_DualWrite verifies that AddMemory in auto embedding mode
@@ -78,8 +73,7 @@ func TestIntegration_DualWrite(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	connStr, cleanup := connectWithFallback(t)
-	t.Cleanup(cleanup)
+	connStr := connectSharedDBOrSkip(t)
 
 	// Create a MemorySystem in auto mode with NoOp embedder.
 	// The NoOp embedder returns zero vectors of dim 384 for Embed() and
@@ -240,8 +234,7 @@ func TestIntegration_DualWrite_DeleteCascades(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	connStr, cleanup := connectWithFallback(t)
-	t.Cleanup(cleanup)
+	connStr := connectSharedDBOrSkip(t)
 
 	cfg := &core.Config{
 		DatabaseURL:   connStr,

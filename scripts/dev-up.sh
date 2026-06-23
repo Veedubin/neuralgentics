@@ -14,7 +14,7 @@
 #
 # Requirements:
 #   - podman (https://podman.io)
-#   - Python 3.11+ with venv at packages/memory/cmd/embedding-sidecar/.venv
+#   - Scripts manage sidecar lifecycle (see scripts/sidecar.sh)
 #   - Go 1.22+ (for backend binary build, if not pre-built)
 set -euo pipefail
 
@@ -28,14 +28,11 @@ DB_PASS="testpassword"
 DB_NAME="neuralgentics_test"
 DB_SSLMODE="require"
 SOCKET_PATH="/tmp/neuralgentics-embed.sock"
-SIDECAR_PIDFILE="/tmp/neuralgentics-embed.pid"
-SIDECAR_LOGFILE="/tmp/neuralgentics-embed.log"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 MIGRATIONS_DIR="$PROJECT_ROOT/packages/memory/src/neuralgentics/memory/store/migrations/postgres"
-SIDECAR_DIR="$PROJECT_ROOT/packages/memory/cmd/embedding-sidecar"
 BACKEND_BIN="$PROJECT_ROOT/packages/backend-go/neuralgentics-backend"
 
 CERTS_DIR="$PROJECT_ROOT/certs"
@@ -175,99 +172,9 @@ apply_migrations() {
 # ─── Step 3: gRPC embedding sidecar ─────────────────────────────────────────
 
 setup_sidecar() {
-    local socket_path="${NEURAL_EMBED_ADDR#unix://}"
-    if [ "$socket_path" = "$NEURAL_EMBED_ADDR" ]; then
-        # NEURAL_EMBED_ADDR not set or doesn't start with unix://
-        socket_path="$SOCKET_PATH"
-    fi
-
-    # Check if socket already exists (sidecar may be pre-started)
-    if [ -S "$socket_path" ]; then
-        log "gRPC sidecar socket already exists at $socket_path"
-        # Check if the process behind it is alive
-        local existing_pid
-        existing_pid="$(lsof -t "$socket_path" 2>/dev/null || true)"
-        if [ -n "$existing_pid" ]; then
-            log "gRPC sidecar is running (pid=$existing_pid)"
-            return 0
-        fi
-        # Stale socket — remove it
-        warn "Stale socket detected at $socket_path (no process bound to it). Removing."
-        rm -f "$socket_path"
-    fi
-
-    # Check if sidecar is running via PID file
-    if [ -f "$SIDECAR_PIDFILE" ]; then
-        local pid
-        pid="$(cat "$SIDECAR_PIDFILE")"
-        if kill -0 "$pid" 2>/dev/null; then
-            log "gRPC sidecar already running (pid=$pid, socket=$socket_path)"
-            return 0
-        fi
-        # Stale PID file
-        rm -f "$SIDECAR_PIDFILE"
-    fi
-
-    # Locate Python interpreter
-    local python_bin="$SIDECAR_DIR/.venv/bin/python"
-    if [ ! -x "$python_bin" ]; then
-        python_bin="$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)"
-        if [ -z "$python_bin" ]; then
-            err "No Python interpreter found. Install Python 3.11+ or run scripts/install.sh"
-            exit 1
-        fi
-        warn "Using system Python: $python_bin (prefer venv at $SIDECAR_DIR/.venv)"
-    fi
-
-    # Spawn sidecar
-    log "Starting gRPC embedding sidecar..."
-    local embed_device="${NEURALGENTICS_EMBED_DEVICE:-cpu}"
-    cd "$SIDECAR_DIR"
-    setsid env \
-        PYTHONPATH=. \
-        NEURALGENTICS_EMBED_DEVICE="$embed_device" \
-        NEURAL_EMBED_ADDR="${NEURAL_EMBED_ADDR:-unix://$SOCKET_PATH}" \
-        "$python_bin" -m embedding_sidecar.main \
-        > "$SIDECAR_LOGFILE" 2>&1 < /dev/null &
-    local pid=$!
-    echo "$pid" > "$SIDECAR_PIDFILE"
-    cd "$PROJECT_ROOT"
-    disown "$pid" 2>/dev/null || true
-
-    # Wait for socket to appear (30 retries × 100ms = 3s)
-    local retries=30
-    local waited=0
-    while [ $waited -lt $retries ]; do
-        if [ -S "$socket_path" ]; then
-            log "gRPC sidecar ready (pid=$pid, socket=$socket_path)"
-            return 0
-        fi
-        sleep 0.1
-        waited=$((waited + 1))
-    done
-
-    # Check if process is still alive
-    if ! kill -0 "$pid" 2>/dev/null; then
-        err "gRPC sidecar process died during startup. See $SIDECAR_LOGFILE:"
-        tail -20 "$SIDECAR_LOGFILE" 2>/dev/null || err "(no log output)"
-        exit 1
-    fi
-
-    # Process alive but socket not yet bound — give it more time
-    warn "Sidecar process alive but socket not yet bound after 3s. Waiting longer..."
-    local extended=0
-    while [ $extended -lt 50 ]; do
-        if [ -S "$socket_path" ]; then
-            log "gRPC sidecar ready (pid=$pid, socket=$socket_path)"
-            return 0
-        fi
-        sleep 0.1
-        extended=$((extended + 1))
-    done
-
-    err "gRPC sidecar did not bind socket within 8s. See $SIDECAR_LOGFILE:"
-    tail -20 "$SIDECAR_LOGFILE" 2>/dev/null || err "(no log output)"
-    exit 1
+    log "Starting embedding sidecar via scripts/sidecar.sh..."
+    NEURALGENTICS_EMBED_DEVICE="${NEURALGENTICS_EMBED_DEVICE:-cpu}" \
+      "$SCRIPT_DIR/sidecar.sh" start
 }
 
 # ─── Step 4: Verify Go backend binary ────────────────────────────────────────
@@ -306,12 +213,13 @@ print_summary() {
     echo ""
     echo "  PostgreSQL:  localhost:$DB_PORT ($DB_NAME, SSL=$DB_SSLMODE)"
     echo "  Container:   $CONTAINER_NAME"
-    echo "  Sidecar:    $SOCKET_PATH"
+    echo "  Sidecar:"
+    "$SCRIPT_DIR/sidecar.sh" status || true
     echo "  Backend:     $([ -x "$BACKEND_BIN" ] && echo "$BACKEND_BIN" || echo "NOT BUILT")"
     echo ""
     echo "  Quick commands:"
     echo "    ./scripts/sidecar.sh status   — Check sidecar status"
-    echo "    ./scripts/sidecar.sh stop      — Stop sidecar"
+    echo "    ./scripts/sidecar.sh stop     — Stop sidecar"
     echo "    podman stop $CONTAINER_NAME    — Stop database"
     echo ""
 }

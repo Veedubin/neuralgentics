@@ -3,19 +3,20 @@
 Supports two embedding models:
   - all-MiniLM-L6-v2 (384-dim, default) — fast, lightweight
   - BAAI/bge-large-en-v1.5 (1024-dim, via model="bge-large") — high quality
+
+Supports FP16 inference on GPU via NEURALGENTICS_EMBED_DTYPE=fp16 to halve
+VRAM usage (e.g. BGE-Large: 1280 MiB FP32 → ~640 MiB FP16).
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from functools import lru_cache
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import numpy as np
-
 from sentence_transformers import SentenceTransformer
+
+log = logging.getLogger(__name__)
 
 # ─── Device Configuration ────────────────────────────────────────────────────
 # NEURALGENTICS_EMBED_DEVICE controls which device SentenceTransformer uses.
@@ -23,6 +24,18 @@ from sentence_transformers import SentenceTransformer
 #   "cuda" → force GPU (fast batch inference, needs free VRAM)
 #   unset  → auto-detect (SentenceTransformer default: cuda if available)
 _EMBED_DEVICE: str | None = os.environ.get("NEURALGENTICS_EMBED_DEVICE") or None
+
+# ─── Dtype Configuration ─────────────────────────────────────────────────────
+# NEURALGENTICS_EMBED_DTYPE controls the floating-point precision for inference.
+#   "fp32" → full precision (default, identical to v0.7.x behavior)
+#   "fp16" → half precision (GPU only, reduces VRAM ~50% with negligible
+#             accuracy loss for cosine similarity)
+#   FP16 is only applied when the effective device is "cuda".
+_EMBED_DTYPE: str = os.environ.get("NEURALGENTICS_EMBED_DTYPE", "fp32").lower()
+if _EMBED_DTYPE not in {"fp32", "fp16"}:
+    raise ValueError(
+        f"NEURALGENTICS_EMBED_DTYPE must be 'fp32' or 'fp16', got '{_EMBED_DTYPE}'"
+    )
 
 # ─── Model Registry ───────────────────────────────────────────────────────────
 
@@ -53,8 +66,55 @@ def _load_model(hf_name: str) -> SentenceTransformer:
       - "cpu":  force CPU-only (safe when GPU VRAM is contention-prone)
       - "cuda": force GPU (fast batch inference, needs free VRAM)
       - None:  auto-detect (SentenceTransformer default behaviour)
+
+    Uses NEURALGENTICS_EMBED_DTYPE env var for precision:
+      - "fp32": full precision (default)
+      - "fp16": half precision (GPU only, ~50% VRAM savings)
+    FP16 is only applied when the effective device resolves to CUDA.
     """
-    return SentenceTransformer(hf_name, device=_EMBED_DEVICE)
+    import torch
+
+    device = _EMBED_DEVICE
+    use_fp16 = _EMBED_DTYPE == "fp16"
+
+    # Determine effective dtype — FP16 only meaningful on CUDA
+    effective_dtype = (
+        "fp16" if use_fp16 and (device == "cuda" or device is None) else "fp32"
+    )
+
+    model_kwargs: dict = {}
+    if effective_dtype == "fp16":
+        model_kwargs["dtype"] = torch.float16
+
+    model = SentenceTransformer(
+        hf_name, device=device, model_kwargs=model_kwargs or None
+    )
+
+    # Fallback: explicitly convert to half if torch_dtype didn't propagate
+    # (covers sentence-transformers 5.x quirks where model_kwargs is ignored)
+    if effective_dtype == "fp16":
+        resolved_device = str(
+            model.device.type if hasattr(model, "device") else (device or "cpu")
+        )
+        if resolved_device == "cuda" or resolved_device.startswith("cuda:"):
+            try:
+                first_module = model._first_module()
+                if (
+                    hasattr(first_module, "auto_model")
+                    and first_module.auto_model is not None
+                ):
+                    first_module.auto_model = first_module.auto_model.half()
+            except Exception:
+                log.warning("FP16 .half() fallback failed; model may remain FP32")
+
+    # Resolve dimensions for logging
+    dimensions = model.get_sentence_embedding_dimension()
+    resolved_device = str(getattr(model, "device", device or "auto"))
+    log.info(
+        f"loaded {hf_name} on {resolved_device} dtype={effective_dtype}, dims={dimensions}"
+    )
+
+    return model
 
 
 def _resolve_model(model: str) -> tuple[str, str, int]:

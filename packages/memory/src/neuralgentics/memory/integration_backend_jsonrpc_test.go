@@ -46,7 +46,8 @@ type jsonrpcError struct {
 // It checks:
 //  1. NEURALGENTICS_BACKEND_PATH env var (if set)
 //  2. Relative path from the test file to ../backend-go/neuralgentics-backend
-//  3. The binary in $PATH
+//  3. Relative path from the test file to ../../../.neuralgentics/bin/neuralgentics-backend
+//  4. The binary in $PATH
 func findBackendBinary(t *testing.T) string {
 	t.Helper()
 
@@ -77,6 +78,15 @@ func findBackendBinary(t *testing.T) string {
 		return binPath
 	}
 
+	// Try relative path from test file to .neuralgentics/bin/
+	// packages/memory/src/neuralgentics/memory -> ../../../../../.neuralgentics/bin/neuralgentics-backend
+	localBinPath := filepath.Join(testDir, "..", "..", "..", "..", "..", ".neuralgentics", "bin", "neuralgentics-backend")
+	localBinPath, _ = filepath.Abs(localBinPath)
+
+	if _, err := os.Stat(localBinPath); err == nil {
+		return localBinPath
+	}
+
 	// Try PATH lookup
 	if p, err := exec.LookPath("neuralgentics-backend"); err == nil {
 		return p
@@ -88,7 +98,7 @@ func findBackendBinary(t *testing.T) string {
 
 // ─── Shared DB helpers ────────────────────────────────────────────────────────
 
-const backendTestDBURL = "postgresql://postgres:testpassword@localhost:6000/neuralgentics_test?sslmode=require"
+const backendTestDBURL = "postgresql://neuralgentics:neuralgentics@localhost:6000/neuralgentics_test?sslmode=disable"
 
 // isSharedDBAvailable checks if the shared test DB is reachable.
 func isSharedDBAvailable() bool {

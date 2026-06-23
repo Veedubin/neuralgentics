@@ -9,6 +9,21 @@
 #   NEURALGENTICS_EMBED_DEVICE  — "cpu" (default) or "cuda" for GPU acceleration
 #   NEURAL_EMBED_ADDR           — listen address (default: unix:///tmp/neuralgentics-embed.sock)
 #
+# Env file sourcing (in order, most general → most specific):
+#   $HOME/.neuralgentics/.env   — production install defaults
+#   $PROJECT_ROOT/.env          — per-project override
+#   .env (cwd)                  — developer override
+#   Parent environment variables take precedence over .env files.
+#
+# Locking: start/stop use flock on /tmp/neuralgentics-embed.lock to prevent races.
+# PID file: written atomically via temp-file-then-rename to avoid stale reads.
+#
+# /etc/logrotate.d/neuralgentics-sidecar (optional):
+# /tmp/neuralgentics-embed.log {
+#   daily rotate 7 compress missingok notifempty
+#   postrotate systemctl --user restart neuralgentics-sidecar 2>/dev/null || true
+# }
+#
 # Usage:
 #   ./scripts/sidecar.sh {start|stop|restart|status}
 set -euo pipefail
@@ -16,10 +31,45 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-SOCKET="${NEURAL_EMBED_ADDR#unix://}"
-# If NEURAL_EMBED_ADDR uses the default unix: prefix, strip it for socket path check
-if [[ "$SOCKET" == "$NEURAL_EMBED_ADDR" ]]; then
-  # NEURAL_EMBED_ADDR was not set or didn't start with unix:// — use default socket
+# ─── Env file sourcing ───────────────────────────────────────────────────────
+# Source .env files in order: global → project → local.
+# Parent environment variables take precedence over .env file values.
+# Save keys we care about so parent env wins over .env files.
+_NEURALGENTICS_SAVED_KEYS=""
+_neuralgentics_env_save() {
+  # Save current values of known sidecar env vars so they survive .env sourcing
+  for _var in NEURALGENTICS_EMBED_DEVICE NEURAL_EMBED_ADDR; do
+    if [[ -n "${!_var+x}" ]]; then
+      _NEURALGENTICS_SAVED_KEYS="${_NEURALGENTICS_SAVED_KEYS}${_var}=${!_var}|"
+    fi
+  done
+}
+_neuralgentics_env_restore() {
+  # Restore parent env vars that were overridden by .env files
+  local IFS='|'
+  for _pair in $_NEURALGENTICS_SAVED_KEYS; do
+    [[ -z "$_pair" ]] && continue
+    local _key="${_pair%%=*}"
+    local _val="${_pair#*=}"
+    export "$_key=$_val"
+  done
+}
+_neuralgentics_env_save
+for _envfile in "$HOME/.neuralgentics/.env" "$PROJECT_ROOT/.env" ".env"; do
+  if [[ -f "$_envfile" ]]; then
+    set -a
+    # shellcheck source=/dev/null
+    source "$_envfile"
+    set +a
+  fi
+done
+_neuralgentics_env_restore
+
+LOCKFILE="/tmp/neuralgentics-embed.lock"
+# Strip the unix:// prefix from the address, defaulting to the socket path
+if [[ -n "${NEURAL_EMBED_ADDR:-}" ]] && [[ "$NEURAL_EMBED_ADDR" == unix://* ]]; then
+  SOCKET="${NEURAL_EMBED_ADDR#unix://}"
+else
   SOCKET="/tmp/neuralgentics-embed.sock"
 fi
 
@@ -44,10 +94,20 @@ is_running() {
   [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
 }
 
+# Write PID file atomically: temp file → fsync → rename.
+# Prevents readers from seeing a partial PID if the writer crashes mid-write.
+write_pid() {
+  local pid="$1"
+  local tmp="${PIDFILE}.tmp.$$"
+  echo "$pid" > "$tmp"
+  sync "$tmp" 2>/dev/null || true   # fsync if supported; best-effort
+  mv -f "$tmp" "$PIDFILE"
+}
+
 wait_for_socket() {
   local timeout="${1:-10}"
   local elapsed=0
-  while [ $elapsed -lt $timeout ]; do
+  while [ "$elapsed" -lt "$timeout" ]; do
     if [ -S "$SOCKET" ]; then
       return 0
     fi
@@ -60,6 +120,9 @@ wait_for_socket() {
 # ─── Actions ─────────────────────────────────────────────────────────────────
 
 start() {
+  exec 9>"$LOCKFILE"
+  flock -n 9 || { err "another sidecar.sh instance is running (lock held on $LOCKFILE)"; exit 1; }
+
   if is_running; then
     log "sidecar already running (pid=$(cat "$PIDFILE"), socket=$SOCKET)"
     return 0
@@ -93,7 +156,7 @@ start() {
     "$python_bin" main.py \
     > "$LOGFILE" 2>&1 < /dev/null &
   local pid=$!
-  echo "$pid" > "$PIDFILE"
+  write_pid "$pid"
   cd "$PROJECT_ROOT"
   disown "$pid" 2>/dev/null || true
 
@@ -110,6 +173,9 @@ start() {
 }
 
 stop() {
+  exec 9>"$LOCKFILE"
+  flock -n 9 || { err "another sidecar.sh instance is running (lock held on $LOCKFILE)"; exit 1; }
+
   if ! is_running; then
     # Clean stale files even if not running
     rm -f "$PIDFILE" "$SOCKET"
@@ -124,7 +190,7 @@ stop() {
 
   # Wait for graceful shutdown
   local retries=0
-  while [ $retries -lt 20 ]; do
+  while [ "$retries" -lt 20 ]; do
     if ! kill -0 "$pid" 2>/dev/null; then
       rm -f "$PIDFILE" "$SOCKET"
       log "sidecar stopped"
@@ -173,3 +239,8 @@ case "${1:-}" in
     exit 1
     ;;
 esac
+
+# ─── Logrotate hint ──────────────────────────────────────────────────────────
+if [[ -f "$LOGFILE" ]] && [[ "$(stat -c%s "$LOGFILE" 2>/dev/null || echo 0)" -gt 104857600 ]]; then
+  warn "$LOGFILE exceeds 100MB — consider adding to /etc/logrotate.d/ or using journalctl"
+fi
