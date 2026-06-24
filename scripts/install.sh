@@ -285,6 +285,19 @@ if [[ -f "$PREFIX/.opencode/package.json" ]]; then
     fi
 fi
 
+# ── External skills (bundled in tarball) ─────────────────────────────────────
+
+if [[ -d "$PREFIX/share/external_skills" ]]; then
+    external_target="$HOME/.neuralgentics/external_skills"
+    if [[ ! -d "$external_target" ]]; then
+        log "Installing bundled external skills to $external_target..."
+        mkdir -p "$HOME/.neuralgentics"
+        cp -r "$PREFIX/share/external_skills" "$external_target"
+    else
+        log "External skills already exist at $external_target — skipping (fetcher will refresh on session start)"
+    fi
+fi
+
 # ── Env file ────────────────────────────────────────────────────────────────
 
 install_env_file

@@ -32,6 +32,23 @@ Common files in order of visibility:
 4. Any `ROADMAP.md`, `CONTRIBUTING.md`, `LICENSE` in repo root
 5. GitHub release notes (auto-generated from the tag push, but can be customized)
 
+### Step 1.5: Ensure external skills snapshot is fresh (release-time only)
+
+When tagging a release, the external skills snapshot must be bundled into the tarball so offline installs still get the curated set. The release script handles this automatically via `scripts/external-skills-fetcher.sh` (called from `release.sh` before `build_dist`).
+
+Verify the snapshot exists and is recent:
+- Check `~/.neuralgentics/external_skills/MANIFEST.json` exists
+- Check `MANIFEST.json` has entries for both `ai-research-skills` and `ui-ux-pro-max-skill`
+- Check the `commit_sha` fields are populated (not empty)
+
+If the snapshot is missing, run `./scripts/external-skills-fetcher.sh` to create it (or use `--skip-external-skills` to bundle a lean tarball without external skills).
+
+After build, verify `build/dist/share/external_skills/` contains:
+- `MANIFEST.json`
+- `ai-research-skills/` with at least one `SKILL.md`
+- `ui-ux-pro-max-skill/` with at least one `SKILL.md`
+- NO `.git/` directories
+
 ### Step 2: Read each file and check
 - **Version numbers** — match the upcoming release tag (e.g., `v0.1.1`).
 - **Date stamps** — today's date in `YYYY-MM-DD` format.

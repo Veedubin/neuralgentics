@@ -159,6 +159,36 @@ copy_runtime_files() {
     run cp -r "$PROJECT_ROOT/patches" "$DIST_DIR/share/patches"
   fi
 
+  # Copy external skills snapshot (if present)
+  if [[ -d "$HOME/.neuralgentics/external_skills" ]]; then
+    local env_file="$PROJECT_ROOT/.env"
+    local bundle_enabled="true"
+    if [[ -f "$env_file" ]]; then
+      local opt_out
+      opt_out=$(grep -E '^external_skills\.bundle_in_tarball=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || echo "")
+      if [[ "$opt_out" == "false" ]]; then
+        bundle_enabled="false"
+      fi
+    fi
+    if [[ "$bundle_enabled" == "true" ]]; then
+      log "Bundling external skills..."
+      run mkdir -p "$DIST_DIR/share/external_skills"
+      # Copy contents but exclude .git dirs (saves ~50% of snapshot size)
+      if command -v rsync &>/dev/null; then
+        run rsync -a --exclude='.git' "$HOME/.neuralgentics/external_skills/" "$DIST_DIR/share/external_skills/"
+      else
+        run cp -r "$HOME/.neuralgentics/external_skills/." "$DIST_DIR/share/external_skills/" 2>/dev/null
+        # Remove .git directories if cp was used
+        run find "$DIST_DIR/share/external_skills" -name '.git' -type d -exec rm -rf {} + 2>/dev/null || true
+      fi
+      verbose "External skills copied to $DIST_DIR/share/external_skills"
+    else
+      warn "external_skills.bundle_in_tarball=false — skipping external skills bundle"
+    fi
+  else
+    log "No external skills snapshot found; skipping"
+  fi
+
   # Copy node_modules (production only)
   if [[ -d "$PROJECT_ROOT/node_modules" ]]; then
     log "Copying production node_modules..."
