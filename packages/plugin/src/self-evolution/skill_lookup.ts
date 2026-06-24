@@ -14,7 +14,7 @@
  * @module skill_lookup
  */
 
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import type { BrokerClient } from "./broker_client.js";
 
 // ============================================================================
@@ -117,6 +117,173 @@ export const STOPWORDS = new Set([
   "your",
   "our",
 ]);
+
+// ============================================================================
+// LRU Body Cache (TS-side, Phase 2)
+// ============================================================================
+
+/**
+ * SkillBodyCache — in-memory LRU cache for SKILL.md body content.
+ *
+ * Stores full file bodies keyed by absolute path, with LRU eviction
+ * when the cache exceeds maxEntries or maxBytes. Cache entries are
+ * invalidated when the file's mtimeMs changes.
+ *
+ * Phase 2: This is the active body cache. The Go SkillBodyCache type
+ * is designed and unit-tested but not wired into JSON-RPC yet.
+ */
+export class SkillBodyCache {
+  private readonly maxEntries: number;
+  private readonly maxBytes: number;
+  private readonly entries = new Map<string, CachedBody>();
+  private readonly order: string[] = []; // LRU order, oldest first
+  private totalBytes = 0;
+  private hitCount = 0;
+  private missCount = 0;
+
+  constructor(maxEntries: number = 100, maxBytes: number = 5 * 1024 * 1024) {
+    this.maxEntries = maxEntries;
+    this.maxBytes = maxBytes;
+  }
+
+  /**
+   * Get the body for a skill path, using cache if available.
+   *
+   * If the path is cached and the file's mtimeMs hasn't changed,
+   * returns the cached body. Otherwise reads from disk, caches,
+   * and returns.
+   *
+   * @returns The body string, or empty string if the file can't be read.
+   */
+  async get(path: string): Promise<string> {
+    // Check cache.
+    const cached = this.entries.get(path);
+    if (cached) {
+      try {
+        const info = await stat(path);
+        if (info.mtimeMs === cached.mtimeMs) {
+          // Cache hit — promote to MRU.
+          this.promoteToMRU(path);
+          this.hitCount++;
+          return cached.body;
+        }
+        // mtimeMs changed — invalidate and fall through.
+        this.removeEntry(path);
+      } catch {
+        // File gone — invalidate and fall through.
+        this.removeEntry(path);
+      }
+    }
+
+    // Cache miss — read from disk.
+    this.missCount++;
+    try {
+      const body = await readFile(path, "utf-8");
+      let mtimeMs = 0;
+      try {
+        const info = await stat(path);
+        mtimeMs = info.mtimeMs;
+      } catch {
+        // Use default mtimeMs = 0
+      }
+
+      const size = body.length;
+      // Insert first, then enforce limits (matches Go behavior).
+      this.entries.set(path, { body, mtimeMs, size });
+      this.order.push(path);
+      this.totalBytes += size;
+      this.enforceLimits();
+
+      return body;
+    } catch {
+      return "";
+    }
+  }
+
+  /** Invalidate a single entry. */
+  invalidate(path: string): void {
+    this.removeEntry(path);
+  }
+
+  /** Clear the entire cache. */
+  invalidateAll(): void {
+    this.entries.clear();
+    this.order.length = 0;
+    this.totalBytes = 0;
+  }
+
+  /** Get cache statistics for debugging. */
+  cacheStats(): { entries: number; bytes: number; hits: number; misses: number } {
+    return {
+      entries: this.entries.size,
+      bytes: this.totalBytes,
+      hits: this.hitCount,
+      misses: this.missCount,
+    };
+  }
+
+  // ─── Private helpers ────────────────────────────────────────────────
+
+  private promoteToMRU(path: string): void {
+    const idx = this.order.indexOf(path);
+    if (idx !== -1) {
+      this.order.splice(idx, 1);
+      this.order.push(path);
+    }
+  }
+
+  private removeEntry(path: string): void {
+    const entry = this.entries.get(path);
+    if (entry) {
+      this.totalBytes -= entry.size;
+      this.entries.delete(path);
+    }
+    const idx = this.order.indexOf(path);
+    if (idx !== -1) {
+      this.order.splice(idx, 1);
+    }
+  }
+
+  private enforceLimits(): void {
+    while (
+      this.order.length > 0 &&
+      (this.entries.size > this.maxEntries ||
+        this.totalBytes > this.maxBytes)
+    ) {
+      const oldest = this.order[0];
+      if (!oldest) break;
+      this.removeEntry(oldest);
+    }
+  }
+}
+
+interface CachedBody {
+  body: string;
+  mtimeMs: number;
+  size: number;
+}
+
+// Module-level cache instance (100 entries, 5MB).
+const bodyCache = new SkillBodyCache();
+
+/**
+ * Get cache statistics for debugging.
+ */
+export function getCacheStats(): {
+  entries: number;
+  bytes: number;
+  hits: number;
+  misses: number;
+} {
+  return bodyCache.cacheStats();
+}
+
+/**
+ * Clear the entire skill body cache.
+ */
+export function clearCache(): void {
+  bodyCache.invalidateAll();
+}
 
 // ============================================================================
 // Tokenization & Cosine
@@ -241,10 +408,15 @@ export class SkillLookup {
 
     if (!best || best.score < this.threshold) return null;
 
-    // Load the full SKILL.md body from disk
-    const body = await loadSkillBody(best.path);
+    // Load the full SKILL.md body via the LRU cache
+    const body = await bodyCache.get(best.path);
 
     return { name: best.name, body, score: best.score };
+  }
+
+  /** Expose cache stats for debugging. */
+  cacheStats() {
+    return bodyCache.cacheStats();
   }
 }
 
