@@ -1,0 +1,144 @@
+# agent-skill-scope.yaml — Neuralgentics Skills Brokering Phase 1
+#
+# Per-agent allow-list of skill tags. Hybrid model:
+#   YAML baseline + SKILL.md front-matter tags override/extend.
+#
+# If this file is missing, all skills are visible to all roles (no filter).
+# If a role is listed here with tags, a skill must have at least one matching
+# tag (or a tag overlapping with the role's list) for the role to see it.
+# If a role is listed with an empty list [], the role sees all skills
+# (orchestrator uses this convention, though code enforces the wildcard
+# regardless of the YAML value).
+#
+# SKILL.md front-matter tags support additive (+tag) and subtractive (-tag)
+# modifiers that extend or remove tags from the YAML baseline for each role.
+# Plain tags (no prefix) are treated as additive.
+#
+# Role names must match the Role constants in:
+#   packages/broker-go/src/neuralgentics/broker/access/access.go
+
+version: 1
+
+roles:
+  # Orchestrator sees everything (wildcard — enforced in code, not YAML)
+  orchestrator: []
+
+  # Coder: implementation, refactoring, debugging, code generation
+  coder:
+    - implementation
+    - refactor
+    - debugging
+
+  # Architect: design, architecture, research, planning
+  architect:
+    - design
+    - architecture
+    - research
+
+  # Tester: verification, quality, regression, e2e
+  tester:
+    - verification
+    - quality
+    - regression
+    - e2e
+
+  # Writer: documentation, writing
+  writer:
+    - documentation
+    - writing
+
+  # Linter: quality, style, format
+  linter:
+    - quality
+    - style
+    - format
+
+  # Git: commit, branching, release
+  git:
+    - commit
+    - branching
+    - release
+
+  # Explorer: search, mapping, navigation
+  explorer:
+    - search
+    - mapping
+    - navigation
+
+  # Reviewer: review, audit, quality
+  reviewer:
+    - review
+    - audit
+    - quality
+
+  # Researcher: research, search, web
+  researcher:
+    - research
+    - search
+    - web
+
+  # Boomerang-prefixed roles (mirror base roles)
+  boomerang-coder:
+    - implementation
+    - refactor
+    - debugging
+
+  boomerang-architect:
+    - design
+    - architecture
+    - research
+
+  boomerang-explorer:
+    - search
+    - mapping
+    - navigation
+
+  boomerang-tester:
+    - verification
+    - quality
+    - regression
+    - e2e
+
+  boomerang-linter:
+    - quality
+    - style
+    - format
+
+  boomerang-git:
+    - commit
+    - branching
+    - release
+
+  boomerang-writer:
+    - documentation
+    - writing
+
+  boomerang-scraper:
+    - search
+    - scraping
+    - web
+
+  boomerang-release:
+    - release
+    - changelog
+    - version
+
+  boomerang-init:
+    - init
+    - setup
+
+  boomerang-handoff:
+    - handoff
+    - session
+    - documentation
+    - evolution
+
+  boomerang-agent-builder:
+    - skill
+    - agent
+    - building
+
+  mcp-specialist:
+    - mcp
+    - protocol
+    - debug
