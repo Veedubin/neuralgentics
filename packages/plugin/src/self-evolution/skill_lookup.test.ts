@@ -12,9 +12,12 @@ import {
   tokenize,
   wordOverlapCosine,
   SkillLookup,
+  SkillBodyCache,
   MIN_SCORE,
   STOPWORDS,
   loadSkillBody,
+  getCacheStats,
+  clearCache,
 } from "./skill_lookup.js";
 import {
   StubBrokerClient,
@@ -403,5 +406,173 @@ describe("Constants", () => {
     expect(STOPWORDS.has("is")).toBe(true);
     expect(STOPWORDS.has("code")).toBe(false);
     expect(STOPWORDS.has("implementation")).toBe(false);
+  });
+});
+
+// ============================================================================
+// SkillBodyCache Tests (Phase 2 — LRU body cache)
+// ============================================================================
+
+describe("Cache", () => {
+  beforeEach(() => {
+    clearCache();
+  });
+
+  it("returns cached body on second call within ttl", async () => {
+    const tmpDir = join(tmpdir(), `cache-hit-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    const skillPath = join(tmpDir, "SKILL.md");
+    const body = "# Cached Skill\n\nCached body content.";
+    await writeFile(skillPath, body, "utf-8");
+
+    try {
+      // First call populates the cache.
+      const cache = new SkillBodyCache();
+      const result1 = await cache.get(skillPath);
+      expect(result1).toBe(body);
+
+      // Delete the file — second call should still return from cache
+      // (but will detect file is gone and invalidate).
+      await rm(skillPath, { force: true });
+
+      // After deletion, stat fails, so cache invalidates and returns "".
+      const result2 = await cache.get(skillPath);
+      expect(result2).toBe("");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("invalidates on mtime change", async () => {
+    const tmpDir = join(tmpdir(), `cache-mtime-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    const skillPath = join(tmpDir, "SKILL.md");
+    const body1 = "Version 1";
+    await writeFile(skillPath, body1, "utf-8");
+
+    try {
+      const cache = new SkillBodyCache();
+      const result1 = await cache.get(skillPath);
+      expect(result1).toBe(body1);
+
+      // Modify the file — need to wait briefly for mtime to differ.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const body2 = "Version 2";
+      await writeFile(skillPath, body2, "utf-8");
+
+      const result2 = await cache.get(skillPath);
+      expect(result2).toBe(body2);
+
+      const stats = cache.cacheStats();
+      expect(stats.misses).toBeGreaterThanOrEqual(1);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("evicts LRU when entry cap exceeded", async () => {
+    const tmpDir = join(tmpdir(), `cache-cap-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    const cache = new SkillBodyCache(3, 1024 * 1024); // max 3 entries
+
+    try {
+      // Write 5 small files.
+      for (let i = 0; i < 5; i++) {
+        const path = join(tmpDir, `skill${i}.md`);
+        await writeFile(path, `body ${i}`, "utf-8");
+        await cache.get(path);
+      }
+
+      const stats = cache.cacheStats();
+      expect(stats.entries).toBe(3); // capacity cap evicted 2 oldest
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("evicts LRU when byte cap exceeded", async () => {
+    const tmpDir = join(tmpdir(), `cache-bytes-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    const cache = new SkillBodyCache(100, 50); // 50 byte cap
+
+    try {
+      // Write a 100-byte file — exceeds maxBytes.
+      const path = join(tmpDir, "big.md");
+      const bigContent = "x".repeat(100);
+      await writeFile(path, bigContent, "utf-8");
+
+      const result = await cache.get(path);
+      expect(result).toBe(bigContent);
+
+      const stats = cache.cacheStats();
+      // Entry was evicted after insertion because it exceeds maxBytes.
+      expect(stats.entries).toBe(0);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("stats track hits and misses", async () => {
+    const tmpDir = join(tmpdir(), `cache-stats-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    const skillPath = join(tmpDir, "SKILL.md");
+    await writeFile(skillPath, "stats content", "utf-8");
+
+    try {
+      const cache = new SkillBodyCache();
+      await cache.get(skillPath); // miss
+      await cache.get(skillPath); // hit
+      await cache.get(skillPath); // hit
+
+      const stats = cache.cacheStats();
+      expect(stats.misses).toBe(1);
+      expect(stats.hits).toBe(2);
+      expect(stats.entries).toBe(1);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("clearCache resets state", async () => {
+    const tmpDir = join(tmpdir(), `cache-clear-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    const skillPath = join(tmpDir, "SKILL.md");
+    await writeFile(skillPath, "clear content", "utf-8");
+
+    try {
+      const cache = new SkillBodyCache();
+      await cache.get(skillPath);
+
+      expect(cache.cacheStats().entries).toBe(1);
+
+      cache.invalidateAll();
+
+      expect(cache.cacheStats().entries).toBe(0);
+      expect(cache.cacheStats().bytes).toBe(0);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("concurrent reads of same path are safe", async () => {
+    const tmpDir = join(tmpdir(), `cache-concurrent-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    const skillPath = join(tmpDir, "SKILL.md");
+    const content = "Concurrent body";
+    await writeFile(skillPath, content, "utf-8");
+
+    try {
+      const cache = new SkillBodyCache();
+      const promises = [];
+      for (let i = 0; i < 10; i++) {
+        promises.push(cache.get(skillPath));
+      }
+      const results = await Promise.all(promises);
+      for (const r of results) {
+        expect(r).toBe(content);
+      }
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });

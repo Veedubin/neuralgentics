@@ -796,9 +796,12 @@ export {
 } from "./self-evolution/templates.js";
 export {
   SkillLookup,
+  SkillBodyCache,
   wordOverlapCosine,
   tokenize,
   loadSkillBody,
+  getCacheStats,
+  clearCache,
   MIN_SCORE,
   STOPWORDS,
 } from "./self-evolution/skill_lookup.js";
