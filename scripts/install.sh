@@ -15,7 +15,7 @@
 set -euo pipefail
 
 APP="neuralgentics"
-DEFAULT_VERSION="0.8.0"
+DEFAULT_VERSION="0.9.0"
 REPO="${NEURALGENTICS_REPO:-Veedubin/neuralgentics}"
 
 # ─── Defaults ────────────────────────────────────────────────────────────────
