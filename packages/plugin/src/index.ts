@@ -407,7 +407,7 @@ export const NeuralgenticsPlugin = async (ctx: PluginContext): Promise<PluginOut
         );
 
         try {
-          const result = await gate.run();
+          const result = await gate.run({ autoCreate: true });
           return JSON.stringify(result, null, 2);
         } catch (err) {
           return `Evolution gate failed: ${err instanceof Error ? err.message : String(err)}`;

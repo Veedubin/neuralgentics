@@ -8,6 +8,9 @@
  * the `session.compacting` event to back up AGENTS.md, TASKS.md, and other
  * critical files to memory before they're lost.
  *
+ * The self-evolution gate runs BEFORE the backup loop so that any newly-created
+ * SKILL.md files are captured in the compaction backup memory snapshot.
+ *
  * Dual activation:
  *   1. Event handler: `session.compacting` event from OpenCode
  *   2. MCP tool: `neuralgentics_compaction_backup` for explicit invocation
@@ -17,6 +20,7 @@
  */
 
 import { backupFileToMemory, restoreContextFromMemory } from './backup.js';
+import { SelfEvolutionGate } from '../self-evolution/index.js';
 import type { MemoryAdapter } from '../adapters/memory.js';
 import type { CompactionBackupResult, CompactionRestoreResult } from '../types.js';
 
@@ -27,6 +31,55 @@ const CRITICAL_FILES: readonly string[] = [
 ] as const;
 
 /**
+ * Run the self-evolution gate before compaction backup.
+ *
+ * This function instantiates a SelfEvolutionGate with `autoCreate: true`,
+ * runs it, logs the result, and returns the counts. If the gate throws,
+ * the error is logged and zeros are returned — gate failure must NEVER block
+ * compaction.
+ *
+ * **Ordering rationale:** The evolution gate runs BEFORE the CRITICAL_FILES
+ * backup loop so that any newly-created SKILL.md is captured in the
+ * compaction backup memory snapshot. The SKILL.md itself is on disk and
+ * will be picked up by BuildSkills on the next catalog read, but the
+ * *knowledge that it was created* is preserved in the backup.
+ *
+ * @param memory - The memory adapter for the gate to use.
+ * @param _workspaceRoot - The workspace root (reserved for future use).
+ * @returns The evaluated, qualified, and created counts (zeros on error).
+ */
+export async function runEvolutionGate(
+  memory: MemoryAdapter,
+  _workspaceRoot: string,
+): Promise<{ evaluated: number; qualified: number; created: number }> {
+  try {
+    const gate = new SelfEvolutionGate({ autoCreate: true }, memory);
+    const result = await gate.run({ autoCreate: true });
+    console.log(
+      `[neuralgentics] Evolution gate (compaction): ${result.evaluated} evaluated, ` +
+      `${result.qualified} qualified, ${result.created.length} created`,
+    );
+    if (result.created.length > 0) {
+      console.log(
+        `[neuralgentics] New skills created: ${result.created.map((c) => c.name).join(', ')}`,
+      );
+    }
+    return {
+      evaluated: result.evaluated,
+      qualified: result.qualified,
+      created: result.created.length,
+    };
+  } catch (err) {
+    // Non-fatal: log and continue. Do NOT block compaction.
+    console.error(
+      '[neuralgentics] Evolution gate failed during compaction:',
+      err instanceof Error ? err.message : err,
+    );
+    return { evaluated: 0, qualified: 0, created: 0 };
+  }
+}
+
+/**
  * Handle session compaction event.
  *
  * Called by OpenCode when `session.compacting` fires,
@@ -34,11 +87,18 @@ const CRITICAL_FILES: readonly string[] = [
  *
  * Reads each critical file from the workspace root, saves full content
  * to memory with high-priority metadata, and records a compaction event.
+ *
+ * The self-evolution gate runs BEFORE the backup loop to ensure
+ * newly-created skills are visible in the compaction snapshot.
  */
 export async function handleCompaction(
   memory: MemoryAdapter,
   workspaceRoot: string,
 ): Promise<CompactionBackupResult> {
+  // ── Run evolution gate BEFORE backup ──
+  await runEvolutionGate(memory, workspaceRoot);
+
+  // ── Existing backup loop ──
   const backedUp: string[] = [];
   const failed: string[] = [];
   const memoryIds: string[] = [];
