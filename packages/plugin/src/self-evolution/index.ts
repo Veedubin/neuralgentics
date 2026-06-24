@@ -34,7 +34,7 @@ import type {
 /** Default options for the self-evolution gate. */
 const DEFAULT_OPTIONS: Required<SelfEvolutionGateOptions> = {
   minTriggerCount: 3,
-  autoCreate: false,
+  autoCreate: true,
   noSkills: false,
   noAgents: false,
 };
@@ -154,10 +154,23 @@ export class SelfEvolutionGate {
    * Steps 5.2–5.5 from the handoff workflow:
    * 1. Find candidates
    * 2. Evaluate each one
-   * 3. Create skills/agents for qualified candidates
+   * 3. Create skills/agents for qualified candidates (if autoCreate is enabled)
    * 4. Track results
+   *
+   * The `autoCreate` behavior is determined by:
+   *   1. If `options.autoCreate` is provided in the call, use it (call-site override).
+   *   2. Otherwise, fall back to `this.options.autoCreate` (constructor default, now `true`).
+   *
+   * This allows callers like the compaction hook or handoff skill to explicitly
+   * force auto-creation (`{ autoCreate: true }`) or suppress it (`{ autoCreate: false }`)
+   * regardless of the constructor default.
+   *
+   * @param options - Optional overrides for this run cycle.
+   * @param options.autoCreate - Override the autoCreate setting for this run only.
    */
-  async run(): Promise<EvolutionResult> {
+  async run(options?: { autoCreate?: boolean }): Promise<EvolutionResult> {
+    const effectiveAutoCreate = options?.autoCreate ?? this.options.autoCreate;
+
     // Find candidates
     const candidates = await this.findCandidates();
 
@@ -178,7 +191,7 @@ export class SelfEvolutionGate {
 
     // Create skills/agents from qualified candidates
     const created: EvolutionResult['created'] = [];
-    if (this.options.autoCreate) {
+    if (effectiveAutoCreate) {
       for (const candidate of qualified) {
         try {
           const result = await this.createFromCandidate(candidate);
