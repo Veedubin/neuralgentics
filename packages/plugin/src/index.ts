@@ -813,6 +813,19 @@ export type {
   SkillCatalogResponse,
   BrokerClient,
 } from "./self-evolution/broker_client.js";
+export {
+  ExternalSkillsFetcher,
+  DEFAULT_REPOS,
+  readEnvFile,
+} from "./self-evolution/external_fetcher.js";
+export type {
+  RepoConfig,
+  ManifestRepoEntry,
+  Manifest,
+  FetchResult,
+  EnvReader,
+  ExecFn,
+} from "./self-evolution/external_fetcher.js";
 export type {
   CompactionBackupResult,
   CompactionRestoreFile,
