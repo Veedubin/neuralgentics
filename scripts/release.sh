@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DRY_RUN=false
 VERBOSE=false
+SKIP_EXTERNAL_SKILLS=false
 
 # --- Colors ---
 GREEN='\033[0;32m'
@@ -28,9 +29,10 @@ Neuralgentics Release Script
 Usage: $(basename "$0") [OPTIONS]
 
 Options:
-  --dry-run   Show what would be done without executing
-  --verbose   Enable verbose output
-  -h, --help  Show this help message
+  --dry-run                Show what would be done without executing
+  --verbose                Enable verbose output
+  --skip-external-skills   Skip external skills fetch and bundling (lean tarball)
+  -h, --help               Show this help message
 EOF
   exit 0
 }
@@ -39,6 +41,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=true; shift ;;
     --verbose) VERBOSE=true; shift ;;
+    --skip-external-skills) SKIP_EXTERNAL_SKILLS=true; shift ;;
     -h|--help) usage ;;
     *) err "Unknown option: $1"; usage ;;
   esac
@@ -50,6 +53,31 @@ run() {
   else
     verbose "Running: $*"
     "$@"
+  fi
+}
+
+# --- External Skills Fetcher ---
+run_external_fetcher() {
+  if $SKIP_EXTERNAL_SKILLS; then
+    warn "Skipping external skills fetch (--skip-external-skills set)"
+    return 0
+  fi
+
+  local env_file="$PROJECT_ROOT/.env"
+  local enabled="false"
+  if [[ -f "$env_file" ]]; then
+    enabled=$(grep -E '^external_skills\.enabled=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || echo "false")
+  fi
+
+  if [[ "$enabled" != "true" ]]; then
+    warn "external_skills.enabled is not 'true' — skipping external skills fetch"
+    return 0
+  fi
+
+  log "Fetching external skills..."
+  if ! run "$SCRIPT_DIR/external-skills-fetcher.sh"; then
+    err "External skills fetch failed; use --skip-external-skills to bypass (offline release)"
+    exit 1
   fi
 }
 
@@ -129,6 +157,7 @@ main() {
   $DRY_RUN && warn "Dry run — no changes will be made."
 
   check_clean_tree
+  run_external_fetcher
   run_tests
 
   local tarball
