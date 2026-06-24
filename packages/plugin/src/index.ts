@@ -119,6 +119,13 @@ const pendingStatelessTasks = new Map<
   string,
   { contextMemoryId: string; agent: AgentRole }
 >();
+
+// --- Skills Brokering: lazy skill lookup instance ---
+import { SkillLookup } from "./self-evolution/skill_lookup.js";
+import { StubBrokerClient } from "./self-evolution/broker_client.js";
+import { recordSkillReuse, capSkillBody } from "./self-evolution/skill_reuse.js";
+
+let skillLookupInstance: SkillLookup | null = null;
 // --- End stateless state ---
 
 // ============================================================================
@@ -532,6 +539,50 @@ export const NeuralgenticsPlugin = async (
               agent: statelessResult.agent,
             });
 
+            // === Skills Brokering: pre-dispatch skill attach ===
+            // After the seed prompt is built but before returning to the caller,
+            // try to attach a matching skill from the catalog. Best-effort:
+            // if anything fails, the dispatch proceeds with the original seed prompt.
+            let skillAttached: {
+              name: string;
+              score: number;
+              savedTokens: number;
+              trustBumped: boolean;
+            } | null = null;
+            try {
+              if (!skillLookupInstance) {
+                skillLookupInstance = new SkillLookup(new StubBrokerClient());
+              }
+              const taskContext = task.userRequest || task.description || "";
+              const match = await skillLookupInstance.pickSkill(taskContext, "orchestrator");
+              if (match && match.body && match.body.trim().length > 0) {
+                // Append the skill body (capped) to the seed prompt
+                const cappedBody = capSkillBody(match.body, 4000);
+                statelessResult.seedPrompt.prompt =
+                  statelessResult.seedPrompt.prompt +
+                  `\n\n## Skill attached: ${match.name} (score: ${match.score.toFixed(3)})\n\n${cappedBody}\n`;
+                // Record the reuse
+                const reuseResult = await recordSkillReuse({
+                  skill: match,
+                  taskContext,
+                  memory: memory,
+                });
+                skillAttached = {
+                  name: match.name,
+                  score: match.score,
+                  savedTokens: reuseResult.savedTokens,
+                  trustBumped: reuseResult.trustBumped,
+                };
+              }
+            } catch (err) {
+              console.warn(
+                "[neuralgentics] Skill attach failed (non-fatal):",
+                err instanceof Error ? err.message : err,
+              );
+              // Continue with original seed prompt
+            }
+            // === END Skills Brokering ===
+
             return JSON.stringify(
               {
                 mode: "stateless",
@@ -539,6 +590,7 @@ export const NeuralgenticsPlugin = async (
                 contextMemoryId: statelessResult.contextMemoryId,
                 seedPrompt: statelessResult.seedPrompt.prompt,
                 executionPlan: statelessResult.executionPlan,
+                skill_attached: skillAttached,
               },
               null,
               2,
@@ -816,6 +868,15 @@ export type {
   SkillCatalogResponse,
   BrokerClient,
 } from "./self-evolution/broker_client.js";
+export {
+  recordSkillReuse,
+  estimateSavedTokens,
+  capSkillBody,
+} from "./self-evolution/skill_reuse.js";
+export type {
+  RecordSkillReuseArgs,
+  RecordSkillReuseResult,
+} from "./self-evolution/skill_reuse.js";
 export {
   ExternalSkillsFetcher,
   DEFAULT_REPOS,
