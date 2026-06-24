@@ -164,6 +164,10 @@ type brokerBuildCatalogParams struct {
 	Role string `json:"role"`
 }
 
+type brokerListSkillsParams struct {
+	Role string `json:"role"`
+}
+
 type brokerCallParams struct {
 	Role       string         `json:"role"`
 	ServerName string         `json:"serverName"`
@@ -615,6 +619,11 @@ func main() {
 	embeddingAddr := os.Getenv("MEMINI_EMBEDDING_ADDR")
 	embeddingMode := os.Getenv("EMBEDDING_MODE")
 
+	workspaceRoot := os.Getenv("NEURALGENTICS_WORKSPACE_ROOT")
+	if workspaceRoot == "" {
+		workspaceRoot, _ = os.Getwd()
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -641,7 +650,7 @@ func main() {
 		log.Fatalf("failed to initialize orchestrator: %v", err)
 	}
 
-	brk := broker.NewBroker()
+	brk := broker.NewBrokerWithWorkspace(workspaceRoot)
 
 	// Wire the MemorySystem as the broker's ToolExposer for lazy tool exposure.
 	// This allows the broker to track which tools each agent has requested and
@@ -888,6 +897,8 @@ func handleRequest(
 	// Broker
 	case "broker.buildCatalog":
 		return handleBrokerBuildCatalog(req, brk)
+	case "broker.listSkills":
+		return handleBrokerListSkills(req, brk)
 	case "broker.call":
 		return handleBrokerCall(req, brk)
 	case "broker.matchIntent":
@@ -1223,6 +1234,16 @@ func handleBrokerBuildCatalog(req jsonrpcRequest, brk *broker.Broker) jsonrpcRes
 	}
 
 	cat := brk.BuildServerCatalog(params.Role)
+	return successResponse(req.ID, cat)
+}
+
+func handleBrokerListSkills(req jsonrpcRequest, brk *broker.Broker) jsonrpcResponse {
+	var params brokerListSkillsParams
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	cat := brk.BuildSkills(params.Role)
 	return successResponse(req.ID, cat)
 }
 
