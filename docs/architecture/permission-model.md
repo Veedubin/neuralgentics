@@ -26,19 +26,27 @@ The following matrix is the **authoritative** view of the `DefaultServerRoles` m
 
   Column keys:  mem = memoryManager   (allow-all)
                 neu = neuralgentics   (allow-all)
-                gh  = github-mcp      (boomerang-git + orchestrator only)
-                ply = playwright      (tester, scraper, researcher)
-                srx = searxng         (architect, coder, scraper, researcher, linter, git)
-                wfb = webfetch        (architect, coder, scraper, researcher, tester, linter, git)
-                mkd = markitdown      (architect, writer, git, release)
+  gh  = github-mcp      (boomerang-git + orchestrator only)
+              ply = playwright      (tester, scraper, researcher)
+              srx = searxng         (architect, coder, scraper, researcher, linter, git)
+              wfb = webfetch        (architect, coder, scraper, researcher, tester, linter, git)
+              mkd = markitdown      (architect, writer, git, release)
 ```
+
+> **Table 4 — Permission Matrix.** This table is the authoritative view of the
+> `DefaultServerRoles` map in
+> `packages/broker-go/src/neuralgentics/broker/access/access.go`. Most agents
+> have access to the "Core" servers (`memini` and `neuralgentics`), but specific
+> capabilities like GitHub API access or Headless Browser control are locked to
+> the specialists who actually need them. The `orchestrator` role is implicitly
+> allowed everywhere (enforced in `CanAccess()`), shown as the `(superuser)`
+> annotation on its row.
 
 > **Note on `boomerang-*` roles.** For every base role above, there is a matching
 > `boomerang-*` role (e.g. `boomerang-coder`, `boomerang-architect`) used by the
 > `boomerang-v3` plugin. The `boomerang-*` role inherits the same permissions as
 > its base role, **plus** any role-specific grants listed in the source
 > `DefaultServerRoles` map. See `access.go` for the canonical list.
-> **Diagram 4 — Permission Matrix Heatmap.** This matrix visualizes the authority levels of the agent swarm. Most agents have access to the "Core" servers (memini and neuralgentics), but specific capabilities like GitHub API access or Headless Browser control are locked to the specialists who actually need them.
 
 ---
 

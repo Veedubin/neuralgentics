@@ -8,32 +8,17 @@ Neuralgentics is not a single application, but a coordinated runtime of three pr
 
 ## 🏗️ High-Level Architecture
 
-```text
-       USER / DEVELOPER
-              │
-              ▼
-      ╔══════════════════╗
-      ║  OPENCODE PLUGIN ║ ◄── TUI, Kanban, Orchestrator
-      ╚══════════════════╝
-              │
-              │ JSON-RPC (stdio)
-              ▼
-      ╔══════════════════╗    MCP Boundary
-      ║   MCP BROKER     ║ ──────────────────► [ EXT. MCP SERVERS ]
-      ╚══════════════════╝                         (GitHub, Web, etc.)
-              │
-              │ HTTP/REST
-              ▼
-      ╔══════════════════╗
-      ║   MEMINI-AI      ║ ◄── Trust-Weighted Memory Engine
-      ╚══════════════════╝
-              │
-              ▼
-      ╔══════════════════╗
-      ║   POSTGRESQL     ║ ◄── pgvector, KG Entities
-      ╚══════════════════╝
-```
+![Diagram 1 — System Architecture](diagrams/diagram-1-overview.svg)
+
+<details>
+<summary>View as PNG (better for some renderers)</summary>
+
+![Diagram 1 PNG](diagrams/diagram-1-overview.png)
+</details>
+
 > **Diagram 1 — System Architecture.** The flow travels from the User through the OpenCode plugin. The Orchestrator manages the session logic, while the MCP Broker acts as a security and token-reduction gate for all external tool calls. The Memini-AI server handles the semantic "long-term" memory, backed by a vector-enabled PostgreSQL database.
+
+**Source:** [`diagrams/diagram-1-overview.mmd`](diagrams/diagram-1-overview.mmd) — edit the `.mmd` and re-run `npx mmdc -i ... -o ...` to regenerate.
 
 ---
 

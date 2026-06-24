@@ -1,0 +1,29 @@
+graph TD
+    REQUEST["AGENT REQUEST<br/>{role, intent, args}"]
+    ROLE{"ROLE CHECK<br/>Server &rarr; [Roles] map"}
+    PERMMAP["PERMISSION MAP<br/>orchestrator = superuser"]
+    DENY["DENY / 401<br/>ErrUnauthorized (-32001)"]
+    CATALOG["CATALOG FILTER<br/>Slashes 95% of tokens"]
+    JACCARD["JACCARD MATCHING<br/>Tokenized intent &rarr; tool"]
+    EXPAND["SERVER EXPANSION<br/>Resolve transport, stdio"]
+    JSONRPC["FINAL JSON-RPC<br/>JSON-RPC 2.0 envelope"]
+    EXEC["TOOL EXECUTION"]
+
+    REQUEST --> ROLE
+    ROLE --- PERMMAP
+    ROLE -->|"If Allowed"| CATALOG
+    ROLE -->|"If Denied"| DENY
+    CATALOG --> JACCARD
+    JACCARD --> EXPAND
+    EXPAND --- JSONRPC
+    EXPAND --> EXEC
+
+    classDef broker fill:#C07030,stroke:#8B4F20,color:#fff
+    classDef decision fill:#D4A050,stroke:#8B4F20,color:#222
+    classDef deny fill:#A03030,stroke:#6B2020,color:#fff
+    classDef side fill:#888,stroke:#555,color:#fff
+
+    class REQUEST,CATALOG,JACCARD,EXPAND,EXEC broker
+    class ROLE decision
+    class DENY deny
+    class PERMMAP,JSONRPC side

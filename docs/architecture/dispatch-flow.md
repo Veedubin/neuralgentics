@@ -6,38 +6,17 @@ The Orchestrator is the "brain" of the session. It translates a vague user reque
 
 Neuralgentics does not use simple linear prompts. It uses a **decompositional pipeline**.
 
-```text
-    USER PROMPT
-         │
-         ▼
- ╔══════════════════╗
- ║   THOUGHT CHAIN  ║ ◄── Logged to memoryManager
- ╚══════════════════╝
-         │
-         ▼
- ╔══════════════════╗
- ║ TASK DECOMPOSE   ║ ◄── Create Kanban cards
- ╚══════════════════╝
-         │
-         ▼
- ╔══════════════════╗
- ║ ROUTE MATRIX     ║ ◄── Select Specialist
- ╚══════════════════╝
-         │
-         ▼
- ╔══════════════════╗
- ║ CONTEXT PACKAGE ║ ◄── Fetch L0/L1/L2 Memory
- ╚══════════════════╝
-         │
-         ▼
- ╔══════════════════╗
- ║    TASK() CALL   ║ ◄── OpenCode Dispatch
- ╚══════════════════╝
-         │
-         ▼
-   [ SPECIALIST AGENT ]
-```
-> **Diagram 3 — Dispatch Pipeline.** The user's intent is first processed through a sequential thought chain. The orchestrator then decomposes the goal into a set of discrete cards on the Kanban board. Each card is routed to a specialist (e.g., `boomerang-coder`) and packaged with a targeted' slice of memory before being executed.
+![Diagram 3 — Dispatch Pipeline](diagrams/diagram-3-dispatch-flow.svg)
+
+<details>
+<summary>View as PNG (better for some renderers)</summary>
+
+![Diagram 3 PNG](diagrams/diagram-3-dispatch-flow.png)
+</details>
+
+> **Diagram 3 — Dispatch Pipeline.** A user prompt flows through three lifecycle phases — pre-dispatch (orchestrator's thinking: thought chain → task decomposition → routing → context package), the dispatch itself (`task()` call → specialist agent → quality gates), and post-dispatch wrap-up (IMPROVE pattern extraction → doc update → memory save). If the kanban has more cards, the loop continues; otherwise the session is complete. Every edge is labeled with the data being passed (memory IDs, context packages, wrap-up handles).
+
+**Source:** [`diagrams/diagram-3-dispatch-flow.mmd`](diagrams/diagram-3-dispatch-flow.mmd) — edit the `.mmd` and re-run `npx mmdc -i ... -o ...` to regenerate.
 
 ---
 
