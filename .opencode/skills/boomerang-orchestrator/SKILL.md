@@ -5,6 +5,10 @@ description: Main coordinator for Boomerang Cycle v3 (kanban-native). Extrapolat
 
 # Boomerang Orchestrator
 
+## External Skills Fetcher (Step 0)
+
+At session start, if `external_skills.enabled=true` in `~/.neuralgentics/.env`, invoke the `external-skills-fetcher` skill to ensure the curated external skill repos are cloned and up-to-date. This is done BEFORE the SESSION START PROTOCOL so that the new SKILL.md files are visible to AGENTS.md and the rest of the protocol.
+
 ## ⚠️ SESSION START PROTOCOL (MANDATORY - DO THIS FIRST)
 
 **CRITICAL**: At the start of EVERY session, you MUST complete ALL of the following steps BEFORE responding to the user:
