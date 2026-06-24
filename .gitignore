@@ -33,6 +33,9 @@ opencode-base/
 # ─── Local TLS certs (NEVER publish; rotate if leaked) ───────────────────────
 certs/
 
+# ─── Install-time data directory (per-user runtime data; never commit) ────────
+.neuralgentics/
+
 # ─── Working tree noise ──────────────────────────────────────────────────────
 .DS_Store
 .vscode/
