@@ -5,7 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.0] - 2026-06-22
+## [0.9.0] - 2026-06-24
+
+Minor release: Skills Brokering + Auto-Evolution (Phases 1-3, 13 cards T-SB-001 through T-SB-013). The Go MCP broker is now ALSO a skills broker — agents can browse a role-filtered SkillCatalog and reuse existing skills instead of recomputing work. Auto-evolution creates new SKILL.md files from repeated session patterns. Total: 14 commits, 37 files, +8062/-180 lines, 99 plugin tests + 50+ broker tests passing.
+
+### Added
+
+- **Phase 1 — Skills Brokering wire-up (T-SB-001 through T-SB-007)**:
+  - Default `auto_create=true` in `SelfEvolutionGate`; `gate.run({autoCreate: true})` is invoked BEFORE `handleCompaction` in the compaction hook so newly-created SKILL.md files are captured in backups.
+  - `//boomerang-handoff` skill (NEW) — runs the self-evolution gate, then updates HANDOFF.md + TASKS.md, then commits new SKILL.md files.
+  - Go `SkillCatalog` (in `packages/broker-go/src/neuralgentics/broker/catalog/skills.go`) — mirrors `ServerCatalog` shape. `Builder.BuildSkills(role, workspaceRoot)` walks `.opencode/skills/*/SKILL.md`, parses front-matter, merges tags via hybrid YAML baseline + front-matter override. Orchestrator sees all; missing YAML = allow-all.
+  - `broker.listSkills(role)` JSON-RPC method (parallel to `broker.buildCatalog`).
+  - `agent-skill-scope.yaml` at repo root — per-role allow-list of skill tags. 23 role entries matching the Role constants in `access.go`.
+  - `skill_lookup.ts` — orchestrator pre-dispatch hook. Embeds task context, picks top-1 skill from `ListSkills(orchestrator)` by word-overlap cosine (threshold 0.6), loads body from LRU cache.
+  - LRU skill body cache: Go `SkillBodyCache` (container/list + sync.Mutex) + TS `SkillBodyCache` (Map-based), 100 entries × 5MB cap, modTime-invalidated, race-tested.
+
+- **Phase 2 — External skills (T-SB-008 through T-SB-011)**:
+  - NEW `external-skills-fetcher` skill with offline-safe `git clone`/`git pull --ff-only` logic into `~/.neuralgentics/external_skills/`. Injectable `ExecFn` for testability. 9 network error patterns caught.
+  - `MANIFEST.json` written with provenance metadata (repo, commit_sha, license, attribution).
+  - `ExternalSkillsFetcher` TypeScript helper (363 lines, 27 tests).
+  - SkillCatalog extended to read `external_skills/*` — two per-repo walkers: `walkAIResearchSkills` (numbered-category-dir pattern `^[0-9]+-.*/`) and `walkUIUXProMaxSkill` (`.claude/skills/*/SKILL.md`).
+  - `ExternalProvenance` struct stamped on every external skill; both repos are MIT-licensed with proper attribution.
+  - Dedup rule: local skills win over external skills with the same name.
+  - Release script bundles external skills into the tarball (`--skip-external-skills` flag for lean builds). Tarball weight increase: ~10MB.
+
+- **Phase 3 — Polish (T-SB-012 + T-SB-013)**:
+  - `recordSkillReuse` — tracks token savings and bumps trust (+0.05 agent_used) on the skill's provenance memory. Never throws; all errors caught and logged.
+  - `saved_tokens` formula: `max(0, 3000 - ceil(len(body+name)/4))` — rough char/4 heuristic.
+  - `capSkillBody` (4000 char cap with `[... truncated]` marker) prevents large external skills from blowing up the seed prompt.
+  - `pickSkill` wired into `neuralgentics_dispatch_task` — the orchestrator auto-attaches matching skills to the seed prompt (best-effort, never blocks dispatch).
+  - `skill_attached` field added to dispatch response JSON.
+  - Full-cycle integration test (5 tests including edge cases) — provenance memory → orchestrator picks skill → body loaded → seed prompt augmented → reuse recorded → trust bumped → cache hit on second call.
+
+- **External skill repos** (both MIT-licensed, attribution preserved):
+  - `https://github.com/Orchestra-Research/AI-Research-SKILLs` (778 files, ~22 categories)
+  - `https://github.com/nextlevelbuilder/ui-ux-pro-max-skill` (387 files, 19 platform configs)
+
+### Changed
+
+- The Go broker is now BOTH an MCP tool router AND a skills broker. The same role-filtered JSON-RPC surface (`broker.buildCatalog` for tools, `broker.listSkills` for skills) means one permission model for "what can this agent reach?".
+- Release process now invokes `scripts/external-skills-fetcher.sh` before `build_dist`. The fetcher is offline-safe and a no-op when `external_skills.enabled` is unset or `false`.
+- The plugin's `tsconfig.json` now has `types: ["node"]` so `tsc --noEmit` can find `@types/node` (pre-existing gap fixed in this release).
+
+### Notes
+
+- Per the original Session 29 design, the "skills broker" framing is now LEGITIMATE post-Phase 1. The plan was 13 cards across 3 phases — all delivered.
+- The dispatch_task wiring (T-SB-012) is best-effort: if `pickSkill` fails, the dispatch proceeds with the original seed prompt. Skill reuse is opportunistic, not a hard requirement.
+- Pre-existing issues NOT addressed in this release (out of scope): (a) no `eslint.config.*` file in the project (root `bun run lint` fails), (b) broker-go proxy test hangs in `readLoop` (pre-existing on baseline commit 2089083).
+
+### Quality gates
+
+- packages/sdk: `npx vitest run` 72/72 + `npx tsc --noEmit` clean
+- packages/plugin: `bun test` 99/99 (was 0 before this release) + `tsc --noEmit` clean
+- packages/broker-go: `go vet ./...` clean, `go test -race ./src/neuralgentics/broker/catalog/` 50+/50+ pass in 1.114s, `go build ./...` clean
+- packages/backend-go: `go vet ./...` + `go build ./...` clean
+- 4 modified shell scripts: `bash -n` clean
+
 
 Minor release: Embedding sidecar productionization (systemd user unit + PID-file fallback) + BGE-Large FP16 GPU inference + integration test fixes + end-to-end JSON-RPC smoke test (12 assertions across 7 methods).
 

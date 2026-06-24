@@ -19,6 +19,9 @@ A harness provides the structural scaffolding that a raw model lacks. It wraps t
 
 ## What it does
 
+- **Skills Brokering** — The broker is now both an MCP tool router AND a skills broker. Agents can browse a role-filtered SkillCatalog to reuse established patterns (SKILL.md), reducing re-computation and token waste.
+- **Auto-Evolution** — Repeated successful session patterns are automatically captured and promoted to new SKILL.md files during compaction and handoff.
+- **External Skills** — Bundle of 1000+ curated skills from AI-Research-SKILLs and ui-ux-pro-max-skill, MIT-attributed and bundled for offline use.
 - **Memory Engine** — Every decision an agent makes lands in PostgreSQL + pgvector with a **trust score** (default 0.5). Successful patterns get promoted; failed approaches decay and fade. The system is honest about what worked.
 - **MCP Broker** — All tool calls go through a broker that enforces role-based permissions: 23 roles, 7 restricted server classes. `github-mcp` is gated to `boomerang-git` only. The broker also cuts the tool list in agent prompts, reducing token overhead by up to 95% per dispatch.
 - **Kanban Board** — A real 7-state finite state machine (`triage → todo → ready ↔ running ↔ blocked → done → archived`), not a TODO list. Every transition is logged. `failureLimit=2` auto-archives a card that keeps failing.
