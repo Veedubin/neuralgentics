@@ -6,36 +6,17 @@ The Neuralgentics Broker is the strategic gatekeeper between the agent swarm and
 
 When an agent requests a tool, the Broker doesn't just check if the tool exists; it validates the *intent* and the *authority* of the requester.
 
-```text
-   AGENT REQUEST
-         │
-         ▼
- ╔══════════════════╗       ╔══════════════════════╗
- ║   ROLE CHECK     ║ ────► ║   PERMISSION MAP     ║
- ╚══════════════════╝       ╚══════════════════════╝
-         │                               │
-         │ (If Allowed)                   ▼
-         ▼                       [ DENY / 401 ]
- ╔══════════════════╗
- ║ CATALOG FILTER   ║ ◄──- Slashes 95% of tokens
- ╚══════════════════╝
-         │
-         ▼
- ╔══════════════════╗
- ║ JACCARD MATCHING ║ ◄──- Maps intent to tool
- ╚══════════════════╝
-         │
-         ▼
- ╔══════════════════╗       ╔══════════════════════╗
- ║ SERVER EXPANSION ║ ────► ║   FINAL JSON-RPC     ║
- ╚══════════════════╝       ╚══════════════════════╝
-         │                               │
-         └───────────────────────────────┘
-                                        │
-                                        ▼
-                                  [ TOOL EXECUTION ]
-```
+![Diagram 2 — Broker Permission Gating](diagrams/diagram-2-broker-flow.svg)
+
+<details>
+<summary>View as PNG (better for some renderers)</summary>
+
+![Diagram 2 PNG](diagrams/diagram-2-broker-flow.png)
+</details>
+
 > **Diagram 2 — Broker Permission Gating.** Every request undergoes a multi-stage validation process. First, the agent's role is checked against the server's allowed list. Then, the tool catalog is pruned to only relevant tools. Finally, Jaccard similarity is used to pinpoint the exact tool required before the JSON-RPC call is dispatched to the MCP server.
+
+**Source:** [`diagrams/diagram-2-broker-flow.mmd`](diagrams/diagram-2-broker-flow.mmd) — edit the `.mmd` and re-run `npx mmdc -i ... -o ...` to regenerate.
 
 ---
 

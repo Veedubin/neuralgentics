@@ -1,0 +1,9 @@
+{
+  "htmlLabels": false,
+  "flowchart": {
+    "htmlLabels": false,
+    "useMaxWidth": true
+  },
+  "fontFamily": "trebuchet ms, verdana, arial, sans-serif",
+  "fontSize": 14
+}
