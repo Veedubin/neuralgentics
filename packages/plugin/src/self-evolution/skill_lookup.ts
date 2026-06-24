@@ -210,6 +210,8 @@ export class SkillBodyCache {
     this.entries.clear();
     this.order.length = 0;
     this.totalBytes = 0;
+    this.hitCount = 0;
+    this.missCount = 0;
   }
 
   /** Get cache statistics for debugging. */

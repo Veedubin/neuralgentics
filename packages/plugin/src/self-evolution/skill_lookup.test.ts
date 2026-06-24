@@ -575,4 +575,116 @@ describe("Cache", () => {
       await rm(tmpDir, { recursive: true, force: true });
     }
   });
+
+  // ─── Cache > end-to-end pickSkill uses cache ────────────────────────────
+
+  it("end-to-end pickSkill uses cache — second call hits cache", async () => {
+    const tmpDir = join(tmpdir(), `cache-pickskill-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    const skillPath = join(tmpDir, "SKILL.md");
+    const skillBody =
+      "---\nname: verification\n---\n\n# Verification Skill\n\nVerify things.";
+    await writeFile(skillPath, skillBody, "utf-8");
+
+    try {
+      const catalog: SkillCatalogResponse = {
+        skills: [
+          {
+            name: "verification",
+            description: "verification testing quality",
+            source: "local",
+            tags: ["verification", "testing", "quality"],
+            path: skillPath,
+            size_bytes: skillBody.length,
+            agent_scope: ["tester"],
+          },
+        ],
+        total_skills: 1,
+        role: "orchestrator",
+        source: "local",
+      };
+      const stub = new StubBrokerClient(catalog);
+      const lookup = new SkillLookup(stub);
+
+      // First call — should miss cache, load from disk
+      const result1 = await lookup.pickSkill("verification testing");
+      expect(result1).not.toBeNull();
+      expect(result1!.name).toBe("verification");
+
+      // Second call — should hit cache
+      const result2 = await lookup.pickSkill("verification testing");
+      expect(result2).not.toBeNull();
+      expect(result2!.name).toBe("verification");
+
+      // Cache stats should show at least 1 hit
+      const stats = getCacheStats();
+      expect(stats.hits).toBeGreaterThanOrEqual(1);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  // ─── Cache > mtime change invalidates ───────────────────────────────────
+
+  it("mtime change invalidates cache — fresh content after file modification", async () => {
+    const tmpDir = join(tmpdir(), `cache-mtime2-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    const skillPath = join(tmpDir, "SKILL.md");
+    const body1 = "Original content";
+    await writeFile(skillPath, body1, "utf-8");
+
+    try {
+      const cache = new SkillBodyCache();
+      const result1 = await cache.get(skillPath);
+      expect(result1).toBe(body1);
+
+      // Wait for mtime to differ
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const body2 = "Modified content";
+      await writeFile(skillPath, body2, "utf-8");
+
+      const result2 = await cache.get(skillPath);
+      expect(result2).toBe(body2);
+
+      // Verify cache stats show a miss for the second call
+      const stats = cache.cacheStats();
+      expect(stats.misses).toBeGreaterThanOrEqual(1);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  // ─── Cache > clearCache resets everything ────────────────────────────────
+
+  it("clearCache resets everything — stats return to zeros", async () => {
+    const tmpDir = join(tmpdir(), `cache-clear2-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    const skillPath = join(tmpDir, "SKILL.md");
+    await writeFile(skillPath, "clearable content", "utf-8");
+
+    try {
+      // Populate cache
+      const cache = new SkillBodyCache();
+      await cache.get(skillPath); // miss
+      await cache.get(skillPath); // hit
+
+      let stats = cache.cacheStats();
+      expect(stats.entries).toBe(1);
+      expect(stats.hits).toBe(1);
+      expect(stats.misses).toBe(1);
+      expect(stats.bytes).toBeGreaterThan(0);
+
+      // Clear cache
+      cache.invalidateAll();
+
+      stats = cache.cacheStats();
+      expect(stats.entries).toBe(0);
+      expect(stats.hits).toBe(0);
+      expect(stats.misses).toBe(0);
+      expect(stats.bytes).toBe(0);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
