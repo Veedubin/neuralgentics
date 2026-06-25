@@ -133,7 +133,7 @@
     "max_bytes": 512000
   },
   "plugin": [
-    "@neuralgentics/plugin",
+    "@veedubin/neuralgentics",
     "@franlol/opencode-md-table-formatter@latest"
   ],
   "lsp": {
