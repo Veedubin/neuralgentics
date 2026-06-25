@@ -94,7 +94,7 @@ This ensures shared knowledge reflects verified outcomes, not speculative predic
 
 ## Architecture (v0.7.x — Plugin-Only)
 
-Neuralgentics is an **OpenCode plugin** — not a standalone TUI. The user runs `opencode`, which loads `@neuralgentics/plugin` from `.opencode/opencode.json`. The plugin provides:
+Neuralgentics is an **OpenCode plugin** — not a standalone TUI. The user runs `opencode`, which loads `@veedubin/neuralgentics` from `.opencode/opencode.json`. The plugin provides:
 
 - **MCP tools**: routing validation, memory save/query, compaction backup/restore, stateless agent dispatch, self-evolution gate
 - **Lifecycle hooks**: session.created, session.idle, session.compacting
@@ -117,7 +117,7 @@ opencode
 ```
 
 ### What's in the archive
-- `@neuralgentics/plugin` — compiled TypeScript overlay (orchestrator, memory client, routing)
+- `@veedubin/neuralgentics` — compiled TypeScript overlay (orchestrator, memory client, routing)
 - `.opencode/agents/` — 8 agent personas (architect, coder, explorer, git, orchestrator, reviewer, tester, writer)
 - `.opencode/skills/` — 5 skills (boomerang-orchestrator, kanban-board-manager, skill-self-audit, todo-list-updater, update-gh-docs)
 - `.opencode/opencode.json` — OpenCode config with Ollama Cloud models, MCP servers, LSP, formatter

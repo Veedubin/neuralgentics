@@ -1,10 +1,13 @@
 {
-  "name": "@neuralgentics/overlay",
-  "version": "0.2.0",
-  "description": "Neuralgentics overlay package for OpenCode integration",
+  "name": "@veedubin/neuralgentics",
+  "version": "0.9.1",
+  "description": "Neuralgentics OpenCode plugin — agent personas, skills, routing enforcement, and MCP tools.",
   "type": "module",
   "main": "./dist/server.js",
   "types": "./dist/server.d.ts",
+  "files": [
+    "dist/"
+  ],
   "exports": {
     ".": {
       "import": "./dist/server.js",
@@ -22,7 +25,25 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "node e2e_test.mjs"
+    "test:e2e": "node e2e_test.mjs",
+    "prepublishOnly": "npm run typecheck && npm run build"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "neuralgentics",
+    "agent",
+    "orchestration",
+    "boomerang"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Veedubin/neuralgentics",
+    "directory": "overlay/packages/opencode"
+  },
+  "homepage": "https://github.com/Veedubin/neuralgentics#readme",
+  "bugs": {
+    "url": "https://github.com/Veedubin/neuralgentics/issues"
   },
   "dependencies": {},
   "devDependencies": {
