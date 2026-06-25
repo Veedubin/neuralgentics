@@ -609,7 +609,11 @@ func main() {
 
 	dbURL := os.Getenv("NEURALGENTICS_DB_URL")
 	if dbURL == "" {
-		dbURL = "postgresql://postgres:password@localhost:5434/neuralgentics"
+		// Default matches the running `neuralgentics-postgres` podman container
+		// (localhost:6000, user/db `neuralgentics`, password `neuralgentics`).
+		// Port 5434 belongs to `memini-postgres` (the memini-ai timescale DB),
+		// which has databases `postgres` and `memini` only — no `neuralgentics`.
+		dbURL = "postgresql://neuralgentics:neuralgentics@localhost:6000/neuralgentics"
 	}
 
 	// Read embedding config from env. Defaults: noop embedder, cpu mode.

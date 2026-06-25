@@ -162,6 +162,36 @@ The same rule applies to containers the user previously had running that are cur
 
 **DO NOT `podman rm` either of these containers without explicit user permission.**
 
+## Go Backend Default Connection (as of 2026-06-24)
+
+The Go backend `packages/backend-go/cmd/backend/main.go` connects to:
+
+| Field     | Value (matches `neuralgentics-postgres` container) |
+|-----------|----------------------------------------------------|
+| Host      | `localhost:6000`                                   |
+| User      | `neuralgentics`                                    |
+| Password  | `neuralgentics`                                    |
+| Database  | `neuralgentics`                                    |
+
+**Override at runtime** via the `NEURALGENTICS_DB_URL` env var. Default works
+because the `neuralgentics-postgres` podman container is running with
+`POSTGRES_USER=neuralgentics`, `POSTGRES_PASSWORD=neuralgentics`,
+`POSTGRES_DB=neuralgentics` and exposes 6000 → 5432.
+
+If the backend refuses to start with `failed to initialize memory system` or
+`FATAL: database "neuralgentics" does not exist`:
+
+1. Confirm the container is up: `podman ps --filter name=neuralgentics-postgres`
+2. Verify credentials: `podman inspect neuralgentics-postgres --format '{{range .Config.Env}}{{println .}}{{end}}'`
+3. If the DB truly isn't there, the issue is the container, not the binary —
+   do NOT recreate the container without explicit user permission.
+4. Override as a last resort: `NEURALGENTICS_DB_URL="postgresql://user:pass@host:5432/db" ./neuralgentics-backend`
+
+**Do not change the default URL** in `main.go` without confirming the
+container's actual credentials — the historical wrong default
+(`postgresql://postgres:password@localhost:5434/neuralgentics`) pointed at
+`memini-postgres` instead and caused startup failures.
+
 ## Release Engineering Notes
 
 - **v0.7.3** is the latest tagged release (2026-06-20). Plugin-only tarball + container images.
