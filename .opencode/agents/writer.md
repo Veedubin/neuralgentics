@@ -1,7 +1,7 @@
 ---
 description: Neuralgentics Writer - Documentation specialist using gemma4:31b-cloud (Ollama Cloud) with memini-core for context.
 mode: subagent
-model: ollama/gemma4:31b
+model: ollama/mistral-large-3:675b
 steps: 40
 permission:
   read:

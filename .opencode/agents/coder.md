@@ -1,7 +1,7 @@
 ---
-description: Neuralgentics Coder - Fast code generation using glm-5.1:cloud (Ollama Cloud) with memini-core stateless context.
+description: Neuralgentics Coder - Fast code generation using glm-5.2:cloud (Ollama Cloud) with memini-core stateless context.
 mode: subagent
-model: ollama/glm-5.1
+model: ollama/glm-5.2
 steps: 50
 permission:
   read:

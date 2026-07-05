@@ -1,7 +1,7 @@
 ---
-description: Neuralgentics Git - Version control using minimax-m2.7:cloud (Ollama Cloud) with memini-core for commit history.
+description: Neuralgentics Git - Version control using minimax-m3:cloud (Ollama Cloud) with memini-core for commit history.
 mode: subagent
-model: ollama/minimax-m2.7
+model: ollama/minimax-m3
 steps: 30
 permission:
   read:
