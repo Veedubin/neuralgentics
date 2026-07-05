@@ -189,26 +189,88 @@
   },
   "autoupdate": false,
   "mcp": {
-    "memini-ai-dev": {
+    "markitdown": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "markitdown-mcp"
+      ],
+      "enabled": true
+    },
+    "duckdb": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "mcp-server-motherduck",
+        "--db-path",
+        ":memory:",
+        "--read-write",
+        "--allow-switch-databases"
+      ],
+      "enabled": false
+    },
+    "redis": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@gongrzhe/server-redis-mcp",
+        "redis://localhost:6379"
+      ],
+      "enabled": false
+    },
+    "playwright": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@playwright/mcp@latest"
+      ],
+      "enabled": true
+    },
+    "calculator": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@wrtnlabs/calculator-mcp"
+      ],
+      "enabled": false
+    },
+    "prefect": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "--from",
+        "prefect-mcp",
+        "prefect-mcp-server"
+      ],
+      "enabled": false
+    },
+    "mlflow-mcp": {
       "type": "local",
       "command": [
         "uv",
         "run",
-        "--directory",
-        "/home/jcharles/Projects/MCP-Servers/memini-ai-dev",
-        "memini-ai",
-        "--stdio"
+        "--with",
+        "mlflow[mcp]>=3.5.1",
+        "mlflow",
+        "mcp",
+        "run"
       ],
       "environment": {
-        "MEMINI_DB_URL": "postgresql://postgres:password@localhost:5434/postgres",
-        "MEMINI_TRUST_ENGINE": "true",
-        "MEMINI_MEMORY_GRAPH": "true",
-        "MEMINI_KG_ENABLED": "true",
-        "THOUGHT_CHAINS": "true",
-        "MEMINI_PROJECT_ID": "neuralgentics"
+        "MLFLOW_TRACKING_URI": "http://localhost:5001"
       },
-      "timeout": 60000,
-      "enabled": true
+      "enabled": false
+    },
+    "doc2png": {
+      "type": "local",
+      "command": [
+        "uv",
+        "run",
+        "doc2png"
+      ],
+      "enabled": false
     },
     "github-mcp": {
       "type": "local",
@@ -222,14 +284,45 @@
       },
       "enabled": true
     },
-    "playwright": {
+    "memini-ai-dev": {
       "type": "local",
       "command": [
-        "npx",
-        "-y",
-        "@anthropic/mcp-server-playwright"
+        "uv",
+        "run",
+        "--directory",
+        "/home/jcharles/Projects/MCP-Servers/memini-ai-dev",
+        "memini-ai",
+        "--stdio"
       ],
+      "environment": {
+        "MEMINI_DB_URL": "postgresql://postgres:password@localhost:5434/postgres",
+        "MEMINI_EMBEDDING_DIM": "384",
+        "TRUST_ENGINE": "true",
+        "MEMORY_GRAPH": "true",
+        "KG_ENABLED": "true",
+        "TIERED_LOADING": "true",
+        "AUTO_EXTRACT": "true",
+        "PRECOMPRESS": "true",
+        "USER_MODELING": "true",
+        "DECAY_ENABLED": "true",
+        "MULTI_PEER_ENABLED": "true",
+        "DIALECTIC_ENABLED": "true",
+        "THOUGHT_CHAINS": "true",
+        "DB_SSLMODE": "disable",
+        "MEMINI_PROJECT_ID": "neuralgentics"
+      },
+      "timeout": 60000,
       "enabled": true
+    },
+    "videre-mcp": {
+      "type": "local",
+      "command": [
+        "/home/jcharles/Projects/python/videre-mcp/.venv/bin/python",
+        "-m",
+        "videre_mcp"
+      ],
+      "enabled": true,
+      "timeout": 120000
     },
     "searxng": {
       "type": "local",
@@ -241,14 +334,6 @@
       "environment": {
         "SEARXNG_URL": "http://localhost:8080"
       },
-      "enabled": true
-    },
-    "markitdown": {
-      "type": "local",
-      "command": [
-        "uvx",
-        "markitdown-mcp"
-      ],
       "enabled": true
     }
   },
