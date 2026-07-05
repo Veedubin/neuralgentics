@@ -189,26 +189,26 @@
   },
   "autoupdate": false,
   "mcp": {
-    "memoryManager": {
+    "memini-ai-dev": {
       "type": "local",
       "command": [
         "uv",
         "run",
         "--directory",
-        "${NEURALGENTICS_ROOT}/packages/memini-core",
-        "python",
-        "-m",
-        "memini_core.server"
+        "/home/jcharles/Projects/MCP-Servers/memini-ai-dev",
+        "memini-ai",
+        "--stdio"
       ],
       "environment": {
-        "MEMINI_DB_URL": "postgresql://postgres:password@localhost:5434/neuralgentics",
+        "MEMINI_DB_URL": "postgresql://postgres:password@localhost:5434/postgres",
         "MEMINI_TRUST_ENGINE": "true",
         "MEMINI_MEMORY_GRAPH": "true",
         "MEMINI_KG_ENABLED": "true",
-        "THOUGHT_CHAINS": "true"
+        "THOUGHT_CHAINS": "true",
+        "MEMINI_PROJECT_ID": "neuralgentics"
       },
       "timeout": 60000,
-      "enabled": false
+      "enabled": true
     },
     "github-mcp": {
       "type": "local",
@@ -292,7 +292,7 @@
     }
   },
   "instructions": [
-    ".opencode/AGENTS.md"
+    "AGENTS.md"
   ],
   "compaction": {
     "auto": true,
