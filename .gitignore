@@ -14,6 +14,11 @@ site/                # mkdocs build output (deployed to gh-pages branch)
 *.egg-info/
 *.tsbuildinfo
 
+# ─── Go backend build output (built from source via `go build`) ──────────────
+packages/backend-go/neuralgentics-backend
+packages/backend-go/neuralgentics-backend.exe
+*.tar.gz               # release tarballs (built by CI; never commit)
+
 # ─── Caches (auto-regenerated, multi-GB if committed) ────────────────────────
 .mypy_cache/
 .pytest_cache/

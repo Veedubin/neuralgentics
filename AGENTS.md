@@ -1,8 +1,26 @@
 # Neuralgentics Agents
 
+## Provider Configuration (Ollama Cloud & Alternatives)
+
+All projects in this workspace ship with **Ollama Cloud** as the default
+LLM provider. To switch to a different provider — local Ollama, Docker
+Model Runner, OpenAI, Anthropic, Google, OpenRouter, or any
+OpenAI-compatible endpoint — see:
+
+> **`~/Projects/MCP-Servers/docs/providers.md`** — the canonical
+> provider-switching guide. Covers 5 recipes (local Ollama, Docker
+> Model Runner, the Big Three, OpenRouter, custom endpoints), a
+> quick-reference for just changing which Ollama Cloud model each
+> agent uses, a 6-step migration checklist, and a troubleshooting
+> table for the common `ProviderModelNotFoundError`,
+> `Provider not found`, and `401 Unauthorized` errors.
+
+If you only want to swap which model each agent uses (and the model
+already exists in `provider.ollama.models`), the guide shows a `sed`
+one-liner that does it in seconds.
+
 ## Memory
 Memory management is decentralized. Memory is the absolute source of truth. Agents MUST fetch their context and store their wrap-ups in `memini-core` using the provided `memory_id`.
-
 
 ## Stateless Agent Protocol
 
@@ -78,7 +96,6 @@ The IMPROVE step enforces separation between execution and learning. Workers (di
 
 This ensures shared knowledge reflects verified outcomes, not speculative predictions made before quality gates pass.
 
-
 ## Agent Roster
 
 | Role | Model | Purpose |
@@ -94,7 +111,7 @@ This ensures shared knowledge reflects verified outcomes, not speculative predic
 
 ## Architecture (v0.7.x — Plugin-Only)
 
-Neuralgentics is an **OpenCode plugin** — not a standalone TUI. The user runs `opencode`, which loads `@neuralgentics/plugin` from `.opencode/opencode.json`. The plugin provides:
+Neuralgentics is an **OpenCode plugin** — not a standalone TUI. The user runs `opencode`, which loads `@veedubin/neuralgentics` from `.opencode/opencode.json`. The plugin provides:
 
 - **MCP tools**: routing validation, memory save/query, compaction backup/restore, stateless agent dispatch, self-evolution gate
 - **Lifecycle hooks**: session.created, session.idle, session.compacting
@@ -117,7 +134,7 @@ opencode
 ```
 
 ### What's in the archive
-- `@neuralgentics/plugin` — compiled TypeScript overlay (orchestrator, memory client, routing)
+- `@veedubin/neuralgentics` — compiled TypeScript overlay (orchestrator, memory client, routing)
 - `.opencode/agents/` — 8 agent personas (architect, coder, explorer, git, orchestrator, reviewer, tester, writer)
 - `.opencode/skills/` — 5 skills (boomerang-orchestrator, kanban-board-manager, skill-self-audit, todo-list-updater, update-gh-docs)
 - `.opencode/opencode.json` — OpenCode config with Ollama Cloud models, MCP servers, LSP, formatter

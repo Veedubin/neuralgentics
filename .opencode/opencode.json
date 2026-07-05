@@ -84,26 +84,139 @@
           "name": "Mistral Large"
         }
       }
+    },
+    "ollama": {
+      "name": "Ollama Cloud",
+      "api": "openai",
+      "options": {
+        "baseURL": "https://ollama.com/v1",
+        "apiKey": "YOUR_OLLAMA_CLOUD_API_KEY"
+      },
+      "models": {
+        "kimi-k2.6": {
+          "name": "Kimi K2.6 (Cloud)",
+          "limit": {
+            "context": 262144,
+            "output": 262144
+          }
+        },
+        "glm-5.1": {
+          "name": "GLM 5.1 (Cloud)",
+          "limit": {
+            "context": 200000,
+            "output": 131072
+          }
+        },
+        "deepseek-v4-pro": {
+          "name": "DeepSeek V4 Pro (Cloud)",
+          "limit": {
+            "context": 1000000,
+            "output": 384000
+          }
+        },
+        "devstral-2:123b": {
+          "name": "Devstral 2 123B (Cloud)",
+          "limit": {
+            "context": 262144,
+            "output": 262144
+          }
+        },
+        "deepseek-v4-flash": {
+          "name": "DeepSeek V4 Flash (Cloud)",
+          "limit": {
+            "context": 1000000,
+            "output": 384000
+          }
+        },
+        "qwen3-coder-next": {
+          "name": "Qwen3 Coder Next (Cloud)",
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          }
+        },
+        "minimax-m2.7": {
+          "name": "MiniMax M2.7 (Cloud)",
+          "limit": {
+            "context": 204800,
+            "output": 131072
+          }
+        },
+        "minimax-m3": {
+          "name": "MiniMax M3 (Cloud)",
+          "limit": {
+            "context": 512000,
+            "output": 128000
+          }
+        },
+        "gemma4:31b": {
+          "name": "Gemma 4 31B (Cloud)",
+          "limit": {
+            "context": 262144,
+            "output": 32768
+          }
+        },
+        "qwen3.5": {
+          "name": "Qwen 3.5 (Cloud)",
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          }
+        },
+        "devstral-small-2:24b": {
+          "name": "Devstral Small 2 24B (Cloud)",
+          "limit": {
+            "context": 128000,
+            "output": 128000
+          }
+        },
+        "glm-5.2": {
+          "name": "GLM 5.2 (Cloud)",
+          "limit": {
+            "context": 976000,
+            "output": 131072
+          }
+        },
+        "mistral-large-3:675b": {
+          "name": "Mistral Large 3 675B (Cloud)",
+          "limit": {
+            "context": 262144,
+            "output": 262144
+          }
+        }
+      }
     }
   },
   "autoupdate": false,
   "mcp": {
-    "memoryManager": {
+    "memini-ai-dev": {
       "type": "local",
-      "command": ["uv", "run", "--directory", "${NEURALGENTICS_ROOT}/packages/memini-core", "python", "-m", "memini_core.server"],
+      "command": [
+        "uv",
+        "run",
+        "--directory",
+        "/home/jcharles/Projects/MCP-Servers/memini-ai-dev",
+        "memini-ai",
+        "--stdio"
+      ],
       "environment": {
-        "MEMINI_DB_URL": "postgresql://postgres:password@localhost:5434/neuralgentics",
+        "MEMINI_DB_URL": "postgresql://postgres:password@localhost:5434/postgres",
         "MEMINI_TRUST_ENGINE": "true",
         "MEMINI_MEMORY_GRAPH": "true",
         "MEMINI_KG_ENABLED": "true",
-        "THOUGHT_CHAINS": "true"
+        "THOUGHT_CHAINS": "true",
+        "MEMINI_PROJECT_ID": "neuralgentics"
       },
       "timeout": 60000,
-      "enabled": false
+      "enabled": true
     },
     "github-mcp": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-github"],
+      "command": [
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
       "environment": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "{env:GITHUB_PERSONAL_ACCESS_TOKEN}"
       },
@@ -111,12 +224,20 @@
     },
     "playwright": {
       "type": "local",
-      "command": ["npx", "-y", "@anthropic/mcp-server-playwright"],
+      "command": [
+        "npx",
+        "-y",
+        "@anthropic/mcp-server-playwright"
+      ],
       "enabled": true
     },
     "searxng": {
       "type": "local",
-      "command": ["npx", "-y", "mcp-searxng"],
+      "command": [
+        "npx",
+        "-y",
+        "mcp-searxng"
+      ],
       "environment": {
         "SEARXNG_URL": "http://localhost:8080"
       },
@@ -124,7 +245,10 @@
     },
     "markitdown": {
       "type": "local",
-      "command": ["uvx", "markitdown-mcp"],
+      "command": [
+        "uvx",
+        "markitdown-mcp"
+      ],
       "enabled": true
     }
   },
@@ -133,32 +257,47 @@
     "max_bytes": 512000
   },
   "plugin": [
-    "@neuralgentics/plugin",
+    "@veedubin/neuralgentics",
     "@franlol/opencode-md-table-formatter@latest"
   ],
   "lsp": {
     "typescript": {
       "disabled": false,
-      "command": ["npx", "typescript-language-server", "--stdio"]
+      "command": [
+        "npx",
+        "typescript-language-server",
+        "--stdio"
+      ]
     },
     "pyright": {
       "disabled": false,
-      "command": ["npx", "pyright-langserver", "--stdio"]
+      "command": [
+        "npx",
+        "pyright-langserver",
+        "--stdio"
+      ]
     }
   },
   "formatter": {
     "ruff": {
-      "command": ["uvx", "ruff", "format", "$FILE"]
+      "command": [
+        "uvx",
+        "ruff",
+        "format",
+        "$FILE"
+      ]
     },
     "prettier": {
       "disabled": false
     }
   },
-  "instructions": [".opencode/AGENTS.md"],
+  "instructions": [
+    "AGENTS.md"
+  ],
   "compaction": {
     "auto": true,
-    "prune": true,
+    "prune": false,
     "reserved": 10000
   },
-  "small_model": "ollama-cloud/devstral-small-2:24b-cloud"
+  "small_model": "ollama/devstral-small-2:24b"
 }

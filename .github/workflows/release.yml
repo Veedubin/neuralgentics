@@ -1,6 +1,6 @@
 # ─── Neuralgentics Release Pipeline ──────────────────────────────────────────
 # Builds a single platform-independent tarball containing:
-#   - @neuralgentics/plugin (compiled TypeScript overlay)
+#   - @veedubin/neuralgentics (compiled TypeScript overlay, also published to npm)
 #   - .opencode/ config (agents, skills, opencode.json, AGENTS.md)
 #
 # No Go binaries. No TUI. No sidecar. No containers. Just the plugin
@@ -66,11 +66,11 @@ jobs:
           mkdir -p "dist/${ARCHIVE_DIR}"
 
           # ── Plugin (compiled overlay) ──────────────────────────────────
-          mkdir -p "dist/${ARCHIVE_DIR}/node_modules/@neuralgentics/plugin"
+          mkdir -p "dist/${ARCHIVE_DIR}/node_modules/@veedubin/neuralgentics"
           cp overlay/packages/opencode/package.json \
-             "dist/${ARCHIVE_DIR}/node_modules/@neuralgentics/plugin/"
+             "dist/${ARCHIVE_DIR}/node_modules/@veedubin/neuralgentics/"
           cp -r overlay/packages/opencode/dist/* \
-                "dist/${ARCHIVE_DIR}/node_modules/@neuralgentics/plugin/"
+                "dist/${ARCHIVE_DIR}/node_modules/@veedubin/neuralgentics/"
 
           # ── .opencode/ config ──────────────────────────────────────────
           mkdir -p "dist/${ARCHIVE_DIR}/.opencode/agents" \
@@ -85,7 +85,7 @@ jobs:
           # Add the local overlay plugin as a file: dependency
           node -e "
             const pkg = require('./dist/${ARCHIVE_DIR}/.opencode/package.json');
-            pkg.dependencies['@neuralgentics/plugin'] = 'file:../node_modules/@neuralgentics/plugin';
+            pkg.dependencies['@veedubin/neuralgentics'] = 'file:../node_modules/@veedubin/neuralgentics';
             require('fs').writeFileSync(
               './dist/${ARCHIVE_DIR}/.opencode/package.json',
               JSON.stringify(pkg, null, 2) + '\n'
@@ -150,7 +150,7 @@ jobs:
             ```
 
             ### What's included
-            - `@neuralgentics/plugin` — compiled TypeScript overlay (orchestrator, memory client, routing)
+            - `@veedubin/neuralgentics` — compiled TypeScript overlay (orchestrator, memory client, routing) [published to npm]
             - `.opencode/agents/` — 8 agent personas (architect, coder, explorer, git, orchestrator, reviewer, tester, writer)
             - `.opencode/skills/` — 5 skills (boomerang-orchestrator, kanban-board-manager, skill-self-audit, todo-list-updater, update-gh-docs)
             - `.opencode/opencode.json` — OpenCode config with Ollama Cloud models, MCP servers, LSP, formatter
@@ -203,3 +203,56 @@ jobs:
             VERSION=${{ env.VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ── Publish @veedubin/neuralgentics to npm (tag pushes only) ─────────────
+  # Mirrors boomerang-v3's npm-publish.yml pattern. Runs after `release`
+  # so the tarball is built first. Requires the NPM_PUBLISH_TOKEN secret
+  # to be set on github.com/Veedubin/neuralgentics/settings/secrets/actions
+  # with publish access to the @veedubin npm scope.
+  publish-npm:
+    name: Publish to NPM
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release]
+    permissions:
+      contents: read
+      id-token: write # Required for npm provenance
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@veedubin'
+
+      - name: Install plugin dependencies
+        working-directory: overlay/packages/opencode
+        run: npm install --no-audit --no-fund
+
+      - name: Run typecheck
+        working-directory: overlay/packages/opencode
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: overlay/packages/opencode
+        run: npm run build
+
+      - name: Verify dist exists
+        working-directory: overlay/packages/opencode
+        run: |
+          if [ ! -d "dist" ]; then
+            echo "ERROR: dist directory not found after build"
+            exit 1
+          fi
+          echo "Build output verified"
+
+      - name: Publish to NPM with provenance
+        working-directory: overlay/packages/opencode
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}

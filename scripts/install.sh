@@ -323,7 +323,7 @@ cat <<EOF >&2
   HACK THE PLANET! — neuralgentics v${VERSION} installed
 
    Install root:  ${PREFIX}
-   Plugin:        ${PREFIX}/node_modules/@neuralgentics/plugin/
+   Plugin:        ${PREFIX}/node_modules/@veedubin/neuralgentics/
    Config:        ${PREFIX}/.opencode/
    Docs:          https://github.com/${REPO}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
