@@ -35,20 +35,39 @@ uv tool install neuralgentics
 ```bash
 uv pip install neuralgentics   # 1. install the CLI
 cd your-project                 # 2. enter the project you want to bootstrap
-neuralgentics init              # 3. download the plugin + merge opencode.json
+neuralgentics --init            # 3. download the plugin + merge opencode.json
 opencode                        # 4. launch OpenCode with the plugin loaded
 ```
 
-## Commands
+> **Note**: `neuralgentics init` (positional) still works as an alias for
+> `neuralgentics --init`. The flag form is preferred for clarity.
 
-| Command | Description |
-|---------|-------------|
-| [`neuralgentics init`](https://github.com/Veedubin/neuralgentics/blob/main/docs/design/init-cli-bootstrapper.md#11-neuralgentics-init) | Download the latest release tarball and bootstrap `.opencode/` in the target directory. Supports `--with-backend`, `--dry-run`, `--force`, `--version`, `--target`. |
-| [`neuralgentics update`](https://github.com/Veedubin/neuralgentics/blob/main/docs/design/init-cli-bootstrapper.md#12-neuralgentics-update) | Update an existing installation to a newer plugin version. Preserves user-modified files unless `--force` is passed. |
-| [`neuralgentics doctor`](https://github.com/Veedubin/neuralgentics/blob/main/docs/design/init-cli-bootstrapper.md#13-neuralgentics-doctor) | Diagnose the current installation with 15 health checks. Exit codes: 0 = clean, 1 = warnings, 2 = errors. `--json` for scripting. |
-| [`neuralgentics version`](https://github.com/Veedubin/neuralgentics/blob/main/docs/design/init-cli-bootstrapper.md#14-neuralgentics-version) | Show CLI version, installed plugin version, and latest available (queries GitHub API). `--json` for scripting. |
+## Usage
 
-> Full flag tables and edge cases are in the [design doc](https://github.com/Veedubin/neuralgentics/blob/main/docs/design/init-cli-bootstrapper.md#1-command-surface).
+```
+neuralgentics --init [--version X.Y.Z | latest] [--target DIR] [--force]
+                     [--dry-run] [--yes] [--repo OWNER/REPO] [--offline]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--init` | off | Bootstrap the target directory with the neuralgentics plugin. |
+| `--version [X.Y.Z]` | `latest` | With no argument: print the CLI version and exit. With an argument: the plugin version to install. |
+| `--target`, `-t` | `.` | Directory to bootstrap. |
+| `--force` | off | Overwrite `.opencode/` files even if user-modified. |
+| `--dry-run` | off | Preview all actions without writing anything. |
+| `--yes`, `-y` | off | Skip all confirmation prompts. |
+| `--repo` | `Veedubin/neuralgentics` | GitHub repository to download from. |
+| `--offline` | off | Use a bundled tarball instead of downloading (not yet available). |
+
+`neuralgentics --version` (bare) prints `neuralgentics 0.1.0` and exits 0.
+`neuralgentics --version 0.9.1 --init` installs plugin v0.9.1.
+
+> Full flag tables and edge cases are in the
+> [design doc](https://github.com/Veedubin/neuralgentics/blob/main/docs/design/init-cli-bootstrapper.md#1-command-surface).
+> Note: v0.1.1 collapsed the four v0.1.0 subcommands (`init`/`update`/`doctor`/`version`)
+> into a single `--init` flag — the subcommands never had working handlers and the
+> user wanted a one-command bootstrap. See [CHANGELOG](CHANGELOG.md) for details.
 
 ## Configuration
 
@@ -72,10 +91,10 @@ default, and you must pass `--force` to overwrite them.
 | Home-dir / system-wide install | Yes (`--home-dir`) | No (v0.1.0) |
 | `opencode.json` merge | No (symlinks entire `.opencode/`) | Yes (deep merge, preserves user config) |
 | Idempotent re-run | Partially | Fully (state file tracks every file) |
-| Update in-place | No (re-run install) | Yes (`neuralgentics update`) |
-| Diagnostics | No | Yes (`neuralgentics doctor`) |
+| Update in-place | No (re-run install) | Yes (re-run `neuralgentics --init` — idempotent via state file) |
+| Diagnostics | No | No (removed in v0.1.1) |
 | Dry-run | Yes (`--dry-run`) | Yes (`--dry-run`) |
-| Backend bring-up | Manual (prints command) | Semi-automated (`--with-backend`) |
+| Backend bring-up | Manual (prints command) | No (removed in v0.1.1; was a stub) |
 | Systemd unit generation | Yes | No (out of scope for v0.1.0) |
 
 `install.sh` is **untouched** and remains the curl-bash path for users who
@@ -92,7 +111,7 @@ The full specification is in the
 git clone https://github.com/Veedubin/neuralgentics.git
 cd neuralgentics/neuralgentics-cli
 uv sync          # install dev dependencies
-uv run pytest    # run the test suite (155 tests)
+uv run pytest    # run the test suite (125 tests)
 ```
 
 Development checks:

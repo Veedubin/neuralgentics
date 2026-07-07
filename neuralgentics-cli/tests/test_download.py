@@ -259,7 +259,6 @@ def test_extract_tarball_traversal_blocked(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_extract_module_reexports() -> None:
-    from neuralgentics import extract
-
-    assert extract.extract_tarball is dl.extract_tarball
+def test_extract_lives_in_download_module() -> None:
+    # extract.py was removed in v0.1.1 — extraction logic is in download.py.
+    assert hasattr(dl, "extract_tarball")

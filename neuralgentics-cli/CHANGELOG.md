@@ -6,6 +6,68 @@ this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-07-06
+
+### Changed — Breaking
+
+- **Single-flag CLI**: replaced the four-subcommand surface (`init`, `update`,
+  `doctor`, `version`) with a single `--init` flag. `neuralgentics init`
+  (positional) remains as an alias for `neuralgentics --init`. Bare
+  `neuralgentics` (no flags) prints help and exits 0.
+- **`--version` dual role**: bare `neuralgentics --version` prints the CLI
+  version and exits 0; `neuralgentics --version 0.9.1 --init` installs plugin
+  v0.9.1. The flag uses a sentinel `const` to distinguish the two cases.
+- **`cli.py` now calls `init_cmd.run_init`**: the v0.1.0 release shipped four
+  stub handlers that all raised `NotImplementedError`, making every subcommand
+  print "Not yet implemented" and exit 1. The real init logic lived in
+  `init_cmd.run_init` but was never wired up.
+
+### Removed — Breaking
+
+- `neuralgentics update` — the subcommand and `update_cmd.py` are gone.
+  Re-run `neuralgentics --init` instead (idempotent via the state file).
+- `neuralgentics doctor` — the subcommand and `doctor_cmd.py` are gone.
+  Diagnostics may return in a future release.
+- `neuralgentics version` (subcommand) — replaced by the bare `--version` flag.
+  `version_cmd.py` is gone.
+- `--with-backend` — was a stub that raised `NotImplementedError`. Removed
+  from the CLI surface. (`init_cmd.py` still contains the stub internally; it
+  is unreachable from the CLI.)
+- `--compose-file`, `--env-file` — were tied to `--with-backend`. Removed.
+- `compose.py`, `extract.py` — `compose.py` only served `--with-backend`;
+  `extract.py` was a one-line re-export of `download.extract_tarball`. Both
+  deleted. (`extract_tarball` is imported from `download` directly.)
+
+### Added
+
+- `tests/test_cli_main.py` — 9 tests covering the `main` entry point: `--init`
+  dispatch, positional alias, no-args help, bare `--version`, `--version`
+  pass-through, error passthrough, `KeyboardInterrupt` → exit 130, and a
+  sanity test that all pass-through flags parse. The v0.1.0 release had zero
+  test coverage for `cli.py`, which is why the broken stubs shipped.
+- `tests/test_errors.py` — rewritten CLI scaffolding tests to match the new
+  single-flag surface (was testing the removed subcommands).
+- `tests/test_download.py` — `test_extract_module_reexports` replaced with
+  `test_extract_lives_in_download_module` (extract.py is gone).
+
+### Preserved
+
+- `download.py`, `merge.py`, `state.py`, `errors.py` — unchanged. Their tests
+  (87 tests) pass unchanged. `init_cmd.py`'s public API (`run_init`) is
+  unchanged; its 11 tests pass unchanged. Only the CLI dispatch layer changed.
+
+### Motivation
+
+The user reported that the CLI was overbuilt for its purpose: "I want a
+one-command bootstrap, not a separate app." The four-subcommand design was
+aspirational — `update`/`doctor`/`version` were never implemented (all four
+handlers raised `NotImplementedError`), so shipping them meant every command
+except `init` printed "Not yet implemented" and exited 1. Worse, the `init`
+handler *also* raised `NotImplementedError` — the real logic in
+`init_cmd.run_init` was never wired up. If you ran the v0.1.0 wheel, every
+subcommand was broken. v0.1.1 fixes this by collapsing the surface to what
+actually works.
+
 ## [0.1.0] - 2026-07-05
 
 Initial release of the `neuralgentics` bootstrapper CLI for the neuralgentics
@@ -88,4 +150,5 @@ as a single wheel (`neuralgentics-0.1.0-py3-none-any.whl`).
 install or systemd units. The CLI and `install.sh` coexist; the CLI does not
 replace it.
 
+[0.1.1]: https://github.com/Veedubin/neuralgentics/releases/tag/cli-v0.1.1
 [0.1.0]: https://github.com/Veedubin/neuralgentics/releases/tag/cli-v0.1.0

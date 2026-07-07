@@ -5,8 +5,8 @@ Covers:
   and a non-empty ``remediation``.
 - :func:`format_error` produces the ``[ERROR] ...\\nSuggestion: ...`` format.
 - ``cli.main()`` with no args prints help and exits 0.
-- ``cli.main(["init"])`` raises :class:`NotImplementedError` (the real
-  implementation arrives in T-IMPL-INIT-CLI-003).
+- ``cli.main(["--version"])`` prints the CLI version and exits 0.
+- ``cli.main(["--init"])`` dispatches to ``init_cmd.run_init``.
 """
 
 from __future__ import annotations
@@ -110,20 +110,30 @@ def test_cli_no_args_prints_help_and_exits_zero(capsys: pytest.CaptureFixture[st
 
 
 def test_cli_version_flag_prints_version_and_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main(["--version"])
-    assert exc_info.value.code == 0
+    rc = cli.main(["--version"])
+    assert rc == 0
     out = capsys.readouterr()
-    assert "0.1.0" in out.out
+    assert f"neuralgentics {__version__}" in out.out
 
 
-@pytest.mark.parametrize("subcmd", ["init", "update", "doctor", "version"])
-def test_cli_subcommand_raises_not_implemented(subcmd: str) -> None:
-    with pytest.raises(NotImplementedError):
-        cli.main([subcmd])
+def test_cli_init_dispatches_to_run_init(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``cli.main(["--init"])`` calls ``init_cmd.run_init``."""
+    calls: list[argparse.Namespace] = []
+
+    def fake_run_init(args: argparse.Namespace) -> int:
+        calls.append(args)
+        return 0
+
+    monkeypatch.setattr(cli, "run_init", fake_run_init)
+    rc = cli.main(["--init"])
+    assert rc == 0
+    assert len(calls) == 1
+    assert calls[0].init is True
 
 
-def test_cli_unknown_subcommand_errors(capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_unknown_positional_errors(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         cli.main(["definitely-not-a-command"])
     out = capsys.readouterr()
@@ -133,11 +143,11 @@ def test_cli_unknown_subcommand_errors(capsys: pytest.CaptureFixture[str]) -> No
 def test_cli_keyboard_interrupt_exits_130(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def raise_kb(_: object) -> int:
+    def raise_kb(args: argparse.Namespace) -> int:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(cli, "_cmd_init", raise_kb)
-    rc = cli.main(["init"])
+    monkeypatch.setattr(cli, "run_init", raise_kb)
+    rc = cli.main(["--init"])
     assert rc == 130
     out = capsys.readouterr()
     assert "Interrupted." in out.err
@@ -146,11 +156,11 @@ def test_cli_keyboard_interrupt_exits_130(
 def test_cli_neuralgentics_error_returns_exit_code(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def raise_err(_: object) -> int:
+    def raise_err(args: argparse.Namespace) -> int:
         raise OpencodeNotFound("missing")
 
-    monkeypatch.setattr(cli, "_cmd_init", raise_err)
-    rc = cli.main(["init"])
+    monkeypatch.setattr(cli, "run_init", raise_err)
+    rc = cli.main(["--init"])
     assert rc == 4
     out = capsys.readouterr()
     assert "[ERROR]" in out.err
@@ -159,22 +169,14 @@ def test_cli_neuralgentics_error_returns_exit_code(
 
 def test_init_has_all_expected_flags() -> None:
     parser = cli._build_parser()
-    # Find the subparsers action among all parser actions.
-    subparsers_action = next(
-        a
-        for a in parser._actions
-        if isinstance(a, argparse._SubParsersAction)  # noqa: SLF001
-    )
-    init_parser = subparsers_action.choices["init"]
+    # Flat parser: gather flag strings directly from parser actions.
     flag_strings: set[str] = set()
-    for a in init_parser._actions:  # noqa: SLF001
+    for a in parser._actions:  # noqa: SLF001
         flag_strings.update(a.option_strings)
     expected = {
+        "--init",
         "--version",
         "--target",
-        "--with-backend",
-        "--compose-file",
-        "--env-file",
         "--yes",
         "--offline",
         "--dry-run",
@@ -183,6 +185,15 @@ def test_init_has_all_expected_flags() -> None:
         "--help",
     }
     assert expected.issubset(flag_strings), f"missing flags: {expected - flag_strings}"
+
+
+def test_init_does_not_have_dead_flags() -> None:
+    parser = cli._build_parser()
+    flag_strings: set[str] = set()
+    for a in parser._actions:  # noqa: SLF001
+        flag_strings.update(a.option_strings)
+    dead = {"--with-backend", "--compose-file", "--env-file"}
+    assert flag_strings.isdisjoint(dead), f"dead flags still present: {dead & flag_strings}"
 
 
 def test_sys_entrypoint_importable() -> None:
