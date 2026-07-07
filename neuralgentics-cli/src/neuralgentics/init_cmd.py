@@ -147,14 +147,10 @@ def run_init(args: argparse.Namespace) -> int:
     # 9. Run npm install.
     _run_npm_install(target / ".opencode")
 
-    # 10. --with-backend (compose.py is T-IMPL-INIT-CLI-006).
-    if getattr(args, "with_backend", False):
-        raise NotImplementedError("Backend bring-up is T-IMPL-INIT-CLI-006")
-
-    # 11. Write state file (now includes last_backup if any).
+    # 10. Write state file (now includes last_backup if any).
     _write_state(target, version, manifest, args.repo, backup_path=backup_path)
 
-    # 12. Print summary.
+    # 11. Print summary.
     _print_success_summary(target, version, extract_dir, backup_path=backup_path)
     return 0
 

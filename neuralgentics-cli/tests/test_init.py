@@ -36,9 +36,6 @@ def _ns(**kw: Any) -> argparse.Namespace:
     defaults = {
         "version": "latest",
         "target": Path.cwd(),
-        "with_backend": False,
-        "compose_file": "auto",
-        "env_file": None,
         "yes": False,
         "offline": False,
         "dry_run": False,
@@ -371,23 +368,6 @@ def test_init_merges_mcp_servers(
     merged = json.loads((target / ".opencode/opencode.json").read_text(encoding="utf-8"))
     assert "foo" in merged["mcp"]
     assert "searxng" in merged["mcp"]
-
-
-def test_init_with_backend_not_implemented(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    target = tmp_path / "project"
-    target.mkdir()
-    files = _default_tarball_files()
-    tarball, checksums = _build_tarball(tmp_path, version="0.9.1", files=files)
-    _patch_download(monkeypatch, tarball=tarball, checksums=checksums)
-    _patch_resolve_version(monkeypatch, version="0.9.1")
-    _patch_opencode_on_path(monkeypatch)
-    _patch_npm(monkeypatch)
-
-    with pytest.raises(NotImplementedError):
-        init_cmd.run_init(_ns(target=target, with_backend=True))
 
 
 def test_init_state_file_path(
