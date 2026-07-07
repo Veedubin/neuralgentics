@@ -89,7 +89,7 @@ neuralgentics init
 opencode
 ```
 
-> After install, run `neuralgentics doctor` to verify the setup. See the [CLI README](neuralgentics-cli/README.md) for all commands (`init`, `update`, `doctor`, `version`).
+> After install, the plugin is auto-discovered via `opencode.json`. See [install.sh](scripts/install.sh) for all flags.
 
 ---
 
