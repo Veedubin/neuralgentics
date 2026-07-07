@@ -17,6 +17,14 @@ A harness provides the structural scaffolding that a raw model lacks. It wraps t
 
 ---
 
+## What's New
+
+### v0.1.0: PyPI CLI Bootstrapper
+
+Install neuralgentics with a single `uv pip install neuralgentics` command — no curl, no Node prerequisite, and a deep-merge of `opencode.json` that preserves your customizations. Run `neuralgentics init` to bootstrap `.opencode/` and `opencode` to launch. [Read the CLI design doc](docs/design/init-cli-bootstrapper.md) for the full specification.
+
+---
+
 ## What it does
 
 - **Skills Brokering** — The broker is now both an MCP tool router AND a skills broker. Agents can browse a role-filtered SkillCatalog to reuse established patterns (SKILL.md), reducing re-computation and token waste.
@@ -47,6 +55,47 @@ A harness provides the structural scaffolding that a raw model lacks. It wraps t
 ---
 
 ## Install
+
+Neuralgentics offers two install paths: a **PyPI CLI** (recommended for Python users) and a **curl-bash installer** (for system-wide installs). Both are idempotent and project-local by default.
+
+### Comparison
+
+| Feature | PyPI CLI | curl-bash installer |
+|---|---|---|
+| **Requires** | `uv` or `pip` | `bash` + `curl` |
+| **Install location** | Project-local (`.opencode/`) | Project-local (`.neuralgentics/`) or system-wide (`--home-dir`) |
+| **opencode.json merge** | Yes (deep merge, preserves user config) | No (symlinks entire `.opencode/`) |
+| **Idempotent re-run** | Yes (state file) | Partial |
+| **Update in-place** | `neuralgentics update` | Re-run install |
+| **Diagnostics** | `neuralgentics doctor` | None |
+| **Systemd integration** | No | Yes (with `--home-dir`) |
+| **Works without Python** | No | Yes |
+
+---
+
+### Path A — PyPI CLI (Recommended for Python Users)
+
+**When to use this:** You want a project-local install, deep-merge of `opencode.json`, and in-place updates.
+
+```bash
+# 1. Install the CLI
+uv pip install neuralgentics
+
+# 2. Bootstrap your project
+cd your-project
+neuralgentics init
+
+# 3. Launch OpenCode with the plugin loaded
+opencode
+```
+
+> After install, run `neuralgentics doctor` to verify the setup. See the [CLI README](neuralgentics-cli/README.md) for all commands (`init`, `update`, `doctor`, `version`).
+
+---
+
+### Path B — curl-bash Installer (For System-Wide or Non-Python Installs)
+
+**When to use this:** You want a system-wide install, or you don't have Python available.
 
 ```bash
 # One-line install (Linux, macOS, WSL2) — installs to $PWD/.neuralgentics

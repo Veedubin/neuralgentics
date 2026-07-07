@@ -87,6 +87,7 @@ nav:
       - Broker Flow: architecture/broker-flow.md
       - Dispatch Flow: architecture/dispatch-flow.md
       - Permission Model: architecture/permission-model.md
+      - "Init CLI Bootstrapper": design/init-cli-bootstrapper.md
   - Reference:
       - Environment Variables: reference/env-vars.md
       - Memory System: reference/memory-system.md

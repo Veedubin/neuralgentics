@@ -9,9 +9,14 @@
 Neuralgentics is the **harness** for AI agents - the execution environment, permission broker, and persistent memory that turns a language model into a reliable, debuggable, and trustworthy agent.
 
 **What is a harness?**
-A harness wraps a model with prompts, tools, context, memory, and permissions. A better harness creates a more capable agent, independent of the underlying model's raw power. Neuralgentics IS this harness.
+A harness provides the structural scaffolding that a raw model lacks. It wraps the LLM with specific prompts, tools, context, and strict permissions, ensuring the agent operates within defined boundaries and maintains continuity across sessions.
 
 **23 specialist agents, a trust-scored memory engine, and a permissions-based tool broker -- all in a 26 MB Go binary.** No cloud account, no telemetry, no vendor lock-in. You run it on your machine; it remembers what your agents did; it stops them from doing things they shouldn't.
+
+**Install in seconds:**
+```bash
+uv pip install neuralgentics && neuralgentics init && opencode
+```
 
 v0.3.0 adds the IMPROVE phase runner, 7 new slash commands for tiered memory + peer context, and `elevate_memory_to_1024` for dual-model promotion. v0.3.1 adds mid-session edit detection and precompression guidance to the IMPROVE phase. v0.4.0 adds multi-transport MCP support (npx/uvx/local/docker), a curated catalog of 20 popular MCP servers, runtime LLM provider switching between Ollama Cloud / Docker Model Runner / OpenRouter, and Docker Compose v2.38+ model integration. v0.6.7 makes the curl|bash one-liner work end-to-end and adds docker support (was podman-only). v0.6.3 fixes 3 critical install-script bugs (broken symlink, curl|bash stdin trap, container credential recovery) and adds multi-project registration. v0.6.0 fixes 5 critical install-script bugs and adds graceful sidecar fallback. v0.5.0 adds HTTP/SSE transport for hosted MCPs, OCI-shareable profile export/import (tar.gz + HMAC-SHA256), provider-aware small_model, and CI short-test fix. v0.4.0 adds multi-transport MCP support (npx/uvx/local/docker), a curated catalog of 20 popular MCP servers, runtime LLM provider switching between Ollama Cloud / Docker Model Runner / OpenRouter, and Docker Compose v2.38+ model integration.
 
@@ -390,6 +395,22 @@ MOCKUP -- not a real screenshot.
 
 MOCKUP -- not a real screenshot. Trust scores and decay rates are illustrative.
 
+## Quickstart
+
+1. Install the CLI:
+   ```bash
+   uv pip install neuralgentics
+   ```
+2. Bootstrap your project:
+   ```bash
+   cd your-project
+   neuralgentics init
+   ```
+3. Launch OpenCode:
+   ```bash
+   opencode
+   ```
+
 ## Quick Links
 
 | If you want to... | Go here → |
@@ -402,6 +423,7 @@ MOCKUP -- not a real screenshot. Trust scores and decay rates are illustrative.
 | **Review the session lifecycle** | [Session Lifecycle](reference/session-lifecycle.md) |
 | **Configure the runtime** | [Environment Variables](reference/env-vars.md) |
 | **Fix something that's broken** | [Troubleshooting](troubleshooting.md) |
+| **Learn about the CLI** | [Init CLI Bootstrapper](design/init-cli-bootstrapper.md) |
 
 ---
 
