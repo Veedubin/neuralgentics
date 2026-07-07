@@ -19,8 +19,9 @@
 #      PyPI Project Name:  neuralgentics
 #      Owner:              Veedubin
 #      Repository:         neuralgentics
-#      Workflow filename:  .github/workflows/pypi-publish.yml
-#      Environment name:   (leave blank — this workflow has no `environment:`)
+#      Workflow filename:  .github/workflows/pypi-release.yml
+#      Environment name:   (any — this workflow has no `environment:`, so PyPI
+#                          will accept the OIDC token from any env)
 # 4. Save. The workflow will be trusted on the next `cli-v*` tag push.
 #
 # ── Trigger ───────────────────────────────────────────────────────────────────

@@ -134,7 +134,7 @@ as a single wheel (`neuralgentics-0.1.0-py3-none-any.whl`).
 - Python support: 3.10, 3.11, 3.12, 3.13.
 - Dependencies: `httpx>=0.28,<1`, `pydantic>=2,<3`.
 - PyPI publishing uses **OIDC trusted publishing** (PEP 740) — no API tokens.
-  See `.github/workflows/pypi-publish.yml` and the one-time setup instructions
+  See `.github/workflows/pypi-release.yml` and the one-time setup instructions
   in its header comment.
 
 ### Out of scope (explicit, v0.1.0)
