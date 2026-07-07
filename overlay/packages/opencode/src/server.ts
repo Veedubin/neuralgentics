@@ -415,7 +415,13 @@ async function server(input: PluginInput): Promise<Hooks> {
     const type = event.type as string;
     switch (type) {
       case "session.created": {
-        console.error("[Neuralgentics] Session created — tools ready");
+        try {
+          (input.client as { app?: { log?: (msg: string) => void } })?.app?.log?.(
+            "Neuralgentics session ready"
+          );
+        } catch {
+          // Logging unavailable — non-fatal
+        }
         break;
       }
       case "session.compacting": {

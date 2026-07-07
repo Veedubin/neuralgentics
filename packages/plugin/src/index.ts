@@ -191,8 +191,6 @@ export const NeuralgenticsPlugin = async (
     // Logging not available
   }
 
-  console.log(`[Neuralgentics] Plugin activated — memory: ${baseUrl}`);
-
   // ==========================================================================
   // Custom MCP Tools
   // ==========================================================================
