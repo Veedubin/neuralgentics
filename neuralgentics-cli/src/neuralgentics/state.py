@@ -100,6 +100,10 @@ class StateFile(BaseModel):
     target: str
     files: dict[str, FileRecord]
     backend: BackendRecord | None = None
+    #: Path to the most recent ``.opencode-bak-{ts}/`` backup directory created
+    #: during install/update, or ``None`` when no backup was needed. Relative
+    #: to ``target`` when set. Added in v0.1.2.
+    last_backup: str | None = None
 
 
 def _state_path(target: Path) -> Path:

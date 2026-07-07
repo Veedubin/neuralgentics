@@ -32,6 +32,8 @@ __all__ = [
     "OfflineNoBundle",
     "PermissionDenied",
     "TargetNotDirectory",
+    "TargetRefused",
+    "BackupFailed",
     "format_error",
 ]
 
@@ -171,6 +173,24 @@ class TargetNotDirectory(NeuralgenticsError):
 
     exit_code = 17
     remediation = "Create the directory or specify a different target with --target."
+
+
+class TargetRefused(NeuralgenticsError):
+    """The target path is a scary location (HOME, /, /tmp) or has a symlink .opencode/.
+
+    Refuses to run unless ``--force`` is set, to avoid clobbering the user's
+    home directory or following a symlink somewhere unexpected.
+    """
+
+    exit_code = 18
+    remediation = "Use --force to proceed anyway, or pick a project directory."
+
+
+class BackupFailed(NeuralgenticsError):
+    """Moving ``.opencode/`` to a backup directory failed."""
+
+    exit_code = 19
+    remediation = "Check disk space and permissions in the target directory."
 
 
 def format_error(err: NeuralgenticsError) -> str:

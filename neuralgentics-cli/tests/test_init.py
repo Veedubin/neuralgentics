@@ -20,6 +20,7 @@ from neuralgentics import init_cmd
 from neuralgentics.errors import (
     OpencodeNotFound,
     TargetNotDirectory,
+    TargetRefused,
 )
 from neuralgentics.state import STATE_FILENAME, load_state
 
@@ -418,3 +419,211 @@ def test_init_offline_latest_conflict(
 
     with pytest.raises(OfflineNoBundle):
         init_cmd.run_init(_ns(target=target, offline=True, version="latest"))
+
+
+# ---------------------------------------------------------------------------
+# v0.1.2 — Backup + mkdir + scary-target refusal (TestBackupAndMkdir)
+# ---------------------------------------------------------------------------
+
+
+class TestBackupAndMkdir:
+    """Cover the backup-before-overwrite + auto-mkdir + scary-target refusal."""
+
+    def _setup(self, monkeypatch, tmp_path, *, target: Path, force: bool = False):
+        """Build a default tarball + patch downloads. Does NOT mkdir target."""
+        files = _default_tarball_files()
+        tarball, checksums = _build_tarball(tmp_path, version="0.9.1", files=files)
+        _patch_download(monkeypatch, tarball=tarball, checksums=checksums)
+        _patch_resolve_version(monkeypatch, version="0.9.1")
+        _patch_opencode_on_path(monkeypatch)
+        _patch_npm(monkeypatch)
+        return _ns(target=target, force=force)
+
+    def test_init_creates_target_if_missing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "nested" / "project"  # does not exist
+        args = self._setup(monkeypatch, tmp_path, target=target)
+        assert init_cmd.run_init(args) == 0
+        assert target.is_dir()
+        assert (target / ".opencode").is_dir()
+
+    def test_init_refuses_home_dir_without_force(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        # Use a tmp_path as a stand-in for $HOME by patching expanduser.
+        fake_home = tmp_path / "fakehome"
+        fake_home.mkdir()
+        monkeypatch.setattr(init_cmd.os.path, "expanduser", lambda _p: str(fake_home))
+        target = fake_home  # target == $HOME
+        args = self._setup(monkeypatch, tmp_path, target=target)
+        with pytest.raises(TargetRefused):
+            init_cmd.run_init(args)
+
+    def test_init_refuses_root_without_force(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        target = Path("/")
+        args = self._setup(monkeypatch, tmp_path, target=target)
+        with pytest.raises(TargetRefused):
+            init_cmd.run_init(args)
+
+    def test_init_refuses_tmp_without_force(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        target = Path("/tmp")
+        args = self._setup(monkeypatch, tmp_path, target=target)
+        with pytest.raises(TargetRefused):
+            init_cmd.run_init(args)
+
+    def test_init_force_overrides_refusal(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        # $HOME with --force should proceed.
+        fake_home = tmp_path / "fakehome2"
+        fake_home.mkdir()
+        monkeypatch.setattr(init_cmd.os.path, "expanduser", lambda _p: str(fake_home))
+        target = fake_home
+        self._setup(monkeypatch, tmp_path, target=target, force=True)
+        # Don't actually run the full init into our fake home — it'd pollute
+        # tmp_path. Just verify _ensure_target doesn't raise with --force.
+        init_cmd._ensure_target(target, force=True)
+
+    def test_init_refuses_symlink_dotopencode(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "project"
+        target.mkdir()
+        real_opencode = tmp_path / "real_opencode"
+        real_opencode.mkdir()
+        (target / ".opencode").symlink_to(real_opencode)
+        args = self._setup(monkeypatch, tmp_path, target=target)
+        with pytest.raises(TargetRefused):
+            init_cmd.run_init(args)
+
+    def test_init_force_overrides_symlink_refusal(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "project"
+        target.mkdir()
+        real_opencode = tmp_path / "real_opencode2"
+        real_opencode.mkdir()
+        (target / ".opencode").symlink_to(real_opencode)
+        # Just verify _ensure_target doesn't raise with --force.
+        init_cmd._ensure_target(target, force=True)
+
+    def test_init_backs_up_existing_dotopencode(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "project"
+        (target / ".opencode" / "agents").mkdir(parents=True)
+        # Pre-existing user opencode.json that differs from shipped → backup.
+        (target / ".opencode" / "opencode.json").write_text(
+            '{"plugin": [], "instructions": []}', encoding="utf-8"
+        )
+        args = self._setup(monkeypatch, tmp_path, target=target)
+        assert init_cmd.run_init(args) == 0
+
+        backups = list(target.glob(".opencode-bak-*"))
+        assert len(backups) == 1, f"expected exactly one backup, got {backups}"
+        # The user's old opencode.json should be preserved in the backup.
+        assert (backups[0] / "opencode.json").is_file()
+        assert (backups[0] / "opencode.json").read_text(
+            encoding="utf-8"
+        ) == '{"plugin": [], "instructions": []}'
+        # New .opencode/ exists with merged content.
+        assert (target / ".opencode" / "opencode.json").is_file()
+
+    def test_init_no_backup_when_nothing_changes(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "project"
+        target.mkdir()
+        args = self._setup(monkeypatch, tmp_path, target=target)
+        # First init.
+        assert init_cmd.run_init(args) == 0
+        backups_after_first = list(target.glob(".opencode-bak-*"))
+        assert backups_after_first == []
+        # Second init (idempotent): should NOT create a backup.
+        assert init_cmd.run_init(args) == 0
+        backups_after_second = list(target.glob(".opencode-bak-*"))
+        assert backups_after_second == []
+
+    def test_init_creates_backup_with_unique_timestamp(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "project"
+        (target / ".opencode" / "agents").mkdir(parents=True)
+        (target / ".opencode" / "opencode.json").write_text('{"plugin": []}', encoding="utf-8")
+        args = self._setup(monkeypatch, tmp_path, target=target)
+
+        # Run init twice, changing the user's opencode.json between runs so
+        # each run needs a fresh backup. Use distinct content to force "would_change".
+        assert init_cmd.run_init(args) == 0
+        first_backups = list(target.glob(".opencode-bak-*"))
+        assert len(first_backups) == 1
+
+        # Modify the user's (now-merged) opencode.json so the next init will
+        # detect a change and back up again.
+        (target / ".opencode" / "opencode.json").write_text(
+            '{"plugin": [], "custom": "edit1"}', encoding="utf-8"
+        )
+        assert init_cmd.run_init(args) == 0
+        second_backups = list(target.glob(".opencode-bak-*"))
+        assert len(second_backups) == 2, f"expected 2 backups, got {second_backups}"
+        # All backup dir names must be unique.
+        names = {p.name for p in second_backups}
+        assert len(names) == 2
+
+    def test_init_dry_run_shows_would_backup(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        target = tmp_path / "project"
+        (target / ".opencode").mkdir(parents=True)
+        (target / ".opencode" / "opencode.json").write_text('{"plugin": []}', encoding="utf-8")
+        args = self._setup(monkeypatch, tmp_path, target=target)
+        args.dry_run = True
+        assert init_cmd.run_init(args) == 0
+        out = capsys.readouterr().out
+        assert "WOULD back up" in out
+
+    def test_init_state_records_backup_path(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "project"
+        (target / ".opencode" / "agents").mkdir(parents=True)
+        (target / ".opencode" / "opencode.json").write_text('{"plugin": []}', encoding="utf-8")
+        args = self._setup(monkeypatch, tmp_path, target=target)
+        assert init_cmd.run_init(args) == 0
+
+        state = load_state(target)
+        assert state is not None
+        assert state.last_backup is not None
+        # The recorded path should point at a dir that exists.
+        backup_dir = target / state.last_backup
+        assert backup_dir.is_dir()

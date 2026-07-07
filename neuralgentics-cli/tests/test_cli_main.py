@@ -9,10 +9,16 @@ disk I/O happens here — the dispatch surface is what's under test.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
+import json
+import tarfile
+from pathlib import Path
 
 import pytest
 
-from neuralgentics import __version__, cli
+from neuralgentics import __version__, cli, init_cmd
+from neuralgentics import download as dl
 from neuralgentics.errors import NeuralgenticsError
 from neuralgentics.init_cmd import run_init
 
@@ -190,3 +196,67 @@ def test_parser_accepts_all_pass_through_flags(
     assert ns.yes is True
     assert ns.repo == "Veedubin/neuralgentics"
     assert ns.offline is True
+
+
+def test_cli_init_creates_missing_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """`neuralgentics --init --target /new/path --yes` works and creates the path.
+
+    End-to-end at the cli.main level: the real run_init runs, but with all
+    network/npm/PATH calls mocked so it stays hermetic.
+    """
+    target = tmp_path / "brand-new" / "project"
+    # Build a tarball to serve.
+    files = {
+        ".opencode/agents/coder.md": b"# coder\n",
+        ".opencode/opencode.json": json.dumps(
+            {"plugin": ["@veedubin/neuralgentics"], "instructions": ["AGENTS.md"]}
+        ).encode(),
+        ".opencode/package.json": json.dumps(
+            {"dependencies": {"@veedubin/neuralgentics": "^0.9.1"}}
+        ).encode(),
+    }
+    tarball = tmp_path / "neuralgentics-0.9.1.tar.gz"
+    top = "neuralgentics-0.9.1"
+    with tarfile.open(tarball, "w:gz") as tar:
+        di = tarfile.TarInfo(name=top)
+        di.type = tarfile.DIRTYPE
+        di.mode = 0o755
+        tar.addfile(di)
+        for rel, data in files.items():
+            info = tarfile.TarInfo(name=f"{top}/{rel}")
+            info.size = len(data)
+            info.mode = 0o644
+            tar.addfile(info, io.BytesIO(data))
+    sha = hashlib.sha256(tarball.read_bytes()).hexdigest()
+    checksums = tmp_path / "checksums.txt"
+    checksums.write_text(f"{sha}  {tarball.name}\n", encoding="utf-8")
+
+    def fake_download(version, repo, *, github_token=None):
+        return (tarball, checksums)
+
+    def fake_resolve(v, r, *, github_token=None):
+        return "0.9.1"
+
+    monkeypatch.setattr(dl, "download_tarball", fake_download)
+    monkeypatch.setattr(init_cmd, "download_tarball", fake_download)
+    monkeypatch.setattr(dl, "resolve_version", fake_resolve)
+    monkeypatch.setattr(init_cmd, "resolve_version", fake_resolve)
+
+    def fake_which(cmd):
+        return "/usr/bin/" + cmd
+
+    monkeypatch.setattr(init_cmd.shutil, "which", fake_which)
+
+    class _Ok:
+        returncode = 0
+        stderr = ""
+
+    monkeypatch.setattr(init_cmd.subprocess, "run", lambda *a, **k: _Ok())
+
+    rc = cli.main(["--init", "--target", str(target), "--yes", "--version", "0.9.1"])
+    assert rc == 0
+    assert target.is_dir()
+    assert (target / ".opencode" / "opencode.json").is_file()
