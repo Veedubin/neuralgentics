@@ -830,6 +830,37 @@ function detectComposeTool(): ComposeTool | null {
   }
 }
 
+/**
+ * Check whether the `neuralgentics-postgres` container is already running
+ * under podman or docker. Non-destructive: only reads container state.
+ */
+function isPostgresRunning(): boolean {
+  try {
+    const podmanResult = execSync(
+      "podman ps --filter name=neuralgentics-postgres --format '{{.Status}}'",
+      { stdio: "pipe" },
+    );
+    if (podmanResult.toString().trim()) return true;
+  } catch {
+    // podman not installed or not on PATH — fall through to docker.
+  }
+  try {
+    const dockerResult = execSync(
+      "docker ps --filter name=neuralgentics-postgres --format '{{.Status}}'",
+      { stdio: "pipe" },
+    );
+    if (dockerResult.toString().trim()) return true;
+  } catch {
+    // docker not installed or not on PATH.
+  }
+  return false;
+}
+
+/** Build the compose-up command string for the detected tool. */
+function composeUpCommand(tool: ComposeTool): string {
+  return tool.tool === "docker" ? "docker compose up -d" : "podman-compose up -d";
+}
+
 async function promptForBackend(target: string): Promise<void> {
   const tool = detectComposeTool();
   if (tool === null) {
@@ -841,15 +872,15 @@ async function promptForBackend(target: string): Promise<void> {
     return;
   }
   const answer = await askQuestion(
-    "Do you want to set up the database containers now? [Y/n] ",
+    "Do you want to set up the database containers now? [Y/n] " +
+      "(containers will NOT be recreated if already running) ",
   );
   if (answer.trim().toLowerCase().startsWith("n")) {
     process.stdout.write(
-      `\nSkipping container setup. To do it later:\n` +
-        `  cd ${target}\n` +
-        `  cp compose.example.env .env\n` +
-        `  ${tool.tool === "docker" ? "docker compose up -d" : "podman-compose up -d"}\n` +
-        `Docs: https://github.com/Veedubin/neuralgentics#containers\n\n`,
+      `\nTo set up the database later:\n` +
+        `  1. Copy compose.example.env to .env and edit your credentials\n` +
+        `  2. Run: ${composeUpCommand(tool)}\n` +
+        `  Docs: https://github.com/Veedubin/neuralgentics#containers\n\n`,
     );
     return;
   }
@@ -861,15 +892,46 @@ async function bringUpBackend(target: string, _yes: boolean): Promise<void> {
   if (tool === null) {
     throw new ComposeNotFound("Neither docker nor podman-compose is available on PATH.");
   }
+
+  // 1. NEVER touch a running container — skip entirely if it's already up.
+  if (isPostgresRunning()) {
+    process.stdout.write(
+      "neuralgentics-postgres is already running. Skipping container setup.\n",
+    );
+    return;
+  }
+
+  // 2. Handle .env conservatively — never overwrite an existing one.
   const composeExample = path.join(target, "compose.example.env");
   const envFile = path.join(target, ".env");
-  if (existsSync(composeExample) && !existsSync(envFile)) {
+  if (existsSync(envFile)) {
+    // User already has credentials — use as-is.
+  } else if (existsSync(composeExample)) {
     await fs.copyFile(composeExample, envFile);
+    process.stdout.write(
+      `Created .env from compose.example.env. Edit it to set your database ` +
+        `credentials, then run: ${composeUpCommand(tool)}\n`,
+    );
+    // Stop here — let the user edit credentials before starting containers.
+    return;
+  } else {
+    process.stdout.write(
+      `No .env or compose.example.env found in ${target}.\n` +
+        `Create a .env with your database credentials (POSTGRES_USER, ` +
+        `POSTGRES_PASSWORD, POSTGRES_DB), then run: ${composeUpCommand(tool)}\n` +
+        `Docs: https://github.com/Veedubin/neuralgentics#containers\n`,
+    );
+    return;
   }
+
+  // 3. .env exists and containers are not running — safe to start.
   try {
-    const cmd = tool.tool === "docker" ? "docker compose up -d" : "podman-compose up -d";
+    const cmd = composeUpCommand(tool);
     execSync(cmd, { cwd: target, stdio: "pipe", timeout: 120_000 });
-    process.stdout.write(`\nContainers started via \`${cmd}\`.\n`);
+    process.stdout.write(
+      `\nContainers started via \`${cmd}\`.\n` +
+        `Database available at localhost:6000 (user/pass from .env file).\n`,
+    );
   } catch (exc) {
     throw new ComposeUpFailed(
       `compose up -d failed: ${exc instanceof Error ? exc.message : String(exc)}`,
