@@ -5,6 +5,85 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] - 2026-07-09
+
+Patch release: Safe container setup in the npm init CLI. The installer now:
+- Skips container setup if `neuralgentics-postgres` is already running
+- Never overwrites an existing `.env` file
+- When `.env` is absent, copies `compose.example.env` and stops (lets user edit credentials before starting)
+- Prints DB connection info after successful start
+- Updated prompt text to clarify containers won't be recreated
+
+### Changed
+- The `npx @veedubin/neuralgentics --init` flow is now idempotent and safe for re-runs.
+- Container setup is skipped if `neuralgentics-postgres` is already running on port 6000.
+- The `.env` file is preserved if it exists; only copied from `compose.example.env` if missing.
+
+### Notes
+- This release removes the PyPI `neuralgentics-cli` package, which was mistakenly published in v0.9.3.
+- The Go backend continues as a containerized sibling of memini-ai, sharing the same PostgreSQL schema for consistency.
+
+## [0.9.3] - 2026-07-07
+
+Patch release: Init/bootstrap CLI in the npm package. Added `npx @veedubin/neuralgentics --init` flow, which:
+- Downloads the release tarball
+- Backs up existing `.opencode/`
+- Deep-merges `opencode.json`
+- Offers container setup (PostgreSQL + sidecar + backend)
+
+### Added
+- `npx @veedubin/neuralgentics --init` command for bootstrapping projects.
+- Backup of existing `.opencode/` before overwrite.
+- Deep-merge of `opencode.json` to preserve user customizations.
+- Container setup for `neuralgentics-postgres`, `neuralgentics-sidecar`, and `neuralgentics-backend`.
+
+### Removed
+- The `neuralgentics-cli` PyPI package (mistake, never should have been published).
+
+### Notes
+- The init CLI is the new recommended way to install Neuralgentics. The old curl-bash installer is deprecated.
+
+## [0.9.2] - 2026-07-05
+
+Patch release: TUI bleed fix. Routed `session.created` through `app.log` to stop TUI bleed.
+
+### Fixed
+- TUI bleed when `session.created` events were emitted before the TUI was fully initialized.
+- Plugin-only architecture stabilized; no more standalone TUI binary.
+
+### Notes
+- This release marks the transition to a pure OpenCode plugin architecture. The `neuralgentics` command no longer exists.
+
+## [0.9.1] - 2026-07-05
+
+Patch release: First npm publish. Initial `@veedubin/neuralgentics` release on npm.
+
+### Added
+- `@veedubin/neuralgentics` npm package for OpenCode plugin integration.
+- Self-contained install flow via `npx @veedubin/neuralgentics --init`.
+- Plugin tarball includes:
+  - 8 agent personas (architect, coder, explorer, git, orchestrator, reviewer, tester, writer)
+  - 5 skills (boomerang-orchestrator, kanban-board-manager, skill-self-audit, todo-list-updater, update-gh-docs)
+  - MCP tools for memory, routing, and lifecycle hooks
+  - Config merger for `opencode.json`
+
+### Changed
+- Neuralgentics is now an OpenCode plugin, not a standalone TUI.
+- The Go backend runs as a container, not a downloaded binary.
+- Install flow: `npx @veedubin/neuralgentics --init` instead of curl-bash.
+
+### Removed
+- Standalone TUI binary (`neuralgentics` command).
+- Go backend binary from the release tarball.
+- PATH setup (no binary to put on PATH).
+- GPU detection (handled by container runtime).
+- 5-platform build matrix (single platform-independent npm package).
+
+### Quality Gates
+- `npx tsc --noEmit` clean across all TypeScript sources.
+- `go vet` and `go test -short` clean for all Go modules.
+- `bun test` passes for TUI and SDK.
+
 ## [0.9.0] - 2026-06-24
 
 Minor release: Skills Brokering + Auto-Evolution (Phases 1-3, 13 cards T-SB-001 through T-SB-013). The Go MCP broker is now ALSO a skills broker — agents can browse a role-filtered SkillCatalog and reuse existing skills instead of recomputing work. Auto-evolution creates new SKILL.md files from repeated session patterns. Total: 14 commits, 37 files, +8062/-180 lines, 99 plugin tests + 50+ broker tests passing.

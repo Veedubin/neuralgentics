@@ -109,7 +109,7 @@ This ensures shared knowledge reflects verified outcomes, not speculative predic
 | Git | Secondary | Version control, commits, branches, tags |
 | Writer | Secondary | Documentation and markdown writing |
 
-## Architecture (v0.7.x — Plugin-Only)
+## Architecture (v0.9.4 — Plugin + npm init CLI)
 
 Neuralgentics is an **OpenCode plugin** — not a standalone TUI. The user runs `opencode`, which loads `@veedubin/neuralgentics` from `.opencode/opencode.json`. The plugin provides:
 
@@ -126,28 +126,37 @@ docker compose -f ~/.neuralgentics/docker-compose.yml up -d
 - **neuralgentics-backend**: Go JSON-RPC memory server (trust engine, knowledge graph, thought chains)
 
 ### Install Flow
+The recommended install flow is now:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash -s -- --home-dir
+npx @veedubin/neuralgentics --init
 cd your-project
-ln -s ~/.neuralgentics/.opencode .opencode
 opencode
 ```
 
+The old curl-bash installer (`curl -fsSL https://raw.githubusercontent.com/Veedubin/neuralgentics/main/scripts/install.sh | bash`) is deprecated and no longer maintained.
+
 ### What's in the archive
-- `@veedubin/neuralgentics` — compiled TypeScript overlay (orchestrator, memory client, routing)
+- `@veedubin/neuralgentics` — npm package providing the OpenCode plugin (orchestrator, memory client, routing)
 - `.opencode/agents/` — 8 agent personas (architect, coder, explorer, git, orchestrator, reviewer, tester, writer)
 - `.opencode/skills/` — 5 skills (boomerang-orchestrator, kanban-board-manager, skill-self-audit, todo-list-updater, update-gh-docs)
 - `.opencode/opencode.json` — OpenCode config with Ollama Cloud models, MCP servers, LSP, formatter
 - `.opencode/AGENTS.md` — Project instructions and agent protocol
 - `docker-compose.yml` + `docker/*.Dockerfile` — Container stack for memory backend
 
-### What was REMOVED (v0.7.0+)
+### What was REMOVED (v0.9.0+)
 - **TUI binary** — the `neuralgentics` command no longer exists. Run `opencode` instead.
 - **Go backend binary in archive** — backend runs as a container, not a downloaded binary
 - **Sidecar auto-setup in installer** — sidecar runs as a container
 - **PATH setup** — no binary to put on PATH
 - **GPU detection** — handled by container runtime
-- **5-platform build matrix** — single platform-independent tarball
+- **5-platform build matrix** — single platform-independent npm package
+- **PyPI `neuralgentics-cli` package** — was a mistake, never should have been published
+
+## What's in v0.9.4
+- **npm `npx --init` flow** replaces the old curl-bash installer. Run `npx @veedubin/neuralgentics --init` to bootstrap your project.
+- **Safe container setup**: The new installer skips containers if they're already running, respects `.env` files, and never overwrites existing data.
+- **PyPI `neuralgentics-cli` package removed**: This was a mistake and never should have been published.
+- **Go backend continues as a containerized sibling of memini-ai**: The Go backend runs as a container, not a standalone binary, and shares the same PostgreSQL schema as memini-ai for consistency.
 
 ## Container Deletion Policy (MANDATORY)
 
@@ -170,12 +179,12 @@ This includes (but is not limited to):
 
 The same rule applies to containers the user previously had running that are currently stopped. A stopped container may still contain irreplaceable data, configuration, or state the user wants preserved.
 
-## Currently-Running Containers (as of 2026-06-20)
+## Currently-Running Containers (as of 2026-07-09)
 
 | Container | Image | Port | State | Purpose |
 |-----------|-------|------|-------|---------|
-| `memini-postgres` | `docker.io/timescale/timescaledb-ha:pg18` | 5434 → 5432 | Running | Postgres 18 + TimescaleDB + pgvector. User's production DB. |
-| `neuralgentics-postgres` | `localhost/neuralgentics-postgres:test` | 6000 → 5432 | Running | Neuralgentics test DB. 14 tables initialized. |
+| `memini-postgres` | `docker.io/timescale/timescaledb-ha:pg18` | 5434 → 5432 | Running | Postgres 18 + TimescaleDB + pgvector. User's production DB for memini-ai. |
+| `neuralgentics-postgres` | `localhost/neuralgentics-postgres:test` | 6000 → 5432 | Running | **Go backend's database** (sibling of memini-ai). 14 tables initialized (same schema as memini-ai, ported). Currently empty because the Go backend container is not running. |
 
 **DO NOT `podman rm` either of these containers without explicit user permission.**
 
@@ -211,11 +220,11 @@ container's actual credentials — the historical wrong default
 
 ## Release Engineering Notes
 
-- **v0.7.3** is the latest tagged release (2026-06-20). Plugin-only tarball + container images.
-- **Release workflow**: single job compiles overlay plugin (`npx tsc`), bundles `.opencode/` config, creates tarball. Container job builds+pushes postgres/sidecar/backend to ghcr.io.
-- **Install script**: ~180 lines. Downloads tarball, extracts, runs `npm install`. No binary management, no PATH wrangling.
+- **v0.9.4** is the latest tagged release (2026-07-09). Ships as an npm plugin with an `npx --init` bootstrapper and a hardened container stack.
+- **Release workflow**: Single job compiles the overlay plugin (`npx tsc`), bundles `.opencode/` config, and publishes the `@veedubin/neuralgentics` npm package. Container job builds and pushes postgres/sidecar/backend to ghcr.io.
+- **Install flow**: Users run `npx @veedubin/neuralgentics --init` to bootstrap their project. The old curl-bash installer is deprecated.
 - **Pre-release validation**: `scripts/validate-release.sh` — 8 checks (shell syntax, YAML, JSON, version consistency, file existence, TypeScript typecheck, Go vet, git status). Run before every `git tag`.
-- **Archive naming**: `neuralgentics-X.Y.Z.tar.gz` (single platform-independent tarball).
+- **Archive naming**: `@veedubin/neuralgentics` npm package. Container images tagged as `ghcr.io/veedubin/neuralgentics-*:v0.9.4`.
 
 ## Execution Ordering Rules (MANDATORY)
 

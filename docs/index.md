@@ -11,14 +11,14 @@ Neuralgentics is the **harness** for AI agents - the execution environment, perm
 **What is a harness?**
 A harness provides the structural scaffolding that a raw model lacks. It wraps the LLM with specific prompts, tools, context, and strict permissions, ensuring the agent operates within defined boundaries and maintains continuity across sessions.
 
-**23 specialist agents, a trust-scored memory engine, and a permissions-based tool broker -- all in a 26 MB Go binary.** No cloud account, no telemetry, no vendor lock-in. You run it on your machine; it remembers what your agents did; it stops them from doing things they shouldn't.
+**23 specialist agent roles, a trust-scored memory engine, and a permissions-based tool broker -- all packaged as a 340KB OpenCode plugin plus a 3-service container stack.** No cloud account, no telemetry, no vendor lock-in. You run it on your machine; it remembers what your agents did; it stops them from doing things they shouldn't.
 
 **Install in seconds:**
 ```bash
-uv pip install neuralgentics && neuralgentics init && opencode
+npx @veedubin/neuralgentics --init && opencode
 ```
 
-v0.3.0 adds the IMPROVE phase runner, 7 new slash commands for tiered memory + peer context, and `elevate_memory_to_1024` for dual-model promotion. v0.3.1 adds mid-session edit detection and precompression guidance to the IMPROVE phase. v0.4.0 adds multi-transport MCP support (npx/uvx/local/docker), a curated catalog of 20 popular MCP servers, runtime LLM provider switching between Ollama Cloud / Docker Model Runner / OpenRouter, and Docker Compose v2.38+ model integration. v0.6.7 makes the curl|bash one-liner work end-to-end and adds docker support (was podman-only). v0.6.3 fixes 3 critical install-script bugs (broken symlink, curl|bash stdin trap, container credential recovery) and adds multi-project registration. v0.6.0 fixes 5 critical install-script bugs and adds graceful sidecar fallback. v0.5.0 adds HTTP/SSE transport for hosted MCPs, OCI-shareable profile export/import (tar.gz + HMAC-SHA256), provider-aware small_model, and CI short-test fix. v0.4.0 adds multi-transport MCP support (npx/uvx/local/docker), a curated catalog of 20 popular MCP servers, runtime LLM provider switching between Ollama Cloud / Docker Model Runner / OpenRouter, and Docker Compose v2.38+ model integration.
+Latest: v0.9.4 ships an `npx --init` bootstrapper that replaces the old curl-bash installer, plus a hardened container setup that won't touch existing `.env` files or running containers.
 
 
 [**Get Started →**](getting-started/installation.md)
@@ -35,7 +35,7 @@ Neuralgentics replaces one "do-it-all" bot with structured, role-based orchestra
 
 Every decision lands in PostgreSQL + pgvector with **trust scoring**. Successful patterns get promoted; failed approaches decay and fade. The MCP broker gates every tool call against the agent's role, cutting token overhead by up to 95%. Context survives sessions through L0/L1/L2 tiered loading -- a new agent picks up where the last one left off.
 
-Agent prompts are ~200 tokens each. State lives in memory, not in the prompt. Ships as a Go binary (26 MB) + podman PostgreSQL + Python gRPC sidecar + 4 container images. Open-source under the [MIT License](https://github.com/Veedubin/neuralgentics/blob/main/LICENSE).
+Agent prompts are ~200 tokens each. State lives in memory, not in the prompt. Ships as a 340KB npm plugin + 3 Docker containers (Postgres 18 + Python gRPC sidecar + Go JSON-RPC backend). Open-source under the [MIT License](https://github.com/Veedubin/neuralgentics/blob/main/LICENSE).
 
 ## How It Works
 
@@ -114,10 +114,9 @@ The practical effect: agents never see tools they can't use, which cuts the tool
 
 Neuralgentics ships with four container images on `pgvector/pgvector:pg18` multi-stage builds:
 
-- `ghcr.io/veedubin/neuralgentics-postgres:v0.3.0` — PostgreSQL 18 + pgvector, schema baked in
-- `ghcr.io/veedubin/neuralgentics-sidecar:v0.3.0` — Python gRPC embedding service
-- `ghcr.io/veedubin/neuralgentics-backend:v0.3.0` — Go JSON-RPC backend, distroless
-- `ghcr.io/veedubin/neuralgentics-tui:v0.3.0` — TUI binary, distroless
+- `ghcr.io/veedubin/neuralgentics-postgres:v0.9.4` — PostgreSQL 18 + pgvector, schema baked in
+- `ghcr.io/veedubin/neuralgentics-sidecar:v0.9.4` — Python gRPC embedding service
+- `ghcr.io/veedubin/neuralgentics-backend:v0.9.4` — Go JSON-RPC backend, distroless
 
 Bring up the full stack with `docker-compose up` or `podman-compose up`. The `podman-compose.yml` includes Podman-specific tweaks (SELinux `:Z` labels, `userns_mode: keep-id`, `pids_limit`).
 
@@ -143,49 +142,7 @@ See [Installation Guide](getting-started/installation.md) for the container quic
 
 See [Permission Model](architecture/permission-model.md) for the full matrix and [Broker Flow](architecture/broker-flow.md) for the request path.
 
-### Sidecar Lifecycle
 
-The embedding sidecar provides gRPC embedding services over a Unix domain socket. It can be managed two ways:
-
-**Systemd (Linux)** — `install.sh` generates a user service at `~/.config/systemd/user/neuralgentics-sidecar.service`:
-
-```bash
-systemctl --user start neuralgentics-sidecar
-systemctl --user stop neuralgentics-sidecar
-systemctl --user status neuralgentics-sidecar
-systemctl --user enable neuralgentics-sidecar   # auto-start on login
-journalctl --user -u neuralgentics-sidecar -f   # view logs
-```
-
-**PID-file wrapper (containers, WSL1, macOS)** — use `scripts/sidecar.sh`:
-
-```bash
-./scripts/sidecar.sh start     # idempotent, refuses if already running
-./scripts/sidecar.sh stop      # graceful, then SIGKILL after 10s
-./scripts/sidecar.sh restart   # stop + start
-./scripts/sidecar.sh status    # check if running
-```
-
-Key env vars (`scripts/.env.example` has the full list):
-
-| Var | Default | Purpose |
-|---|---|---|
-| `NEURALGENTICS_EMBED_DEVICE` | `cpu` | `cpu` or `cuda` (GPU, 16x faster for batches) |
-| `NEURALGENTICS_EMBED_DTYPE` | `fp32` | `fp16` halves VRAM (BGE-Large: 1.3GB → 640MB) |
-| `NEURAL_EMBED_ADDR` | `unix:///tmp/neuralgentics-embed.sock` | gRPC listen address |
-| `EMBEDDING_MODE` | `auto` | `auto` enables dual-write (384 + 1024 dim) |
-| `SIDECAR_AUTO_START` | `false` | Experimental, requires v0.9.0 |
-
-Common issues:
-
-| Symptom | Fix |
-|---|---|
-| `Failed to connect to sidecar at unix:///tmp/...` | Run `./scripts/sidecar.sh status` or `systemctl --user status neuralgentics-sidecar`. Start if stopped. |
-| `connect: connection refused` (TCP) | Check `NEURAL_EMBED_ADDR` matches in both sidecar and Go backend's `MEMINI_EMBEDDING_ADDR`. |
-| Slow embeddings (~200ms each) | Switch `NEURALGENTICS_EMBED_DEVICE=cuda NEURALGENTICS_EMBED_DTYPE=fp16` and restart. |
-| Out of memory on GPU | Check `nvidia-smi` for VRAM usage. FP16 halves BGE-Large's footprint. |
-
-See the [README](https://github.com/Veedubin/neuralgentics#sidecar-lifecycle) for the full reference.
 
 ### Kanban Board -- A Real FSM, Not a TODO List
 
@@ -193,22 +150,34 @@ Tasks are first-class objects with a 7-state finite state machine: `triage → t
 
 The board survives session boundaries, so a card you start on Monday is still on the board Friday morning with its full dispatch history attached.
 
-```text
-    KANBAN BOARD  ·  neuralgentics/v0.1.2
-    ─────────────────────────────────────────────────────────────────
-    TRIAGE        TODO          READY         RUNNING       BLOCKED
-    ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────┐
-    │ T-070    │  │ T-068    │  │          │  │ T-069    │  │      │
-    │ review   │  │ doc fix  │  │          │  │ features │  │      │
-    └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────┘
-    DONE                              ARCHIVED
-    ┌────────────────────────────────┐  ┌────────────────────────────┐
-    │ T-067c  mutex fix       12s    │  │ T-066  stubs (not impl.)   │
-    │ T-067b  any cleanup     8s     │  │ T-066b count query         │
-    │ T-067a  vnode types     14s    │  │ T-067  (superseded)        │
-    │ T-065   scan errors     21s    │  └────────────────────────────┘
-    │ T-068   coverage tests  45s    │   auto-archived: failure > 2
-    └────────────────────────────────┘
+The kanban is now a **markdown file (`TASKS.md`)** in your project root, not a TUI screen. Here's an example of what it looks like:
+
+```markdown
+# Kanban Board
+
+## Triage
+- [ ] T-070: Review PR #123 for security vulnerabilities
+
+## Todo
+- [ ] T-068: Fix broken doc links in `docs/index.md`
+
+## Ready
+*(Empty)*
+
+## Running
+- [x] T-069: Implement feature flags for dark mode (Assigned: @coder)
+
+## Blocked
+*(Empty)*
+
+## Done
+- [x] T-067c: Fix mutex deadlock in memory store (12s)
+- [x] T-067b: Clean up unused imports in `store/queries.go` (8s)
+- [x] T-067a: Add vnode type validation (14s)
+- [x] T-065: Fix scan error propagation (21s)
+
+## Archived
+- [x] T-066: Implement count query (auto-archived: failure > 2)
 ```
 
 See [Kanban System](reference/kanban-system.md) for the FSM transitions, circuit-breaker rules, and dispatch logic.
@@ -318,96 +287,66 @@ Comparison data verified against public sources as of 2026-06. Cells marked `(ne
 
 A mockup is a picture of the app, drawn in plain text with Unicode box-drawing characters. Like the dispatch diagram above, but drawn to look like a screenshot of the running terminal UI -- header bar, agent names, footer hints. No PNG files required.
 
-### Mockup 1 -- Kanban on Startup
+### Example: Kanban Board (`TASKS.md`)
 
-```text
-┌─── neuralgentics v0.1.0 ─── [LLM:online] [DB:6000] ── 12:34 ────────────┐
-│                                                                            │
-│  ┌─ Kanban ────────────────────────┐  ┌─ Agents ──────────────────────┐  │
-│  │ T-041 · Fix GH Pages 404       │  │  ▶ architect      [idle]       │  │
-│  │   done  ·  coder (42s)         │  │  ▶ coder         [idle]       │  │
-│  │ T-042 · Rewrite install.sh     │  │  ▶ explorer      [idle]       │  │
-│  │   running  ·  coder           │  │  ▶ git           [idle]       │  │
-│  │ T-043 · Comparison table       │  │  ▶ orchestrator  [running]   │  │
-│  │   todo  ·  unassigned          │  │  ▶ tester        [idle]       │  │
-│  │ T-044 · Credibility metrics    │  └────────────────────────────────┘  │
-│  │   todo  ·  unassigned          │                                      │
-│  └────────────────────────────────┘                                      │
-│                                                                            │
-│  > _                                                                       │
-│  [?] help  [n] new  [b] board  [m] memory  [q] quit                       │
-└────────────────────────────────────────────────────────────────────────────┘
+The kanban board is now a markdown file in your project root. Here's an example:
+
+```markdown
+# Kanban Board
+
+## Triage
+- [ ] T-070: Review PR #123 for security vulnerabilities
+
+## Todo
+- [ ] T-068: Fix broken doc links in `docs/index.md`
+
+## Ready
+*(Empty)*
+
+## Running
+- [x] T-069: Implement feature flags for dark mode (Assigned: @coder)
+
+## Blocked
+*(Empty)*
+
+## Done
+- [x] T-067c: Fix mutex deadlock in memory store (12s)
+- [x] T-067b: Clean up unused imports in `store/queries.go` (8s)
+- [x] T-067a: Add vnode type validation (14s)
+- [x] T-065: Fix scan error propagation (21s)
+
+## Archived
+- [x] T-066: Implement count query (auto-archived: failure > 2)
 ```
 
-MOCKUP -- not a real screenshot.
+### Example: Memory Inspector
 
-### Mockup 2 -- Dispatch View
-
-```text
-┌─── neuralgentics v0.1.0 ─── [LLM:online] [DB:6000] ── 12:38 ────────────┐
-│                                                                            │
-│  ┌─ Kanban ────────────────────────┐  ┌─ Orchestrator Log ─────────────┐  │
-│  │ T-041 · Fix GH Pages 404       │  │ [12:34] → Route: code-impl.    │  │
-│  │   done  ·  coder (42s)         │  │ [12:34] → Agent: boomerang-   │  │
-│  │ T-042 · Rewrite install.sh     │  │           coder                │  │
-│  │   running  ·  coder            │  │ [12:34] → Context: L0+L1      │  │
-│  │   "Adding prompt_install_      │  │ [12:35] ✓ CODE: 1 line changed │  │
-│  │    location validation..."     │  │ [12:35] → Gate: lint ✓        │  │
-│  │ T-043 · Comparison table       │  │ [12:35] → Gate: typecheck ✓   │  │
-│  │   todo  ·  unassigned          │  │ [12:35] → Gate: test ✓        │  │
-│  └────────────────────────────────┘  │ [12:35] → Memory: saved (e7f8) │  │
-│                                      │ [12:35] ✓ DONE (1.2s)          │  │
-│                                      │ [12:37] → Route: code-impl.    │  │
-│                                      │ [12:37] → Agent: boomerang-    │  │
-│                                      │           coder                │  │
-│                                      └────────────────────────────────┘  │
-│                                                                            │
-│  > /board           [?] help  [n] new  [q] quit                          │
-└────────────────────────────────────────────────────────────────────────────┘
-```
-
-MOCKUP -- not a real screenshot.
-
-### Mockup 3 -- Memory Inspector
+The memory inspector is now a CLI tool that queries the PostgreSQL backend. Here's an example of its output:
 
 ```text
-┌─── neuralgentics v0.1.0 ─── [LLM:online] [DB:6000] ── 12:45 ────────────┐
-│                                                                            │
-│  ┌─ Memory Inspector ─────────────────────────────────────────────────┐  │
-│  │  Query: "dispatch routing matrix"  ·  Results: 3  ·  tiered       │  │
-│  │  ─────────────────────────────────────────────────────────────────│  │
-│  │  a1b2c3d4...  trust=0.85  decay=0.02/day  used_by=4 agents        │  │
-│  │   "Routing Matrix: task type → architect for design, coder for   │  │
-│  │    implementation — enforced at code level, no exceptions"        │  │
-│  │  e5f6g7h8...  trust=0.78  decay=0.05/day  used_by=3 agents        │  │
-│  │   "Context Package: fetch L0/L1 memory, attach to Task() —       │  │
-│  │    L0 ~100 tokens, L1 ~2K tokens for planning"                   │  │
-│  │  i9j0k1l2...  trust=0.62  decay=0.08/day  used_by=2 agents        │  │
-│  │   "404 fix: mkdocs.yml site_url wrong — correct URL is           │  │
-│  │    veedubin.github.io/neuralgentics"                              │  │
-│  │  ─────────────────────────────────────────────────────────────────│  │
-│  │  Trust: ● active  ○ decayed  ∅ archived                          │  │
-│  └────────────────────────────────────────────────────────────────────┘  │
-│                                                                            │
-│  > /memory query="routing"   [?] help  [m] memory  [q] quit             │
-└────────────────────────────────────────────────────────────────────────────┘
-```
+$ neuralgentics memory query "dispatch routing matrix"
 
-MOCKUP -- not a real screenshot. Trust scores and decay rates are illustrative.
+Query: "dispatch routing matrix"
+Results: 3 (tiered search)
+
+ID            Trust  Decay/Day  Used  Age     Content
+────────────────────────────────────────────────────────────────────────────────
+a1b2c3d4...  0.85   0.02       4     12d    "Routing Matrix: task type → architect for design, coder for implementation — enforced at code level, no exceptions"
+e5f6g7h8...  0.78   0.05       3     3d     "Context Package: fetch L0/L1 memory, attach to Task() — L0 ~100 tokens, L1 ~2K tokens for planning"
+i9j0k1l2...  0.62   0.08       2     1d     "404 fix: mkdocs.yml site_url wrong — correct URL is veedubin.github.io/neuralgentics"
+
+Trust: ● active (>0.5)   ○ fading (<0.5)   ∅ archived (<0.2)
+```
 
 ## Quickstart
 
-1. Install the CLI:
+1. Bootstrap your project:
    ```bash
-   uv pip install neuralgentics
+   npx @veedubin/neuralgentics --init
    ```
-2. Bootstrap your project:
+2. Launch OpenCode:
    ```bash
    cd your-project
-   neuralgentics init
-   ```
-3. Launch OpenCode:
-   ```bash
    opencode
    ```
 
