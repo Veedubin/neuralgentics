@@ -2,126 +2,130 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://veedubin.github.io/neuralgentics/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/CLEANUP_C1_DELETE_CORE/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/CLEANUP_C3_DELETE_PYTHON_BROKER/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/changelog/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/development/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
+    </url>
+    <url>
+         <loc>https://veedubin.github.io/neuralgentics/migrating-from-v0.6/</loc>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/sidecar-setup/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/troubleshooting/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/architecture/broker-flow/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/architecture/dispatch-flow/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/architecture/overview/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/architecture/permission-model/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/archive/v0-pre-docs/API_REFERENCE/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/archive/v0-pre-docs/ARCHITECTURE/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/archive/v0-pre-docs/BROKER/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/archive/v0-pre-docs/MIGRATION_GUIDE/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/design/deferred-followups/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/design/docs-site-architecture/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/design/init-cli-bootstrapper/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/design/sidecar-productionization/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/design/skills-brokering-phase-1-design/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/design/skills-brokering-phase-2-design/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/design/skills-brokering-phase-3-design/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/design/transport-architecture/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/design/v0.5.0-profile-and-transport/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/design/v0.6.0-tasks-table-parked/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/getting-started/installation/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/getting-started/quickstart/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/reference/env-vars/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/reference/kanban-system/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/reference/memory-system/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
     <url>
          <loc>https://veedubin.github.io/neuralgentics/reference/session-lifecycle/</loc>
-         <lastmod>2026-07-07</lastmod>
+         <lastmod>2026-07-09</lastmod>
     </url>
 </urlset>
