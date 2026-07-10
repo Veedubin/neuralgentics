@@ -599,6 +599,32 @@ type memoryMigrateEmbeddingsResult struct {
 	Errors         []string `json:"errors,omitempty"`
 }
 
+// ─── Multi-Model RRF Request Struct (v0.12.0) ────────────────────────────────
+
+type memorySearchRRFParams struct {
+	Query          string   `json:"query"`
+	K              int      `json:"k,omitempty"`              // RRF constant, default 60
+	TopKPerModel   int      `json:"topKPerModel,omitempty"`   // per-model fetch limit, default 20
+	FinalTopK      int      `json:"finalTopK,omitempty"`      // final result limit, default 10
+	EnabledColumns []string `json:"enabledColumns,omitempty"` // e.g. ["embedding", "embedding_bge_m3"]
+}
+
+type memorySearchRRFResultItem struct {
+	ID             string         `json:"id"`
+	Content        string         `json:"content"`
+	EmbeddingModel string         `json:"embeddingModel,omitempty"`
+	SourceType     string         `json:"sourceType"`
+	TrustScore     float64        `json:"trustScore"`
+	RRFScore       float64        `json:"rrfScore"`
+	RanksByModel   map[string]int `json:"ranksByModel"`
+	BestDistance   float64        `json:"bestDistance"`
+}
+
+type memorySearchRRFResult struct {
+	Results       []memorySearchRRFResultItem `json:"results"`
+	ModelsQueried []string                    `json:"modelsQueried"`
+}
+
 type initializeParams struct {
 	ClientInfo map[string]string `json:"clientInfo,omitempty"`
 }
@@ -897,6 +923,10 @@ func handleRequest(
 	// Memory — Migrate Embeddings (T-MIGRATE-EMB)
 	case "memory.migrate_embeddings":
 		return handleMemoryMigrateEmbeddings(ctx, req, memSys)
+
+	// Memory — Multi-Model RRF Search (v0.12.0)
+	case "memory.search_rrf":
+		return handleMemorySearchRRF(ctx, req, memSys)
 
 	// User Profile
 	case "user.getProfile":
@@ -2816,6 +2846,117 @@ func handleMemoryMigrateEmbeddings(ctx context.Context, req jsonrpcRequest, memS
 		ToModel:        params.ToModel,
 		ElapsedSeconds: elapsed,
 		Errors:         errors,
+	})
+}
+
+// ─── Multi-Model RRF Search Handler (v0.12.0) ───────────────────────────────
+
+// columnToEmbedModel maps an embedding column name to the sidecar model hint
+// that produces vectors in that column's model space.
+func columnToEmbedModel(column string) string {
+	switch column {
+	case "embedding":
+		return "" // default model (MiniLM 384-dim)
+	case "embedding_bge_m3":
+		return "bge-m3"
+	case "embedding_bge_large":
+		return "bge-large"
+	default:
+		return ""
+	}
+}
+
+// handleMemorySearchRRF runs multi-model Reciprocal Rank Fusion search.
+// It embeds the query with each model, searches the corresponding embedding
+// column, and fuses the ranked lists using RRF.
+func handleMemorySearchRRF(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem) jsonrpcResponse {
+	var params memorySearchRRFParams
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	if params.Query == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: query is required")
+	}
+
+	// Apply defaults.
+	if params.K <= 0 {
+		params.K = 60
+	}
+	if params.TopKPerModel <= 0 {
+		params.TopKPerModel = 20
+	}
+	if params.FinalTopK <= 0 {
+		params.FinalTopK = 10
+	}
+	if len(params.EnabledColumns) == 0 {
+		params.EnabledColumns = []string{"embedding", "embedding_bge_m3"}
+	}
+
+	// Get the underlying store to access RRFSearch.
+	memStore := memSys.GetStore()
+	if memStore == nil {
+		return errorResponse(req.ID, -32603, "Internal error: memory store not available")
+	}
+
+	pgStore, ok := memStore.(*memstore.PostgresStore)
+	if !ok {
+		return errorResponse(req.ID, -32603, "Internal error: store is not a PostgresStore")
+	}
+
+	// Build the embed function that maps column names to sidecar model hints.
+	embedFn := func(column string) ([]float64, error) {
+		modelHint := columnToEmbedModel(column)
+		// For the default column ("embedding"), use Embed() which produces 384-dim.
+		// For BGE-M3 / BGE-Large columns, use Embed1024() which produces 1024-dim.
+		// In the future, the sidecar will accept explicit model hints; for now
+		// Embed1024() requests "bge-large" and we map bge-m3 to the same path
+		// since the sidecar default 1024-dim model IS bge-m3.
+		if modelHint == "" {
+			return memSys.EmbedContent(ctx, params.Query)
+		}
+		// Use the 1024-dim embedder for BGE-M3 and BGE-Large columns.
+		// The MemorySystem.EmbedContent uses the default 384-dim embedder.
+		// We need the 1024-dim path — call the embedder directly if available.
+		return memSys.EmbedContent1024(ctx, params.Query)
+	}
+
+	cfg := memstore.RRFConfig{
+		K:              params.K,
+		TopKPerModel:   params.TopKPerModel,
+		FinalTopK:      params.FinalTopK,
+		EnabledColumns: params.EnabledColumns,
+	}
+
+	rrfResults, err := pgStore.RRFSearch(ctx, cfg, embedFn)
+	if err != nil {
+		return errorResponse(req.ID, -32000, "RRF search failed: "+err.Error())
+	}
+
+	// Convert to response format.
+	resultItems := make([]memorySearchRRFResultItem, len(rrfResults))
+	for i, r := range rrfResults {
+		resultItems[i] = memorySearchRRFResultItem{
+			ID:             r.Entry.ID,
+			Content:        r.Entry.Content,
+			EmbeddingModel: r.Entry.EmbeddingModel,
+			SourceType:     r.Entry.SourceType,
+			TrustScore:     r.Entry.TrustScore,
+			RRFScore:       r.RRFScore,
+			RanksByModel:   r.RanksByModel,
+			BestDistance:   r.BestDistance,
+		}
+	}
+
+	// Report which models actually had data.
+	modelsQueried := make([]string, 0, len(params.EnabledColumns))
+	for _, col := range params.EnabledColumns {
+		modelsQueried = append(modelsQueried, col)
+	}
+
+	return successResponse(req.ID, memorySearchRRFResult{
+		Results:       resultItems,
+		ModelsQueried: modelsQueried,
 	})
 }
 

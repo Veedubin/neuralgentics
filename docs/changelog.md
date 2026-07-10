@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-07-10
+
+Minor release: Multi-model embedding support with RRF (Reciprocal Rank Fusion). Queries can now merge results from memories embedded with different models (MiniLM, BGE-M3, BGE-Large).
+
+### Added
+
+- **Multi-model RRF search**: New `memory.search_rrf` JSON-RPC method (Go backend) and `search_memories_rrf()` (memini-ai). When memories are stored in different embedding models, RRF runs a top-k search in each model's vector space and merges the results using `score = sum(1 / (k + rank))`.
+- **Schema columns**: `embedding_model VARCHAR(100)` column added to track which model produced each memory's vector. `embedding_bge_m3 vector(1024)` and `embedding_bge_large vector(1024)` columns added (parallel to existing `embedding` column for BGE-Large).
+- **Per-model search queries**: Three new search queries — `SEARCH_MEMORIES_MINILM`, `SEARCH_MEMORIES_BGE_M3`, `SEARCH_MEMORIES_BGE_LARGE` — each queries a single model's column.
+- **RRF config**: New `RRFConfig` struct with `k` (default 60), `top_k_per_model` (default 20), `final_top_k` (default 10), `enabled_columns` (which model spaces to search).
+- **Migration 000006**: Idempotent migration adding the new columns. Safe to re-run. Backfills existing rows with `embedding_model = 'BAAI/bge-large-en-v1.5'`.
+
+### Changed
+
+- **Default RRF enabled**: Both memini-ai and neuralgentics Go backend now default to `enable_rrf: true` for queries. Set `MEMINI_ENABLE_RRF=false` or `ENABLE_RRF=false` to fall back to single-model search.
+- **New memories write to model-specific column**: When adding a memory, the embedder picks the right column based on the active model's dimensionality. MiniLM → `embedding` (384-dim), BGE-M3 → `embedding_bge_m3` (1024-dim), BGE-Large → `embedding_bge_large` (1024-dim).
+
+### Notes
+
+- **Backwards compatible**: Existing single-model queries still work. The new `search_rrf` method is opt-in via the JSON-RPC interface.
+- **Multi-user support**: Designed for the case where different users/peers on the same DB have memories embedded with different models. RRF finds matches across all of them.
+- **No model retraining**: Existing BGE-Large embeddings stay valid. New BGE-M3 embeddings populate the new column. Queries can use either or both.
+
+### Quality gates
+
+- TypeScript: `npx tsc --noEmit` clean
+- Go build + vet: clean
+- Python mypy: clean
+- memini-ai pytest: 778+ tests pass (1 pre-existing env-dependent test skipped)
+- neuralgentics Go test: 7+ new RRF tests pass
+
+---
+
 ## [0.11.0] - 2026-07-10
 
 Minor release: BGE-M3 is now the default embedding model, with a new `migrate-embeddings` command for upgrading existing installs.

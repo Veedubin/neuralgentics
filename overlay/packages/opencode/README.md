@@ -82,6 +82,30 @@ npx @veedubin/neuralgentics migrate-embeddings --from bge-large --to bge-m3
 
 The migration is safe to interrupt. Old vectors are preserved in `embedding_legacy` and `embedding_model_legacy` columns until you drop them manually.
 
+## Multi-model support (v0.12.0+)
+
+If memories were stored with different embedding models over time (e.g., early memories with BGE-Large, later with BGE-M3), queries automatically merge results across all model spaces using RRF (Reciprocal Rank Fusion). Each model space is searched independently, and the rankings are fused by `score = sum(1 / (k + rank))`.
+
+No action needed — this is the default behavior. To disable RRF and use only the active model's column:
+
+```bash
+ENABLE_RRF=false
+```
+
+### Supported models
+
+| Model            | Dimensions | Column             | Notes                          |
+| ---------------- | ---------- | ------------------ | ------------------------------ |
+| `all-MiniLM-L6-v2` | 384        | `embedding`          | Original memini-ai default     |
+| `BAAI/bge-m3`      | 1024       | `embedding_bge_m3`  | New default since v0.11.0      |
+| `BAAI/bge-large-en-v1.5` | 1024 | `embedding_bge_large` | Used by neuralgentics Go backend |
+
+### When RRF helps
+
+- **Mixed-history installs**: Old memories (one model) + new memories (another model)
+- **Multi-user**: Different peers on the same DB using different models
+- **A/B testing**: Comparing retrieval quality between models
+
 ## Manual Install
 
 If you prefer not to use `--init`, add the plugin to your `.opencode/opencode.json`:

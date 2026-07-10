@@ -157,6 +157,29 @@ WHERE memory_id = $1
 RETURNING memory_id
 `
 
+// ─── Multi-Model RRF: Per-Column Count Queries ────────────────────────────────
+// These check whether a given embedding column has any non-null rows, so the
+// RRF search can skip columns that have no data (avoiding wasted embedding
+// calls and empty result sets).
+//
+// Column names are NOT parameterized in the constant — they are interpolated
+// via fmt.Sprintf in the RRFSearch method after validation against an
+// allow-list to prevent SQL injection.
+
+// CountNonNullEmbedding counts rows where the given column is non-null and
+// not archived. The column name is interpolated at call time (validated).
+//   SELECT COUNT(*) FROM memories WHERE <col> IS NOT NULL AND is_archived = FALSE
+
+// SearchMemoriesByColumn searches memories ordered by cosine distance against
+// the given embedding column. The column name is interpolated at call time.
+//   SELECT id, text, embedding_model, source_type, source_path, trust_score,
+//          retrieval_count, created_at, updated_at, is_archived,
+//          (<col> <=> $1::vector) as distance
+//   FROM memories
+//   WHERE <col> IS NOT NULL AND is_archived = FALSE
+//   ORDER BY <col> <=> $1::vector
+//   LIMIT $2
+
 // ─── Trust Engine Queries ────────────────────────────────────────────────────
 
 const UpdateTrustScore = `

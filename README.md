@@ -84,6 +84,10 @@ The embedding sidecar runs as a container with **lazy-load by default** — the 
 
 The sidecar has no per-project state — one instance serves all your projects.
 
+### Multi-model RRF (v0.12.0+)
+
+The memory backend supports storing and querying memories embedded with different models simultaneously. New `embedding_bge_m3 vector(1024)` and `embedding_bge_large vector(1024)` columns exist alongside the original `embedding vector(384)` column. When you query, RRF (Reciprocal Rank Fusion) merges top-k results from each populated column automatically. No user action required.
+
 ### Manual install (alternative)
 
 Add `@veedubin/neuralgentics` to your `.opencode/opencode.json` `plugins` array:

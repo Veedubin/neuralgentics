@@ -866,3 +866,13 @@ func (m *MemorySystem) EmbedContent(ctx context.Context, text string) ([]float64
 	}
 	return m.embedder.Embed(ctx, text)
 }
+
+// EmbedContent1024 generates a 1024-dim embedding vector for the given text
+// using the configured embedder's Embed1024 method. This is used by the
+// multi-model RRF search handler to embed queries for BGE-M3 / BGE-Large columns.
+func (m *MemorySystem) EmbedContent1024(ctx context.Context, text string) ([]float64, error) {
+	if m.embedder == nil {
+		return nil, fmt.Errorf("no embedder configured")
+	}
+	return m.embedder.Embed1024(ctx, text)
+}
