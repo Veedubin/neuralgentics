@@ -25,6 +25,12 @@ interface ParsedArgs {
   version: string; // sentinel, "latest", or "X.Y.Z"
   offline: boolean;
   withBackend: boolean;
+  // Lazy-load + quantize (v0.9.6+) — all opt-in.
+  quantize: string; // "auto" | "fp32" | "fp16" | "int8"
+  device: string | undefined; // "cpu" | "cuda" | undefined (env fallback)
+  noLazyLoad: boolean; // true => EAGER=true
+  idleMin: number; // minutes before idle sidecar unloads
+  statusPort: number; // sidecar HTTP /status port
   command: string | undefined;
 }
 
@@ -41,6 +47,13 @@ function parseArgv(argv: string[]): ParsedArgs {
       repo: { type: "string", default: "Veedubin/neuralgentics" },
       offline: { type: "boolean", default: false },
       "with-backend": { type: "boolean", default: false },
+      // Lazy-load + quantize (v0.9.6+).
+      quantize: { type: "string", default: "auto" },
+      "embed-dtype": { type: "string" }, // alias for --quantize (undocumented)
+      device: { type: "string" }, // "cpu" | "cuda"; undefined => env fallback
+      "no-lazy-load": { type: "boolean", default: false },
+      "idle-min": { type: "string", default: "5" }, // numeric, parsed below
+      "status-port": { type: "string", default: "50052" }, // numeric
     },
     allowPositionals: true,
   });
@@ -53,9 +66,12 @@ function parseArgv(argv: string[]): ParsedArgs {
   const positionals: string[] = [];
   const knownFlags = new Set([
     "--init", "--force", "--dry-run", "--yes", "-y", "--offline",
-    "--with-backend", "-h", "--help",
+    "--with-backend", "--no-lazy-load", "-h", "--help",
   ]);
-  const valueFlags = new Set(["--version", "--target", "-t", "--repo"]);
+  const valueFlags = new Set([
+    "--version", "--target", "-t", "--repo",
+    "--quantize", "--embed-dtype", "--device", "--idle-min", "--status-port",
+  ]);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith("--") && a.includes("=")) continue; // --foo=bar form
@@ -78,6 +94,11 @@ function parseArgv(argv: string[]): ParsedArgs {
     version,
     offline: values.offline === true,
     withBackend: values["with-backend"] === true,
+    quantize: (values["embed-dtype"] ?? values.quantize ?? "auto") as string,
+    device: values.device as string | undefined,
+    noLazyLoad: values["no-lazy-load"] === true,
+    idleMin: parseInt(values["idle-min"] ?? "5", 10),
+    statusPort: parseInt(values["status-port"] ?? "50052", 10),
     command,
   };
 }
@@ -98,6 +119,15 @@ function printHelp(): void {
       `  --repo REPO         GitHub repository to download from (default: Veedubin/neuralgentics).\n` +
       `  --offline           Use a bundled tarball instead of downloading (not yet available).\n` +
       `  --with-backend      Set up database containers (podman-compose / docker).\n` +
+      `\n` +
+      `Lazy-load + quantize options (opt-in, v0.9.6+):\n` +
+      `  --quantize DTYPE    Embedding dtype: auto|fp32|fp16|int8 (default: auto).\n` +
+      `                      auto => fp16 on cuda, int8 on cpu (or per NEURALGENTICS_EMBED_DEVICE).\n` +
+      `  --device DEVICE     Embedding device override: cpu|cuda. Overrides NEURALGENTICS_EMBED_DEVICE.\n` +
+      `  --no-lazy-load      Eagerly load the model at sidecar start (default: lazy-load on first embed).\n` +
+      `  --idle-min MIN      Minutes of idleness before the lazy sidecar unloads the model (default: 5).\n` +
+      `  --status-port PORT  Sidecar HTTP /status port (default: 50052).\n` +
+      `\n` +
       `  -h, --help          Show this help and exit.\n` +
       `\n` +
       `Positional alias: \`neuralgentics init\` is equivalent to \`--init\`.\n`,
@@ -163,6 +193,11 @@ async function main(argv: string[]): Promise<number> {
     version: parsed.version,
     offline: parsed.offline,
     withBackend: parsed.withBackend,
+    quantize: parsed.quantize,
+    device: parsed.device,
+    noLazyLoad: parsed.noLazyLoad,
+    idleMin: parsed.idleMin,
+    statusPort: parsed.statusPort,
   };
 
   try {

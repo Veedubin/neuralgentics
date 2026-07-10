@@ -12,7 +12,7 @@
 set -euo pipefail
 
 BIN="${BIN:-/home/jcharles/Projects/MCP-Servers/neuralgentics/.neuralgentics/bin/neuralgentics-backend}"
-export NEURALGENTICS_DB_URL="${NEURALGENTICS_DB_URL:-postgresql://neuralgentics:neuralgentics@localhost:6000/neuralgentics_test}"
+export NEURALGENTICS_DB_URL="${NEURALGENTICS_DB_URL:-postgresql://neuralgentics:neuralgentics@localhost:6200/neuralgentics_test}"
 
 if [[ ! -x "$BIN" ]]; then
   echo "FATAL: backend binary not found or not executable at $BIN" >&2
@@ -31,7 +31,7 @@ echo
 
 # ─── Pre-flight: confirm DB has both tables and is empty ────────────────────
 echo "==> pre-flight: row counts before test"
-PGPASSWORD=neuralgentics psql -h localhost -p 6000 -U neuralgentics -d neuralgentics_test -t -A -c \
+PGPASSWORD=neuralgentics psql -h localhost -p 6200 -U neuralgentics -d neuralgentics_test -t -A -c \
   "SELECT 'memories=' || COUNT(*) FROM memories UNION ALL SELECT 'memories_1024=' || COUNT(*) FROM memories_1024;"
 echo
 
@@ -207,11 +207,11 @@ check "shutdown.result.status" "ok" "$shutdown_status"
 
 echo
 echo "==> post-test: row counts (dual-write verification, AFTER delete)"
-PGPASSWORD=neuralgentics psql -h localhost -p 6000 -U neuralgentics -d neuralgentics_test -t -A -c \
+PGPASSWORD=neuralgentics psql -h localhost -p 6200 -U neuralgentics -d neuralgentics_test -t -A -c \
   "SELECT 'memories=' || COUNT(*) FROM memories UNION ALL SELECT 'memories_1024=' || COUNT(*) FROM memories_1024 UNION ALL SELECT 'memories matching smoke=' || COUNT(*) FROM memories WHERE text LIKE '%smoke%' OR text LIKE '%dual-model%';"
 
-mem_count=$(PGPASSWORD=neuralgentics psql -h localhost -p 6000 -U neuralgentics -d neuralgentics_test -t -A -c "SELECT COUNT(*) FROM memories")
-mem1024_count=$(PGPASSWORD=neuralgentics psql -h localhost -p 6000 -U neuralgentics -d neuralgentics_test -t -A -c "SELECT COUNT(*) FROM memories_1024")
+mem_count=$(PGPASSWORD=neuralgentics psql -h localhost -p 6200 -U neuralgentics -d neuralgentics_test -t -A -c "SELECT COUNT(*) FROM memories")
+mem1024_count=$(PGPASSWORD=neuralgentics psql -h localhost -p 6200 -U neuralgentics -d neuralgentics_test -t -A -c "SELECT COUNT(*) FROM memories_1024")
 
 echo
 # After delete, we expect 1 row in memories (the add2 survived) and 1 row in memories_1024.

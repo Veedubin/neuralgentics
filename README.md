@@ -62,9 +62,26 @@ npx @veedubin/neuralgentics --init
 3. **Merges** the plugin's `.opencode/` directory with yours (preserves your agents, adds Neuralgentics tools and personas)
 4. **Updates** `.opencode/opencode.json` to include the plugin and its MCP servers
 5. **Offers** to set up the container stack (`docker compose up -d`)
-   - Skips if containers are already running (respects `.env`)
-   - Uses `docker/postgres.Dockerfile` and `docker-compose.yml`
+    - Skips if containers are already running (respects `.env`)
+    - Uses `docker/postgres.Dockerfile` and `docker-compose.yml`
 6. **Prints** next steps (e.g., `opencode` to start the TUI)
+
+### Sidecar lifecycle
+
+The embedding sidecar runs as a container with **lazy-load by default** — the model is only loaded into memory when you issue your first embedding call, and unloads after 5 minutes of inactivity. This means the sidecar costs ~80MB of RAM when idle, vs ~1.3GB when the model is loaded.
+
+- **Default (lazy)**: Model loads on first request, unloads after 5 min idle. Cold load takes 2-15s.
+- **`--no-lazy-load` (eager)**: Model loads at startup, stays loaded while clients are connected.
+- **`--quantize {fp32|fp16|int8}`**: Pick precision. INT8 is ~4x smaller, FP16 is ~2x smaller than FP32. Quality loss is <1% for BGE-Large.
+- **Status endpoint**: `curl http://localhost:50052/status` shows `{loaded_models, last_used, dtype, device}`.
+
+### When to use which
+
+- **Laptop / shared machine**: Lazy + int8. Zero idle cost, slight cold-load wait.
+- **Workstation / server**: `--no-lazy-load` + fp16 (GPU) or int8 (CPU). Always ready.
+- **Cluster / homelab**: Lazy + fp16/int8. Multiple clients share one sidecar.
+
+The sidecar has no per-project state — one instance serves all your projects.
 
 ### Manual install (alternative)
 
@@ -90,11 +107,11 @@ cp .env.example .env  # Edit if needed
 docker compose up -d
 ```
 
-- **Postgres**: TimescaleDB + pgvector (port `6000`)
+- **Postgres**: TimescaleDB + pgvector (port `6200`)
 - **Sidecar**: Python FastMCP server (port `6001`)
 - **Backend**: Go JSON-RPC memory server (port `6002`)
 
-The Go backend connects to Postgres on `localhost:6000` by default (configurable via `.env`).
+The Go backend connects to Postgres on `localhost:6200` by default (configurable via `.env`).
 
 ## Architecture at a glance
 
@@ -125,7 +142,7 @@ Neuralgentics v0.7.0+ runs the memory backend as a **3-service Docker stack** (p
 
 | Service | Image | Port | Purpose |
 |---------|-------|------|---------|
-| **Postgres** | `veedubin/neuralgentics-postgres:0.9.4` | `6000:5432` | TimescaleDB + pgvector for memory storage |
+| **Postgres** | `veedubin/neuralgentics-postgres:0.9.4` | `6200:5432` | TimescaleDB + pgvector for memory storage |
 | **Sidecar** | `veedubin/neuralgentics-sidecar:0.9.4` | `6001:6001` | Python FastMCP server for memini-ai tools |
 | **Backend** | `veedubin/neuralgentics-backend:0.9.4` | `6002:6002` | Go JSON-RPC memory server (MCP tools) |
 
@@ -137,7 +154,7 @@ cp .env.example .env  # Edit if needed
 docker compose up -d
 ```
 
-The Go backend connects to Postgres on `localhost:6000` by default (configurable via `.env`).
+The Go backend connects to Postgres on `localhost:6200` by default (configurable via `.env`).
 
 ## What ships
 

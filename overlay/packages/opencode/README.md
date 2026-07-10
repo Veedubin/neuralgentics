@@ -31,6 +31,36 @@ npx @veedubin/neuralgentics --init
    - If `.env` is missing, copies `compose.example.env` and stops (lets you edit credentials before starting).
 5. Prints DB connection info after successful setup.
 
+## CLI Flags
+
+The `init` command accepts these flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--quantize {fp32|fp16|int8}` | auto | Embedding model precision. Auto = fp16 on GPU, int8 on CPU. |
+| `--no-lazy-load` | false | Eager-load model at startup. Skip for default lazy mode. |
+| `--idle-min N` | 5 | Minutes of inactivity before sidecar unloads model. |
+| `--status-port N` | 50052 | HTTP port for sidecar /status endpoint. |
+| `--device {cpu|cuda}` | auto | Embedding model device. |
+| `--with-backend` | false | Set up local database containers. |
+| `--target DIR` | `.` | Directory to bootstrap. |
+| `--yes`, `-y` | false | Skip all confirmation prompts. |
+| `--dry-run` | false | Preview actions without writing. |
+| `--force` | false | Overwrite existing files. |
+
+### Examples
+
+```bash
+# Default — lazy load, int8 on CPU, no GPU detection
+npx @veedubin/neuralgentics --init
+
+# GPU machine — use fp16, eager load
+npx @veedubin/neuralgentics --init --quantize fp16 --no-lazy-load
+
+# Long-idle tolerance — don't unload for 30 min
+npx @veedubin/neuralgentics --init --idle-min 30
+```
+
 ## Manual Install
 
 If you prefer not to use `--init`, add the plugin to your `.opencode/opencode.json`:
@@ -59,7 +89,7 @@ npm install @veedubin/neuralgentics
 
 The memory backend runs as 3 containers:
 
-- `neuralgentics-postgres`: PostgreSQL 18 + pgvector + TimescaleDB (port 6000)
+- `neuralgentics-postgres`: PostgreSQL 18 + pgvector + TimescaleDB (port 6200)
 - `neuralgentics-sidecar`: Python gRPC embedding service (BGE-Large, port 50051)
 - `neuralgentics-backend`: Go JSON-RPC memory server (trust engine, knowledge graph, thought chains)
 

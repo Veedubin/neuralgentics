@@ -371,7 +371,7 @@ export async function initSidecar(
 }
 
 /**
- * Check if the database is reachable on port 6000.
+ * Check if the database is reachable on port 6200.
  * Returns a SidecarStatus-like object for the DB.
  */
 export async function checkDatabase(): Promise<{
@@ -381,7 +381,7 @@ export async function checkDatabase(): Promise<{
   error?: string;
 }> {
   const dbHost = "localhost";
-  const dbPort = 6000;
+  const dbPort = 6200;
 
   try {
     // Use Bun's TCP connect to check if port is open

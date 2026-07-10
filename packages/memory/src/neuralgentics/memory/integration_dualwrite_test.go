@@ -18,9 +18,9 @@ import (
 const podPingTimeout = 5 * time.Second
 
 // sharedTestDBURL is the connection string for the shared test database.
-const sharedTestDBURL = "postgresql://neuralgentics:neuralgentics@localhost:6000/neuralgentics_test?sslmode=disable"
+const sharedTestDBURL = "postgresql://neuralgentics:neuralgentics@localhost:6200/neuralgentics_test?sslmode=disable"
 
-// connectSharedDB attempts to connect to the shared test database on port 6000.
+// connectSharedDB attempts to connect to the shared test database on port 6200.
 // Returns nil if the shared DB is unavailable.
 func connectSharedDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -37,14 +37,14 @@ func connectSharedDB(t *testing.T) *sql.DB {
 	return db
 }
 
-// connectSharedDBOrSkip connects to the shared test database on port 6000.
+// connectSharedDBOrSkip connects to the shared test database on port 6200.
 // If the DB is unreachable or missing the required schema, the test is skipped.
 func connectSharedDBOrSkip(t *testing.T) (connStr string) {
 	t.Helper()
 
 	db := connectSharedDB(t)
 	if db == nil {
-		t.Skip("shared test database not reachable on localhost:6000, skipping")
+		t.Skip("shared test database not reachable on localhost:6200, skipping")
 	}
 
 	// Verify the memories_1024 table exists (schema must be migrated)
@@ -60,7 +60,7 @@ func connectSharedDBOrSkip(t *testing.T) (connStr string) {
 		t.Skipf("shared DB reachable but missing memories_1024 table (err=%v, table=%q), skipping", err, tableName)
 	}
 
-	t.Log("using shared test database on port 6000")
+	t.Log("using shared test database on port 6200")
 	return sharedTestDBURL
 }
 

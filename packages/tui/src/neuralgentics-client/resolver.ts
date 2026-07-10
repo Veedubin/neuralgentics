@@ -102,10 +102,10 @@ export function resolveBackendPath(): string {
  * Default database URL for the Go backend.
  * The Go backend's default (localhost:5434) will fail because lib/pq defaults
  * to sslmode=require which clashes with ssl=off. This default points at the
- * dev test DB on port 6000 with sslmode=require.
+ * dev test DB on port 6200 with sslmode=require.
  */
 export const DEFAULT_DB_URL =
-  "postgresql://postgres:testpassword@localhost:6000/neuralgentics_test?sslmode=require";
+  "postgresql://postgres:testpassword@localhost:6200/neuralgentics_test?sslmode=require";
 
 /** Resolve the DB URL — explicit env override wins, otherwise the dev DB default. */
 export function resolveDbUrl(): string {

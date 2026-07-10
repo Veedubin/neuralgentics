@@ -5,6 +5,89 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-07-09
+
+Patch release: Lazy-load + quantize support for the embedding sidecar, and sidecar lifecycle management via the Go memory server.
+
+### Added
+
+- **Quantization support**: The embedding sidecar now supports `int8` (in addition to `fp32` and `fp16`) via the new `NEURALGENTICS_EMBED_DTYPE=int8` env var or `--quantize int8` flag. INT8 reduces VRAM ~4x vs FP32 and ~2x vs FP16, with ~1% quality loss. Uses `bitsandbytes` on CUDA, falls back to PyTorch dynamic quantization on CPU.
+- **Lazy load + idle unload**: The sidecar no longer loads the model at startup. The model loads on first request (2-15s cold load) and unloads automatically after 5 minutes of inactivity (configurable via `IDLE_MIN` env var or `--idle-min` flag). This means zero idle memory cost when you're not using neuralgentics.
+- **--no-lazy-load (eager) mode**: New flag/env (`EAGER=true`) loads the model at startup and keeps it loaded while clients are connected. Use this if cold-load latency is unacceptable (e.g., on slow hardware or when you want instant first response).
+- **Sidecar status endpoint**: New HTTP `/status` endpoint on port 50052 exposes `{loaded_models, last_used, dtype, device, idle_min, eager}`. The plugin checks this before embedding calls and shows a one-time "warming up" message when the model needs to load.
+- **Sidecar lifecycle JSON-RPC methods**: The Go memory server now exposes `sidecar.start` and `sidecar.stop` methods that shell out to podman/docker to manage the local sidecar container. Local-only — returns clear error if sidecar is on a remote host.
+- **Auto-detect quantization**: When `--quantize` is not specified, the init CLI picks `fp16` for CUDA and `int8` for CPU. No more 1.3GB FP32 model on a CPU-only box.
+- **CLI flags**: `--quantize {fp32|fp16|int8}`, `--no-lazy-load`, `--idle-min N`, `--status-port N`, `--device {cpu|cuda}`
+
+### Changed
+
+- **Default quantization**: The default for new installs is now `int8` on CPU and `fp16` on GPU (was `fp32` for both). Existing installs continue using whatever their `.env` specifies.
+- **Sidecar MCP timeout**: Bumped to 60000ms (60s) to accommodate cold model loads. Without this, the first embedding call after a restart would time out before the model finished loading.
+
+### Notes
+
+- **Memory cost when idle**: With lazy-load (default), the sidecar process consumes ~80MB RAM when no model is loaded. With eager mode (`--no-lazy-load`), it consumes ~1.3GB (FP32) or ~640MB (FP16) or ~340MB (INT8).
+- **GPU support**: INT8 quantization uses `bitsandbytes` for best performance on CUDA. If not installed, falls back to PyTorch dynamic quantization (works everywhere but slower).
+- **First-request latency**: Cold load takes 2-15s depending on hardware. Subsequent requests are ~10ms (CPU) or ~2ms (GPU) for BGE-Large.
+- **Local-only sidecar lifecycle**: `sidecar.start`/`sidecar.stop` only work when the sidecar is on the same host. For remote sidecars, use your container orchestrator or SSH.
+
+### Quality gates
+
+- TypeScript: `npx tsc --noEmit` clean
+- Python: `py_compile` clean, `ruff check` clean
+- Go build: clean
+- Lazy load smoke test: passing
+
+---
+
+## [0.9.6] - 2026-07-09
+
+Patch release: Default host port changed from 6000 to 6200 so neuralgentics and memini-ai can run side-by-side. memini-ai remains on port 5434 and is untouched by this change. All connection strings, scripts, tests, and documentation updated.
+
+### Changed
+
+- **Default host port**: 6000 → 6200. The container port (5432) is unchanged — only the host-side mapping in `docker-compose.yml`, `podman-compose.yml`, and `compose.example.env`.
+- **Go backend default URL**: `packages/backend-go/cmd/backend/main.go` now defaults to `postgresql://neuralgentics:neuralgentics@localhost:6200/neuralgentics` (was 6000).
+- **Dev test DB default URL**: `packages/tui/src/neuralgentics-client/resolver.ts` and `overlay/packages/opencode/src/neuralgentics/go-backend-client.ts` now default to port 6200.
+- **Shell scripts and tests**: `scripts/dev-up.sh`, `scripts/compose.sh`, `scripts/smoke-test.sh`, `scripts/.env.example`, `tests/smoke-test-mvp.sh`, `.neuralgentics/install.sh` all updated.
+- **Container port mapping**: `docker-compose.yml` and `podman-compose.yml` now use `${NEURALGENTICS_DB_PORT:-6200}:5432`.
+- **Local configs**: `/home/jcharles/Projects/MCP-Servers/.env` and `/home/jcharles/Projects/reverse_engineering/.env` updated to point at port 6200.
+
+### Notes
+
+- **Container recreation required**: The existing `neuralgentics-postgres` podman container still maps 6000 → 5432. After upgrading, recreate it with `-p 6200:5432`. The init CLI's container-setup step will do this automatically if the user deletes the old container first (or runs the init in a new project).
+- **memini-ai untouched**: `memini-postgres` on port 5434 is unchanged. The two systems can now run simultaneously for side-by-side testing.
+- **Historical references preserved**: HANDOFF.md and TASKS.md historical session entries still mention port 6000 (because that's what was true at the time). Only current-state references were updated.
+
+### Quality gates
+
+- TypeScript: `npx tsc --noEmit` clean
+- Go build: `go build ./...` clean in `packages/backend-go` and `packages/memory`
+- Go vet: clean
+- Grep verification: 0 source/config files contain port 6000
+
+## [0.9.5] - 2026-07-09
+
+Patch release: Documentation overhaul. All docs aligned with the v0.9.4 reality — the plugin-only architecture, the npm `npx --init` flow, and the removal of the v0.6.x TUI/curl-bash paths. The deleted PyPI `neuralgentics-cli` package is documented as a v0.9.3 mistake that was reverted. New files: npm package README and v0.6.x → v0.7.0+ migration guide.
+
+### Added
+
+- `overlay/packages/opencode/README.md` — the npm package README (visible on npmjs.com).
+- `docs/migrating-from-v0.6.md` — guide for users on the old TUI/sidecar install.
+- v0.9.1, v0.9.2, v0.9.3, v0.9.4 changelog entries (changelog was previously stopping at v0.9.0).
+
+### Changed
+
+- `README.md` — complete rewrite for v0.9.4 reality.
+- `AGENTS.md` — version references updated, `neuralgentics-postgres` purpose documented.
+- `docs/index.md` — TUI/sidecar references removed, install command fixed.
+- `package.json` version: 0.9.4 → 0.9.5.
+
+### Notes
+
+- This release contains no code changes — only documentation, README, changelog, and version bump.
+- Git cleanup: deleted 2 merged remote branches (`feature/pypi-bootstrapper`, `feature/npm-publish`), dropped stale WIP stash on AGENTS.md.
+
 ## [0.9.4] - 2026-07-09
 
 Patch release: Safe container setup in the npm init CLI. The installer now:

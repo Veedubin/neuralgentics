@@ -98,7 +98,7 @@ func findBackendBinary(t *testing.T) string {
 
 // ─── Shared DB helpers ────────────────────────────────────────────────────────
 
-const backendTestDBURL = "postgresql://neuralgentics:neuralgentics@localhost:6000/neuralgentics_test?sslmode=disable"
+const backendTestDBURL = "postgresql://neuralgentics:neuralgentics@localhost:6200/neuralgentics_test?sslmode=disable"
 
 // isSharedDBAvailable checks if the shared test DB is reachable.
 func isSharedDBAvailable() bool {
@@ -143,7 +143,7 @@ func TestIntegration_BackendJSONRPC(t *testing.T) {
 	t.Logf("backend binary: %s", binPath)
 
 	if !isSharedDBAvailable() {
-		t.Skip("shared test database not available on port 6000; start neuralgentics-test-pg container first")
+		t.Skip("shared test database not available on port 6200; start neuralgentics-test-pg container first")
 	}
 
 	// ── Connect to DB for post-test verification ──────────────────────────

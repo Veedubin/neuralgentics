@@ -18,7 +18,7 @@ import { createInterface } from "node:readline";
  * IMPORTANT: lib/pq (the Go postgres driver) defaults `sslmode` to `require`
  * when no `sslmode` is specified in the connection string. That works against
  * databases with `ssl = on` but fails against databases with `ssl = off`
- * (e.g. the user's prod timescale-pg18 on 5434). The dev test DB on 6000
+ * (e.g. the user's prod timescale-pg18 on 5434). The dev test DB on 6200
  * has SSL enabled, so `?sslmode=require` matches the server's capability
  * and lets the migrator + queries succeed without any CA verification.
  *
@@ -26,11 +26,112 @@ import { createInterface } from "node:readline";
  * process's environment before OpenCode launches the plugin.
  */
 const DEFAULT_DB_URL =
-  "postgresql://postgres:testpassword@localhost:6000/neuralgentics_test?sslmode=require";
+  "postgresql://postgres:testpassword@localhost:6200/neuralgentics_test?sslmode=require";
 
 /** Resolve the DB URL — explicit env override wins, otherwise the dev DB. */
 function resolveDbUrl(): string {
   return process.env.NEURALGENTICS_DB_URL ?? DEFAULT_DB_URL;
+}
+
+// ---------------------------------------------------------------------------
+// Sidecar status check + lazy-load support (v0.9.6+)
+// ---------------------------------------------------------------------------
+
+/**
+ * gRPC timeout for embed calls — bumped to 60s to allow for cold model load
+ * (BGE-Large fp16/int8 on first use can take 5-15s on CPU, longer on a cold
+ * HuggingFace cache download).
+ */
+const SIDECAR_EMBED_TIMEOUT_MS = 60_000;
+
+/** Shape of the sidecar `/status` JSON response. */
+export interface SidecarStatus {
+  loaded: boolean;
+  models: string[];
+  dtype: string;
+}
+
+/**
+ * Cache the "model loaded" state per session so the warming-up message is
+ * only emitted ONCE (on the first cold-load detection). Subsequent calls
+ * skip the status probe entirely once we've seen `loaded: true`.
+ */
+let sidecarModelLoaded = false;
+let warmingUpMessageShown = false;
+
+/** Resolve the sidecar HTTP /status URL from env vars (sensible defaults). */
+function resolveStatusURL(): string {
+  if (process.env.NEURALGENTICS_SIDECAR_STATUS_URL) {
+    return process.env.NEURALGENTICS_SIDECAR_STATUS_URL;
+  }
+  const host = process.env.NEURALGENTICS_SIDECAR_HOST ?? "localhost";
+  const port = process.env.NEURALGENTICS_SIDECAR_STATUS_PORT ?? "50052";
+  return `http://${host}:${port}/status`;
+}
+
+/**
+ * Probe the sidecar's HTTP `/status` endpoint.
+ *
+ * Returns `{ loaded: false, models: [], dtype: "unknown" }` if the endpoint
+ * is unreachable (sidecar not running, no HTTP status server, network down).
+ * Never throws — a failed probe just means the embed call will trigger a
+ * load (and the 60s timeout covers it).
+ */
+export async function checkSidecarStatus(): Promise<SidecarStatus> {
+  const statusURL = resolveStatusURL();
+  try {
+    const resp = await fetch(statusURL, { signal: AbortSignal.timeout(2000) });
+    if (resp.ok) {
+      const body = (await resp.json()) as Partial<SidecarStatus>;
+      return {
+        loaded: body.loaded === true,
+        models: Array.isArray(body.models) ? body.models : [],
+        dtype: typeof body.dtype === "string" ? body.dtype : "unknown",
+      };
+    }
+  } catch {
+    // Fall through — sidecar unreachable or /status not implemented.
+  }
+  return { loaded: false, models: [], dtype: "unknown" };
+}
+
+/**
+ * Pre-embed hook: probe sidecar status, emit a one-time "warming up" message
+ * if the model isn't loaded yet, and bump the call timeout for cold loads.
+ *
+ * Caches the loaded state so the warming-up message is shown at most once
+ * per process lifetime (no user spam on every embed call).
+ *
+ * @returns The gRPC timeout to use for the subsequent embed call
+ *          (60s if cold load possible, normal default otherwise).
+ */
+export async function prepareEmbedCall(): Promise<number> {
+  // Once we've confirmed the model is loaded, skip the probe entirely.
+  if (sidecarModelLoaded) return SIDECAR_EMBED_TIMEOUT_MS;
+
+  const status = await checkSidecarStatus();
+  if (status.loaded) {
+    sidecarModelLoaded = true;
+    return SIDECAR_EMBED_TIMEOUT_MS;
+  }
+
+  // Cold load: show the warming-up message ONCE.
+  if (!warmingUpMessageShown) {
+    warmingUpMessageShown = true;
+    const dtypeLabel = status.dtype !== "unknown" ? status.dtype : "auto";
+    process.stderr.write(
+      `[neuralgentics] Sidecar model not loaded. Warming up BGE-Large (${dtypeLabel})... ` +
+        `this may take 5-15 seconds on first use.\n`,
+    );
+  }
+  // Cold-load path: use the full 60s timeout.
+  return SIDECAR_EMBED_TIMEOUT_MS;
+}
+
+/** Reset the cached sidecar loaded state (for tests / reconnection). */
+export function resetSidecarLoadCache(): void {
+  sidecarModelLoaded = false;
+  warmingUpMessageShown = false;
 }
 
 /** Internal bookkeeping for an in-flight JSON-RPC request. */
@@ -70,7 +171,7 @@ export class GoBackendClient {
     // Set NEURALGENTICS_DB_URL so the backend doesn't fall back to its
     // 5434 default (which has no SSL and breaks lib/pq's implicit
     // sslmode=require). Override the env var before launch to point at
-    // any database; default is the dev/test DB on 6000 with SSL.
+    // any database; default is the dev/test DB on 6200 with SSL.
     const childEnv = {
       ...process.env,
       NEURALGENTICS_DB_URL: resolveDbUrl(),
@@ -184,6 +285,35 @@ export class GoBackendClient {
       // Ignore errors during shutdown — the process may already be exiting.
     }
     this.process.kill();
+  }
+
+  /**
+   * Embed a text via the Go backend, with sidecar cold-load awareness.
+   *
+   * Before the gRPC call, probes the sidecar's HTTP `/status` endpoint
+   * (if configured). If the model isn't loaded yet, emits a one-time
+   * "warming up" message and uses a 60s timeout (vs. the default 30s)
+   * to allow for cold model load (BGE-Large fp16/int8 can take 5-15s on
+   * first use).
+   *
+   * @param text - The text to embed.
+   * @param method - JSON-RPC method (default "memory.embed").
+   * @returns The embedding vector (array of numbers) from the backend.
+   */
+  async embed(
+    text: string,
+    method = "memory.embed",
+  ): Promise<number[]> {
+    const timeoutMs = await prepareEmbedCall();
+    const result = await this.call(method, { text }, timeoutMs);
+    if (!Array.isArray(result)) {
+      throw new Error(
+        `embed: expected array result from ${method}, got ${typeof result}`,
+      );
+    }
+    // Mark the model as loaded after a successful embed (idempotent).
+    sidecarModelLoaded = true;
+    return result as number[];
   }
 
   /**

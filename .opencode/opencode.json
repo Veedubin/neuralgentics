@@ -314,6 +314,20 @@
       "timeout": 60000,
       "enabled": true
     },
+    "neuralgentics-sidecar": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@veedubin/neuralgentics-sidecar@latest"
+      ],
+      "environment": {
+        "NEURALGENTICS_SIDECAR_HOST": "localhost",
+        "NEURALGENTICS_SIDECAR_STATUS_PORT": "50052"
+      },
+      "timeout": 60000,
+      "enabled": false
+    },
     "videre-mcp": {
       "type": "local",
       "command": [

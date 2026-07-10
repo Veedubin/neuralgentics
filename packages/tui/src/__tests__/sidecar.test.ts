@@ -25,12 +25,12 @@ describe("Sidecar Lifecycle - checkDatabase", () => {
     expect(result).toHaveProperty("host");
     expect(result).toHaveProperty("port");
     expect(result.host).toBe("localhost");
-    expect(result.port).toBe(6000);
+    expect(result.port).toBe(6200);
     // available is boolean (true if DB is running, false if not)
     expect(typeof result.available).toBe("boolean");
     // If DB is not available, error should contain guidance
     if (!result.available) {
-      expect(result.error).toContain("6000");
+      expect(result.error).toContain("6200");
       expect(result.error).toContain("dev-up.sh");
     }
   });

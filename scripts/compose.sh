@@ -79,7 +79,7 @@ export NEURALGENTICS_VERSION
 export NEURALGENTICS_DB_PASSWORD="${NEURALGENTICS_DB_PASSWORD:-neuralgentics}"
 export NEURALGENTICS_DB_USER="${NEURALGENTICS_DB_USER:-postgres}"
 export NEURALGENTICS_DB_NAME="${NEURALGENTICS_DB_NAME:-neuralgentics}"
-export NEURALGENTICS_DB_PORT="${NEURALGENTICS_DB_PORT:-6000}"
+export NEURALGENTICS_DB_PORT="${NEURALGENTICS_DB_PORT:-6200}"
 export NEURALGENTICS_EMBED_DEVICE="${NEURALGENTICS_EMBED_DEVICE:-cpu}"
 export EMBEDDING_MODE="${EMBEDDING_MODE:-auto}"
 
@@ -99,7 +99,7 @@ cmd_up() {
     echo "  ┌──────────────────────────────────────────────────────┐"
     echo "  │  HACK THE PLANET! — Neuralgentics is running.        │"
     echo "  │                                                        │"
-    echo -n "  │  PostgreSQL:  localhost:${NEURALGENTICS_DB_PORT:-6000}"
+    echo -n "  │  PostgreSQL:  localhost:${NEURALGENTICS_DB_PORT:-6200}"
     printf "%-28s│\n" ""
     echo "  │  Embeddings:  sidecar:50051 (internal)              │"
     echo -n "  │  Backend:     stdio (attach tui to interact)"

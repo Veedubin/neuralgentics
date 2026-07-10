@@ -16,7 +16,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -610,10 +612,10 @@ func main() {
 	dbURL := os.Getenv("NEURALGENTICS_DB_URL")
 	if dbURL == "" {
 		// Default matches the running `neuralgentics-postgres` podman container
-		// (localhost:6000, user/db `neuralgentics`, password `neuralgentics`).
+		// (localhost:6200, user/db `neuralgentics`, password `neuralgentics`).
 		// Port 5434 belongs to `memini-postgres` (the memini-ai timescale DB),
 		// which has databases `postgres` and `memini` only — no `neuralgentics`.
-		dbURL = "postgresql://neuralgentics:neuralgentics@localhost:6000/neuralgentics"
+		dbURL = "postgresql://neuralgentics:neuralgentics@localhost:6200/neuralgentics"
 	}
 
 	// Read embedding config from env. Defaults: noop embedder, cpu mode.
@@ -955,6 +957,16 @@ func handleRequest(
 	// Provider Status (T-DUAL-PROVIDER)
 	case "provider.status":
 		return handleProviderStatus(req)
+
+	// Sidecar Lifecycle (LOCAL ONLY)
+	// These methods shell out to podman/docker to manage the local sidecar
+	// container. If NEURALGENTICS_SIDECAR_URL points to a non-local host,
+	// the methods return a clear error — remote sidecars must be managed
+	// via the remote container runtime, not from here.
+	case "sidecar.start":
+		return handleSidecarStart(req)
+	case "sidecar.stop":
+		return handleSidecarStop(req)
 
 	default:
 		return errorResponse(req.ID, -32601, fmt.Sprintf("Method not found: %s", req.Method))
@@ -3068,4 +3080,151 @@ func pingProvider(name, url string) ProviderStatus {
 			Error:     fmt.Sprintf("HTTP %d", resp.StatusCode),
 		}
 	}
+}
+
+// ─── Sidecar Lifecycle Handlers (LOCAL ONLY) ──────────────────────────────────
+
+// sidecarStartTimeout is how long handleSidecarStart waits for the sidecar to
+// become healthy after issuing the container start command.
+const sidecarStartTimeout = 30 * time.Second
+
+// sidecarContainerName is the name of the local sidecar container, matching the
+// docker-compose service name used by the neuralgentics container stack.
+const sidecarContainerName = "neuralgentics-sidecar"
+
+// isLocalSidecarURL returns true if the sidecar URL points to localhost,
+// 127.0.0.1, 0.0.0.0, a unix socket, or is empty (the default-local case).
+// A non-local URL means the sidecar lives on a remote host and cannot be
+// managed by shelling out to the local podman/docker.
+func isLocalSidecarURL(url string) bool {
+	if url == "" {
+		return true // default is local
+	}
+	return strings.Contains(url, "localhost") ||
+		strings.Contains(url, "127.0.0.1") ||
+		strings.Contains(url, "0.0.0.0") ||
+		strings.HasPrefix(url, "unix://") ||
+		url == ":50051"
+}
+
+// remoteSidecarError returns a jsonrpcResponse error explaining that the sidecar
+// is remote and cannot be managed locally.
+func remoteSidecarError(req jsonrpcRequest, action, sidecarURL string) jsonrpcResponse {
+	return errorResponse(req.ID, -32000,
+		"sidecar is configured to a remote host ("+sidecarURL+
+			"); cannot "+action+" it locally. Use 'docker -H <remote> "+
+			action+"' or your container orchestrator instead.")
+}
+
+// containerRuntimeCmd returns an exec.Cmd that runs the given subcommand on the
+// first available container runtime (podman preferred, docker fallback), or nil
+// plus an errorResponse if neither runtime is on PATH.
+func containerRuntimeCmd(subcmd string, args ...string) (*exec.Cmd, jsonrpcResponse, bool) {
+	if path, err := exec.LookPath("podman"); err == nil {
+		_ = path
+		return exec.Command("podman", append([]string{subcmd}, args...)...), jsonrpcResponse{}, true
+	}
+	if path, err := exec.LookPath("docker"); err == nil {
+		_ = path
+		return exec.Command("docker", append([]string{subcmd}, args...)...), jsonrpcResponse{}, true
+	}
+	return nil, jsonrpcResponse{
+		Error: &jsonrpcError{
+			Code:    -32000,
+			Message: "neither podman nor docker found in PATH",
+		},
+	}, false
+}
+
+// handleSidecarStart starts the local sidecar container and waits for it to
+// become healthy (up to sidecarStartTimeout). LOCAL ONLY: returns a clear
+// error if NEURALGENTICS_SIDECAR_URL points to a non-local host.
+func handleSidecarStart(req jsonrpcRequest) jsonrpcResponse {
+	sidecarURL := os.Getenv("NEURALGENTICS_SIDECAR_URL")
+	if !isLocalSidecarURL(sidecarURL) {
+		return remoteSidecarError(req, "start", sidecarURL)
+	}
+
+	cmd, errResp, ok := containerRuntimeCmd("start", sidecarContainerName)
+	if !ok {
+		return errResp
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return errorResponse(req.ID, -32000,
+			fmt.Sprintf("failed to start sidecar: %v: %s", err, string(output)))
+	}
+
+	// Wait for the sidecar to become healthy.
+	healthy := false
+	deadline := time.Now().Add(sidecarStartTimeout)
+	for time.Now().Before(deadline) {
+		if checkSidecarHealth() {
+			healthy = true
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	return successResponse(req.ID, map[string]interface{}{
+		"started":         true,
+		"healthy":         healthy,
+		"output":          string(output),
+		"timeout_reached": !healthy,
+	})
+}
+
+// handleSidecarStop stops the local sidecar container. LOCAL ONLY: returns a
+// clear error if NEURALGENTICS_SIDECAR_URL points to a non-local host.
+func handleSidecarStop(req jsonrpcRequest) jsonrpcResponse {
+	sidecarURL := os.Getenv("NEURALGENTICS_SIDECAR_URL")
+	if !isLocalSidecarURL(sidecarURL) {
+		return remoteSidecarError(req, "stop", sidecarURL)
+	}
+
+	cmd, errResp, ok := containerRuntimeCmd("stop", sidecarContainerName)
+	if !ok {
+		return errResp
+	}
+
+	output, err := cmd.CombinedOutput()
+	errStr := ""
+	if err != nil {
+		errStr = err.Error()
+	}
+	return successResponse(req.ID, map[string]interface{}{
+		"stopped": err == nil,
+		"output":  string(output),
+		"error":   errStr,
+	})
+}
+
+// checkSidecarHealth does a quick health check on the sidecar. It tries the
+// HTTP /status endpoint first (added in v0.10.0); if that is unreachable it
+// returns false. This is a best-effort check — callers treat a false result as
+// "not yet healthy" rather than a hard failure.
+func checkSidecarHealth() bool {
+	addr := sidecarHTTPAddr()
+	if addr == "" {
+		return false
+	}
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get("http://" + addr + "/status")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+// sidecarHTTPAddr returns the host:port of the sidecar's HTTP status endpoint.
+// The port is configurable via NEURALGENTICS_SIDECAR_STATUS_PORT (default
+// 50052). The host is always localhost since these handlers are LOCAL ONLY.
+func sidecarHTTPAddr() string {
+	port := os.Getenv("NEURALGENTICS_SIDECAR_STATUS_PORT")
+	if port == "" {
+		port = "50052"
+	}
+	return "localhost:" + port
 }

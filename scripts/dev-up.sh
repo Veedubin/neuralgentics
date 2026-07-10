@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # neuralgentics — Development Environment Setup Script (T-022)
 #
-# Brings up the test database (PostgreSQL on port 6000 with SSL),
+# Brings up the test database (PostgreSQL on port 6200 with SSL),
 # applies all migrations, starts the gRPC embedding sidecar, and
 # verifies the Go backend binary exists.
 #
@@ -22,7 +22,7 @@ set -euo pipefail
 
 CONTAINER_NAME="neuralgentics-test-pg"
 CONTAINER_IMAGE="docker.io/pgvector/pgvector:pg18"
-DB_PORT=6000
+DB_PORT=6200
 DB_USER="postgres"
 DB_PASS="testpassword"
 DB_NAME="neuralgentics_test"

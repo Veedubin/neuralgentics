@@ -13,9 +13,9 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-const storeTestDBURL = "postgresql://postgres:testpassword@localhost:6000/neuralgentics_test?sslmode=require"
+const storeTestDBURL = "postgresql://postgres:testpassword@localhost:6200/neuralgentics_test?sslmode=require"
 
-// connectStoreSharedDB attempts to connect to the shared test database on port 6000.
+// connectStoreSharedDB attempts to connect to the shared test database on port 6200.
 func connectStoreSharedDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("pgx", storeTestDBURL)
@@ -48,7 +48,7 @@ func connectStoreWithFallback(t *testing.T) (string, func()) {
 		db.Close()
 
 		if err == nil && tableName == "memories" {
-			t.Log("using shared test database on port 6000")
+			t.Log("using shared test database on port 6200")
 			return storeTestDBURL, func() {}
 		}
 

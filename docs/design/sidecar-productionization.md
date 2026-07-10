@@ -219,7 +219,7 @@ The embedding sidecar (`packages/memory/cmd/embedding-sidecar/`) is currently st
 │           └──────────────────────────────┘                           │
 │                                                                      │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │   neuralgentics-postgres (Podman, port 6000)                   │   │
+│  │   neuralgentics-postgres (Podman, port 6200)                   │   │
 │  │   ⚠ DO NOT TOUCH — Container Deletion Policy                  │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────┘

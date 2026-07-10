@@ -16,7 +16,7 @@ services:
       dockerfile: docker/postgres.Dockerfile
     container_name: neuralgentics-postgres
     ports:
-      - "${NEURALGENTICS_DB_PORT:-6000}:5432"
+      - "${NEURALGENTICS_DB_PORT:-6200}:5432"
     environment:
       POSTGRES_USER: ${NEURALGENTICS_DB_USER:-postgres}
       POSTGRES_PASSWORD: ${NEURALGENTICS_DB_PASSWORD:-neuralgentics}
@@ -40,9 +40,18 @@ services:
       context: .
       dockerfile: docker/sidecar.Dockerfile
     container_name: neuralgentics-sidecar
+    ports:
+      # gRPC embed port (internal, not exposed by default — backend talks to
+      # the sidecar over the neuralgentics-net bridge). The status port below
+      # IS exposed so the OpenCode plugin can probe cold-load state.
+      - "${NEURALGENTICS_SIDECAR_STATUS_PORT:-50052}:50052"
     environment:
       NEURAL_EMBED_ADDR: "0.0.0.0:50051"
       NEURALGENTICS_EMBED_DEVICE: ${NEURALGENTICS_EMBED_DEVICE:-cpu}
+      NEURALGENTICS_EMBED_DTYPE: ${NEURALGENTICS_EMBED_DTYPE:-int8}
+      EAGER: ${EAGER:-false}
+      IDLE_MIN: ${IDLE_MIN:-5}
+      NEURALGENTICS_SIDECAR_STATUS_PORT: ${NEURALGENTICS_SIDECAR_STATUS_PORT:-50052}
     volumes:
       - sidecar-cache:/root/.cache/huggingface
     networks:

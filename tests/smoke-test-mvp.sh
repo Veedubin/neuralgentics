@@ -46,12 +46,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BINARY="${SCRIPT_DIR}/../packages/backend-go/neuralgentics-backend"
 
 # In CI mode, use NEURALGENTICS_DB_URL env var directly (set by the CI workflow).
-# In local mode, use the standard dev DB on port 6000 with sslmode=require.
+# In local mode, use the standard dev DB on port 6200 with sslmode=require.
 if ${CI_MODE}; then
     DB_URL="${NEURALGENTICS_DB_URL:?NEURALGENTICS_DB_URL must be set in CI mode}"
 else
     # sslmode=require - test DB has SSL enabled, self-signed cert (encrypt only, no CA verify)
-    DB_URL="postgresql://postgres:testpassword@localhost:6000/neuralgentics_test?sslmode=require"
+    DB_URL="postgresql://postgres:testpassword@localhost:6200/neuralgentics_test?sslmode=require"
 fi
 
 # Parse DB connection params from DB_URL for psql commands

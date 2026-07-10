@@ -121,9 +121,17 @@ Neuralgentics is an **OpenCode plugin** — not a standalone TUI. The user runs 
 ```
 docker compose -f ~/.neuralgentics/docker-compose.yml up -d
 ```
-- **neuralgentics-postgres**: PostgreSQL 18 + pgvector + TimescaleDB (port 6000)
+- **neuralgentics-postgres**: PostgreSQL 18 + pgvector + TimescaleDB (port 6200)
 - **neuralgentics-sidecar**: Python gRPC embedding service (BGE-Large, port 50051)
 - **neuralgentics-backend**: Go JSON-RPC memory server (trust engine, knowledge graph, thought chains)
+
+### Sidecar lifecycle (v0.9.6+)
+
+The `neuralgentics-sidecar` is **lazy-loaded by default** — model is only in memory when actively used. Idle unload after 5 min (configurable via `IDLE_MIN`). To keep the model hot, set `EAGER=true` in `.env` or pass `--no-lazy-load` to the init CLI.
+
+Quantization: default is `int8` on CPU and `fp16` on GPU. Override with `NEURALGENTICS_EMBED_DTYPE={fp32|fp16|int8}` or `--quantize` flag.
+
+The sidecar exposes a `/status` HTTP endpoint on port 50052 for monitoring. The Go memory server can `sidecar.start` and `sidecar.stop` the container via JSON-RPC (local-only — errors if sidecar is remote).
 
 ### Install Flow
 The recommended install flow is now:
@@ -184,7 +192,7 @@ The same rule applies to containers the user previously had running that are cur
 | Container | Image | Port | State | Purpose |
 |-----------|-------|------|-------|---------|
 | `memini-postgres` | `docker.io/timescale/timescaledb-ha:pg18` | 5434 → 5432 | Running | Postgres 18 + TimescaleDB + pgvector. User's production DB for memini-ai. |
-| `neuralgentics-postgres` | `localhost/neuralgentics-postgres:test` | 6000 → 5432 | Running | **Go backend's database** (sibling of memini-ai). 14 tables initialized (same schema as memini-ai, ported). Currently empty because the Go backend container is not running. |
+| `neuralgentics-postgres` | `localhost/neuralgentics-postgres:test` | 6200 → 5432 | Running | **Go backend's database** (sibling of memini-ai). 14 tables initialized (same schema as memini-ai, ported). Currently empty because the Go backend container is not running. |
 
 **DO NOT `podman rm` either of these containers without explicit user permission.**
 
@@ -194,7 +202,7 @@ The Go backend `packages/backend-go/cmd/backend/main.go` connects to:
 
 | Field     | Value (matches `neuralgentics-postgres` container) |
 |-----------|----------------------------------------------------|
-| Host      | `localhost:6000`                                   |
+| Host      | `localhost:6200`                                   |
 | User      | `neuralgentics`                                    |
 | Password  | `neuralgentics`                                    |
 | Database  | `neuralgentics`                                    |
@@ -202,7 +210,7 @@ The Go backend `packages/backend-go/cmd/backend/main.go` connects to:
 **Override at runtime** via the `NEURALGENTICS_DB_URL` env var. Default works
 because the `neuralgentics-postgres` podman container is running with
 `POSTGRES_USER=neuralgentics`, `POSTGRES_PASSWORD=neuralgentics`,
-`POSTGRES_DB=neuralgentics` and exposes 6000 → 5432.
+`POSTGRES_DB=neuralgentics` and exposes 6200 → 5432.
 
 If the backend refuses to start with `failed to initialize memory system` or
 `FATAL: database "neuralgentics" does not exist`:

@@ -53,7 +53,7 @@ cd packages/tui && bun run start
 ### T-022 · Podman dev-up.sh (P0-d)
 
 - **File paths**: `scripts/dev-up.sh`
-- **Summary**: Podman container for PostgreSQL/pgvector with SSL, test DB on port 6000
+- **Summary**: Podman container for PostgreSQL/pgvector with SSL, test DB on port 6200
 - **Verified by**: Session 14 smoke test (`memories 0→1`, BGE-Large values confirmed)
 
 ### T-023 · OpenCode SDK Client (P0-c)
