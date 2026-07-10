@@ -133,6 +133,7 @@ func scanVectorSearchRows(rows pgx.Rows) ([]*core.MemoryEntry, error) {
 		var structuredFieldsJSON []byte
 		var distance float64
 		var supersedesID *string
+		var embeddingModel *string
 
 		err := rows.Scan(
 			&entry.ID,
@@ -151,6 +152,7 @@ func scanVectorSearchRows(rows pgx.Rows) ([]*core.MemoryEntry, error) {
 			&entry.UpdatedAt,
 			&entry.ContentHash,
 			&entry.SourcePath,
+			&embeddingModel,
 			&distance,
 		)
 		if err != nil {
@@ -160,6 +162,9 @@ func scanVectorSearchRows(rows pgx.Rows) ([]*core.MemoryEntry, error) {
 
 		if supersedesID != nil {
 			entry.SupersedesID = *supersedesID
+		}
+		if embeddingModel != nil {
+			entry.EmbeddingModel = *embeddingModel
 		}
 		if metadataJSON != nil {
 			var m map[string]any
@@ -190,6 +195,7 @@ func scanTextSearchRows(rows pgx.Rows) ([]*core.MemoryEntry, error) {
 		var structuredFieldsJSON []byte
 		var rank float64
 		var supersedesID *string
+		var embeddingModel *string
 
 		err := rows.Scan(
 			&entry.ID,
@@ -206,6 +212,7 @@ func scanTextSearchRows(rows pgx.Rows) ([]*core.MemoryEntry, error) {
 			&entry.CreatedAtMs,
 			&entry.CreatedAt,
 			&entry.UpdatedAt,
+			&embeddingModel,
 			&rank,
 		)
 		if err != nil {
@@ -215,6 +222,9 @@ func scanTextSearchRows(rows pgx.Rows) ([]*core.MemoryEntry, error) {
 
 		if supersedesID != nil {
 			entry.SupersedesID = *supersedesID
+		}
+		if embeddingModel != nil {
+			entry.EmbeddingModel = *embeddingModel
 		}
 		if metadataJSON != nil {
 			var m map[string]any

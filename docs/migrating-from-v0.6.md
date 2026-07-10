@@ -107,6 +107,19 @@ docker compose -f ~/.neuralgentics/docker-compose.yml up -d
   - The `neuralgentics-postgres` container was started with SSL enabled.
   - The self-signed cert is mounted correctly (check `docker-compose.yml`).
 
+## Migrating from BGE-Large to BGE-M3 (v0.11.0+)
+
+If you upgraded from a pre-v0.11.0 install, your existing memories were embedded with BGE-Large. The v0.11.0 default is BGE-M3, which produces different vectors. Re-embed your memories:
+
+```bash
+# After upgrading to v0.11.0
+npx @veedubin/neuralgentics migrate-embeddings --from bge-large --to bge-m3
+```
+
+This takes ~2-5 minutes for ~80 memories. Old vectors are preserved in `embedding_legacy` columns for 30 days (or until you drop them).
+
+If you want to keep using BGE-Large, pass `--embed-model bge-large` to the init CLI or set `NEURALGENTICS_EMBED_MODEL=bge-large` in `.env`. No migration needed.
+
 ## What to Do If You're Stuck
 
 Open an issue at:

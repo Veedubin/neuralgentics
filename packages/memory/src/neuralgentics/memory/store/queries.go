@@ -9,7 +9,7 @@ package store
 const SearchMemoriesVector = `
 SELECT id, text, source_type, trust_score, retrieval_count, is_archived, metadata,
        embedding, supersedes_id, structured_fields, change_ratio, created_at_ms,
-       created_at, updated_at, content_hash, source_path,
+       created_at, updated_at, content_hash, source_path, embedding_model,
        embedding <=> $1::vector as distance
 FROM memories
 WHERE embedding <=> $1::vector < $2
@@ -33,7 +33,7 @@ LIMIT $2
 const GetSimilarMemories = `
 SELECT id, text, source_type, trust_score, retrieval_count, is_archived, metadata,
        embedding, supersedes_id, structured_fields, change_ratio, created_at_ms,
-       created_at, updated_at, content_hash, source_path,
+       created_at, updated_at, content_hash, source_path, embedding_model,
        embedding <=> (SELECT embedding FROM memories WHERE id = $1)::vector as distance
 FROM memories
 WHERE id != $1
@@ -46,15 +46,15 @@ LIMIT $2
 // ─── Memory CRUD Queries ─────────────────────────────────────────────────────
 
 const InsertMemory = `
-INSERT INTO memories (id, text, embedding, source_type, content_hash, metadata, created_at_ms)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO memories (id, text, embedding, source_type, content_hash, metadata, created_at_ms, embedding_model)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id
 `
 
 const InsertMemoryDelta = `
 INSERT INTO memories (id, text, embedding, source_type, content_hash, metadata,
-                      supersedes_id, structured_fields, change_ratio, created_at_ms)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                      supersedes_id, structured_fields, change_ratio, created_at_ms, embedding_model)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING id
 `
 
@@ -62,7 +62,7 @@ const GetMemoryByID = `
 SELECT id, text, embedding, source_type, content_hash, metadata,
        trust_score, retrieval_count, is_archived, last_accessed_at,
        source_path, supersedes_id, structured_fields, change_ratio, created_at_ms,
-       created_at, updated_at
+       created_at, updated_at, embedding_model
 FROM memories
 WHERE id = $1 AND ($2::boolean OR is_archived = FALSE)
 `
@@ -71,7 +71,7 @@ const GetMemoryByIDIncludeArchived = `
 SELECT id, text, embedding, source_type, content_hash, metadata,
        trust_score, retrieval_count, is_archived, last_accessed_at,
        source_path, supersedes_id, structured_fields, change_ratio, created_at_ms,
-       created_at, updated_at
+       created_at, updated_at, embedding_model
 FROM memories
 WHERE id = $1
 `
@@ -509,7 +509,7 @@ const ListMemoriesQuery = `
 SELECT id, text, embedding, source_type, content_hash, metadata,
        trust_score, retrieval_count, is_archived, last_accessed_at,
        source_path, supersedes_id, structured_fields, change_ratio, created_at_ms,
-       created_at, updated_at
+       created_at, updated_at, embedding_model
 FROM memories
 WHERE is_archived = FALSE
 ORDER BY created_at DESC
@@ -520,7 +520,7 @@ const ListMemoriesBySourceQuery = `
 SELECT id, text, embedding, source_type, content_hash, metadata,
        trust_score, retrieval_count, is_archived, last_accessed_at,
        source_path, supersedes_id, structured_fields, change_ratio, created_at_ms,
-       created_at, updated_at
+       created_at, updated_at, embedding_model
 FROM memories
 WHERE is_archived = FALSE AND source_type = $1
 ORDER BY created_at DESC
@@ -532,7 +532,7 @@ LIMIT $2
 const SearchMemoriesText = `
 SELECT id, text, source_type, trust_score, retrieval_count, is_archived, metadata,
        content_hash, supersedes_id, structured_fields, change_ratio, created_at_ms,
-       created_at, updated_at,
+       created_at, updated_at, embedding_model,
        ts_rank(to_tsvector('english', text), websearch_to_tsquery('english', $1)) as rank
 FROM memories
 WHERE to_tsvector('english', text) @@ websearch_to_tsquery('english', $1)

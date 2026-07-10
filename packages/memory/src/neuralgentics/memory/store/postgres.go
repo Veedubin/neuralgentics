@@ -199,6 +199,7 @@ func scanMemoryEntry(row pgx.Row) (*core.MemoryEntry, error) {
 	var peerID *string
 	var lastAccessedAt *time.Time
 	var distance *float64
+	var embeddingModel *string
 
 	err := row.Scan(
 		&entry.ID,
@@ -218,6 +219,7 @@ func scanMemoryEntry(row pgx.Row) (*core.MemoryEntry, error) {
 		&entry.CreatedAtMs,
 		&entry.CreatedAt,
 		&entry.UpdatedAt,
+		&embeddingModel,
 	)
 	if err != nil {
 		return nil, err
@@ -229,6 +231,9 @@ func scanMemoryEntry(row pgx.Row) (*core.MemoryEntry, error) {
 	}
 	if peerID != nil {
 		entry.PeerID = *peerID
+	}
+	if embeddingModel != nil {
+		entry.EmbeddingModel = *embeddingModel
 	}
 
 	// Parse embedding string '[0.1,0.2,...]' → []float64
@@ -271,6 +276,7 @@ func scanMemoryEntryWithDistance(row pgx.Row) (*core.MemoryEntry, error) {
 	var supersedesID *string
 	var lastAccessedAt *time.Time
 	var distance float64
+	var embeddingModel *string
 
 	err := row.Scan(
 		&entry.ID,
@@ -289,6 +295,7 @@ func scanMemoryEntryWithDistance(row pgx.Row) (*core.MemoryEntry, error) {
 		&entry.UpdatedAt,
 		&entry.ContentHash,
 		&entry.SourcePath,
+		&embeddingModel,
 		&distance,
 	)
 	if err != nil {
@@ -298,6 +305,9 @@ func scanMemoryEntryWithDistance(row pgx.Row) (*core.MemoryEntry, error) {
 	entry.LastAccessedAt = lastAccessedAt
 	if supersedesID != nil {
 		entry.SupersedesID = *supersedesID
+	}
+	if embeddingModel != nil {
+		entry.EmbeddingModel = *embeddingModel
 	}
 
 	if embeddingStr != nil {

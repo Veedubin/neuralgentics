@@ -37,6 +37,7 @@ The `init` command accepts these flags:
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--embed-model {bge-m3|bge-large|all-MiniLM-L6-v2}` | bge-m3 | Embedding model. bge-m3 is multilingual 8K, bge-large is English 512, MiniLM is fast 384. |
 | `--quantize {fp32|fp16|int8}` | auto | Embedding model precision. Auto = fp16 on GPU, int8 on CPU. |
 | `--no-lazy-load` | false | Eager-load model at startup. Skip for default lazy mode. |
 | `--idle-min N` | 5 | Minutes of inactivity before sidecar unloads model. |
@@ -60,6 +61,26 @@ npx @veedubin/neuralgentics --init --quantize fp16 --no-lazy-load
 # Long-idle tolerance — don't unload for 30 min
 npx @veedubin/neuralgentics --init --idle-min 30
 ```
+
+## Migrate Embeddings
+
+If you're upgrading from a previous version that used BGE-Large, your existing memories need to be re-embedded with the new model (the vector geometry is different).
+
+```bash
+# Preview what will be migrated
+npx @veedubin/neuralgentics migrate-embeddings --dry-run
+
+# Run the migration (safe — old vectors backed up automatically)
+npx @veedubin/neuralgentics migrate-embeddings --from bge-large --to bge-m3
+
+# Options
+#   --from MODEL     Only migrate memories currently using this model (default: all)
+#   --to MODEL       Target model (default: bge-m3)
+#   --batch N        Memories per batch (default: 10)
+#   --no-backup      Don't preserve old vectors in embedding_legacy column
+```
+
+The migration is safe to interrupt. Old vectors are preserved in `embedding_legacy` and `embedding_model_legacy` columns until you drop them manually.
 
 ## Manual Install
 

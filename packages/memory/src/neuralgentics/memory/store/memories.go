@@ -42,6 +42,11 @@ func (s *PostgresStore) AddMemory(ctx context.Context, entry *core.MemoryEntry) 
 			supersedesID = entry.SupersedesID
 		}
 
+		embeddingModel := entry.EmbeddingModel
+		if embeddingModel == "" {
+			embeddingModel = "bge-large-en-v1.5"
+		}
+
 		err := s.pool.QueryRow(ctx, InsertMemoryDelta,
 			memoryID,
 			entry.Content,
@@ -53,11 +58,17 @@ func (s *PostgresStore) AddMemory(ctx context.Context, entry *core.MemoryEntry) 
 			structuredFieldsJSON,
 			entry.ChangeRatio,
 			entry.CreatedAtMs,
+			embeddingModel,
 		).Scan(&memoryID)
 		if err != nil {
 			return "", fmt.Errorf("insert memory (delta): %w", err)
 		}
 	} else {
+		embeddingModel := entry.EmbeddingModel
+		if embeddingModel == "" {
+			embeddingModel = "bge-large-en-v1.5"
+		}
+
 		err := s.pool.QueryRow(ctx, InsertMemory,
 			memoryID,
 			entry.Content,
@@ -66,6 +77,7 @@ func (s *PostgresStore) AddMemory(ctx context.Context, entry *core.MemoryEntry) 
 			entry.ContentHash,
 			metadataJSON,
 			entry.CreatedAtMs,
+			embeddingModel,
 		).Scan(&memoryID)
 		if err != nil {
 			return "", fmt.Errorf("insert memory: %w", err)

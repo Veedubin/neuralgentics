@@ -70,10 +70,11 @@ npx @veedubin/neuralgentics --init
 
 The embedding sidecar runs as a container with **lazy-load by default** — the model is only loaded into memory when you issue your first embedding call, and unloads after 5 minutes of inactivity. This means the sidecar costs ~80MB of RAM when idle, vs ~1.3GB when the model is loaded.
 
+- **Default embedding model**: **BGE-M3** (1024-dim, multilingual, 8K context, ~1.1GB VRAM @ FP16). BGE-Large is still available via `--embed-model bge-large` for backwards compat (English-only, 512 token context, ~670MB VRAM).
 - **Default (lazy)**: Model loads on first request, unloads after 5 min idle. Cold load takes 2-15s.
 - **`--no-lazy-load` (eager)**: Model loads at startup, stays loaded while clients are connected.
-- **`--quantize {fp32|fp16|int8}`**: Pick precision. INT8 is ~4x smaller, FP16 is ~2x smaller than FP32. Quality loss is <1% for BGE-Large.
-- **Status endpoint**: `curl http://localhost:50052/status` shows `{loaded_models, last_used, dtype, device}`.
+- **`--quantize {fp32|fp16|int8}`**: Pick precision. INT8 is ~4x smaller, FP16 is ~2x smaller than FP32. Quality loss is <1% for BGE-M3.
+- **Status endpoint**: `curl http://localhost:50052/status` shows `{loaded_models, last_used, dtype, device, embedding_model}`.
 
 ### When to use which
 

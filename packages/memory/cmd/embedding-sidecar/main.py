@@ -36,7 +36,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from embedding_sidecar.embed import model_manager
+from embedding_sidecar.embed import MODEL_REGISTRY, model_manager
 from embedding_sidecar.health import build_status_json
 from embedding_sidecar.server import serve
 
@@ -177,6 +177,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Log output format: 'text' (default) or 'json' for structured logs",
     )
     parser.add_argument(
+        "--embed-model",
+        choices=["bge-m3", "bge-large", "all-MiniLM-L6-v2"],
+        default=os.environ.get("NEURALGENTICS_EMBED_MODEL", "bge-m3"),
+        help=(
+            "Embedding model to use: bge-m3 (default, multilingual 8K), "
+            "bge-large (English, 512), or all-MiniLM-L6-v2 (fast, 384)"
+        ),
+    )
+    parser.add_argument(
         "--quantize",
         "--embed-dtype",
         dest="embed_dtype",
@@ -233,17 +242,34 @@ async def main(args: argparse.Namespace) -> None:
     """Start the gRPC server and wait for termination."""
     listen_addr = get_listen_addr()
     logger = logging.getLogger(__name__)
+
+    # Validate the selected embedding model against the registry.
+    # argparse already resolved NEURALGENTICS_EMBED_MODEL env var into
+    # args.embed_model, so we just validate the final value.
+    embed_model = args.embed_model
+    if embed_model not in MODEL_REGISTRY:
+        raise ValueError(
+            f"Unknown embedding model '{embed_model}'. "
+            f"Valid: {list(MODEL_REGISTRY.keys())}"
+        )
     logger.info(
-        "starting embedding sidecar on %s (dtype=%s, lazy=%s, idle_min=%d, "
-        "status_port=%d)",
+        "using embedding model: %s (%s)",
+        embed_model,
+        MODEL_REGISTRY[embed_model]["hf_name"],
+    )
+
+    logger.info(
+        "starting embedding sidecar on %s (model=%s, dtype=%s, lazy=%s, "
+        "idle_min=%d, status_port=%d)",
         listen_addr,
+        embed_model,
         args.embed_dtype,
         args.lazy_load,
         args.idle_min,
         args.status_port,
     )
 
-    server = await serve(listen_addr)
+    server = await serve(listen_addr, model=embed_model)
     logger.info("embedding sidecar started on %s", listen_addr)
 
     # Start the HTTP /status endpoint on a separate port

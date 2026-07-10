@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -28,6 +29,7 @@ import (
 	"neuralgentics/src/neuralgentics/memory"
 	"neuralgentics/src/neuralgentics/memory/core"
 	"neuralgentics/src/neuralgentics/memory/kg"
+	memstore "neuralgentics/src/neuralgentics/memory/store"
 
 	orchestrator "neuralgentics-orchestrator/src/neuralgentics/orchestrator"
 
@@ -108,9 +110,10 @@ type jsonrpcResponse struct {
 // ─── Request Structs ─────────────────────────────────────────────────────────
 
 type memoryAddParams struct {
-	Content    string         `json:"content"`
-	SourceType string         `json:"sourceType,omitempty"`
-	Metadata   map[string]any `json:"metadata,omitempty"`
+	Content        string         `json:"content"`
+	SourceType     string         `json:"sourceType,omitempty"`
+	Metadata       map[string]any `json:"metadata,omitempty"`
+	EmbeddingModel string         `json:"embeddingModel,omitempty"`
 }
 
 type memoryQueryParams struct {
@@ -575,6 +578,27 @@ type memoryElevateMemoryTo1024Params struct {
 	TrustBoost float64   `json:"trustBoost,omitempty"`
 }
 
+// ─── Migrate Embeddings Request Struct (T-MIGRATE-EMB) ────────────────────────
+
+type memoryMigrateEmbeddingsParams struct {
+	FromModel string `json:"fromModel,omitempty"` // only migrate memories with this model (empty = all)
+	ToModel   string `json:"toModel"`             // target embedding model (e.g. "bge-m3")
+	BatchSize int    `json:"batchSize,omitempty"` // default 10
+	DryRun    bool   `json:"dryRun,omitempty"`
+	Backup    bool   `json:"backup,omitempty"` // preserve old vectors in embedding_legacy column
+}
+
+type memoryMigrateEmbeddingsResult struct {
+	TotalMemories  int      `json:"totalMemories"`
+	MigratedCount  int      `json:"migratedCount"`
+	SkippedCount   int      `json:"skippedCount"`
+	ErrorCount     int      `json:"errorCount"`
+	FromModel      string   `json:"fromModel"`
+	ToModel        string   `json:"toModel"`
+	ElapsedSeconds float64  `json:"elapsedSeconds"`
+	Errors         []string `json:"errors,omitempty"`
+}
+
 type initializeParams struct {
 	ClientInfo map[string]string `json:"clientInfo,omitempty"`
 }
@@ -870,6 +894,10 @@ func handleRequest(
 	case "memory.elevateMemoryTo1024":
 		return handleMemoryElevateMemoryTo1024(ctx, req, memSys)
 
+	// Memory — Migrate Embeddings (T-MIGRATE-EMB)
+	case "memory.migrate_embeddings":
+		return handleMemoryMigrateEmbeddings(ctx, req, memSys)
+
 	// User Profile
 	case "user.getProfile":
 		return handleUserGetProfile(ctx, req, memSys)
@@ -1026,11 +1054,12 @@ func handleMemoryAdd(ctx context.Context, req jsonrpcRequest, memSys *memory.Mem
 	contentHash := fmt.Sprintf("%x", sha256.Sum256([]byte(params.Content)))
 
 	entry := core.MemoryEntry{
-		Content:     params.Content,
-		SourceType:  sourceType,
-		ContentHash: contentHash,
-		TrustScore:  0.5,
-		Metadata:    params.Metadata,
+		Content:        params.Content,
+		SourceType:     sourceType,
+		ContentHash:    contentHash,
+		TrustScore:     0.5,
+		Metadata:       params.Metadata,
+		EmbeddingModel: params.EmbeddingModel,
 	}
 
 	id, err := memSys.AddMemory(ctx, entry)
@@ -2605,7 +2634,204 @@ func handleMemoryElevateMemoryTo1024(ctx context.Context, req jsonrpcRequest, me
 	return successResponse(req.ID, result)
 }
 
-// ─── User Profile Handlers ──────────────────────────────────────────────────────
+// ─── Migrate Embeddings Handler (T-MIGRATE-EMB) ────────────────────────────────
+
+// handleMemoryMigrateEmbeddings re-embeds all (or filtered) memories with a
+// new embedding model. It:
+//  1. Optionally backs up old vectors to embedding_legacy + embedding_model_legacy columns.
+//  2. SELECTs all memories (or those matching fromModel).
+//  3. For each memory: embeds its content with the sidecar and UPDATEs the
+//     embedding + embedding_model columns.
+//  4. Returns progress counts.
+//
+// The migration is idempotent (re-running updates the same rows) and
+// resumable (a crash leaves the DB in a consistent state — rows that were
+// already updated have the new model; rows that weren't still have the old
+// one; re-running picks up where it left off).
+//
+// The migration is safe to interrupt (Ctrl-C) — partial migrations are fine
+// because the new vector is only written AFTER the embedding succeeds.
+func handleMemoryMigrateEmbeddings(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem) jsonrpcResponse {
+	var params memoryMigrateEmbeddingsParams
+	if err := parseParams(req.Params, &params); err != nil {
+		return errorResponse(req.ID, -32602, "Invalid params: "+err.Error())
+	}
+
+	if params.ToModel == "" {
+		return errorResponse(req.ID, -32602, "Invalid params: toModel is required")
+	}
+
+	batchSize := params.BatchSize
+	if batchSize <= 0 {
+		batchSize = 10
+	}
+
+	// Get the underlying store to access the connection pool.
+	memStore := memSys.GetStore()
+	if memStore == nil {
+		return errorResponse(req.ID, -32603, "Internal error: memory store not available")
+	}
+
+	// Type-assert to *memstore.PostgresStore to access the connection pool.
+	pgStore, ok := memStore.(*memstore.PostgresStore)
+	if !ok {
+		return errorResponse(req.ID, -32603, "Internal error: store is not a PostgresStore")
+	}
+
+	pool := pgStore.Pool()
+	if pool == nil {
+		return errorResponse(req.ID, -32603, "Internal error: database pool not available")
+	}
+
+	// 1. Optional backup: add legacy columns and copy current values.
+	if params.Backup && !params.DryRun {
+		_, err := pool.Exec(ctx, `
+			ALTER TABLE memories ADD COLUMN IF NOT EXISTS embedding_legacy vector;
+			ALTER TABLE memories ADD COLUMN IF NOT EXISTS embedding_model_legacy text;
+		`)
+		if err != nil {
+			return errorResponse(req.ID, -32603, "Backup: failed to add legacy columns: "+err.Error())
+		}
+
+		_, err = pool.Exec(ctx, `
+			UPDATE memories
+			SET embedding_legacy = embedding,
+			    embedding_model_legacy = embedding_model
+			WHERE embedding_legacy IS NULL AND embedding IS NOT NULL;
+		`)
+		if err != nil {
+			return errorResponse(req.ID, -32603, "Backup: failed to copy legacy vectors: "+err.Error())
+		}
+	}
+
+	// 2. Fetch all memory IDs + content (optionally filtered by fromModel).
+	query := `SELECT id, text, embedding_model FROM memories WHERE is_archived = false`
+	queryArgs := []interface{}{}
+	if params.FromModel != "" {
+		query += ` AND embedding_model = $1`
+		queryArgs = append(queryArgs, params.FromModel)
+	}
+	query += ` ORDER BY created_at ASC`
+
+	rows, err := pool.Query(ctx, query, queryArgs...)
+	if err != nil {
+		return errorResponse(req.ID, -32603, "Failed to fetch memories: "+err.Error())
+	}
+
+	type memRow struct {
+		ID             string
+		Content        string
+		EmbeddingModel *string
+	}
+	var memories []memRow
+	for rows.Next() {
+		var r memRow
+		if err := rows.Scan(&r.ID, &r.Content, &r.EmbeddingModel); err != nil {
+			rows.Close()
+			return errorResponse(req.ID, -32603, "Failed to scan memory row: "+err.Error())
+		}
+		memories = append(memories, r)
+	}
+	rows.Close()
+
+	total := len(memories)
+	if total == 0 {
+		return successResponse(req.ID, memoryMigrateEmbeddingsResult{
+			TotalMemories: 0,
+			MigratedCount: 0,
+			FromModel:     params.FromModel,
+			ToModel:       params.ToModel,
+		})
+	}
+
+	// 3. Dry-run: just report what would be done.
+	if params.DryRun {
+		return successResponse(req.ID, memoryMigrateEmbeddingsResult{
+			TotalMemories: total,
+			MigratedCount: 0,
+			SkippedCount:  total,
+			FromModel:     params.FromModel,
+			ToModel:       params.ToModel,
+		})
+	}
+
+	// 4. Process in batches: embed each memory and UPDATE the row.
+	start := time.Now()
+	migrated := 0
+	skipped := 0
+	errCount := 0
+	var errors []string
+
+	for i := 0; i < total; i += batchSize {
+		end := i + batchSize
+		if end > total {
+			end = total
+		}
+
+		for j := i; j < end; j++ {
+			mem := memories[j]
+
+			// Skip if already on the target model (idempotent).
+			if mem.EmbeddingModel != nil && *mem.EmbeddingModel == params.ToModel {
+				skipped++
+				continue
+			}
+
+			// Embed the content with the sidecar.
+			vector, embErr := memSys.EmbedContent(ctx, mem.Content)
+			if embErr != nil {
+				errCount++
+				errors = append(errors, fmt.Sprintf("memory %s: embed failed: %v", mem.ID, embErr))
+				continue
+			}
+
+			// Update the database row.
+			vectorStr := formatVectorString(vector)
+			_, upErr := pool.Exec(ctx,
+				`UPDATE memories SET embedding = $1::vector, embedding_model = $2 WHERE id = $3`,
+				vectorStr, params.ToModel, mem.ID,
+			)
+			if upErr != nil {
+				errCount++
+				errors = append(errors, fmt.Sprintf("memory %s: update failed: %v", mem.ID, upErr))
+				continue
+			}
+			migrated++
+		}
+	}
+
+	elapsed := time.Since(start).Seconds()
+
+	// Cap error list to avoid huge responses.
+	if len(errors) > 50 {
+		errors = errors[:50]
+	}
+
+	return successResponse(req.ID, memoryMigrateEmbeddingsResult{
+		TotalMemories:  total,
+		MigratedCount:  migrated,
+		SkippedCount:   skipped,
+		ErrorCount:     errCount,
+		FromModel:      params.FromModel,
+		ToModel:        params.ToModel,
+		ElapsedSeconds: elapsed,
+		Errors:         errors,
+	})
+}
+
+// formatVectorString converts a []float64 to pgvector text format "[0.1,0.2,...]".
+func formatVectorString(v []float64) string {
+	var sb strings.Builder
+	sb.WriteByte('[')
+	for i, f := range v {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(strconv.FormatFloat(f, 'f', -1, 64))
+	}
+	sb.WriteByte(']')
+	return sb.String()
+}
 
 func handleUserGetProfile(ctx context.Context, req jsonrpcRequest, memSys *memory.MemorySystem) jsonrpcResponse {
 	var params userGetProfileParams

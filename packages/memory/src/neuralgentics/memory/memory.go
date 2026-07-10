@@ -847,3 +847,22 @@ func (m *MemorySystem) ElevateMemory(ctx context.Context, memoryID string, vecto
 		VectorDim:  1024,
 	}, nil
 }
+
+// ─── Migration Support (T-MIGRATE-EMB) ────────────────────────────────────────
+
+// GetStore returns the underlying core.Store interface. This is used by the
+// migrate_embeddings handler to access the connection pool for direct SQL
+// operations (ALTER TABLE, bulk UPDATE).
+func (m *MemorySystem) GetStore() core.Store {
+	return m.store
+}
+
+// EmbedContent generates an embedding vector for the given text using the
+// configured embedder. This is used by the migrate_embeddings handler to
+// re-embed memories with a new model.
+func (m *MemorySystem) EmbedContent(ctx context.Context, text string) ([]float64, error) {
+	if m.embedder == nil {
+		return nil, fmt.Errorf("no embedder configured")
+	}
+	return m.embedder.Embed(ctx, text)
+}

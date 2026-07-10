@@ -26,6 +26,7 @@ type MemoryEntry struct {
 	StructuredFields map[string]any `json:"structuredFields,omitempty"`
 	ChangeRatio      float64        `json:"changeRatio"` // default 1.0
 	CreatedAtMs      int64          `json:"createdAtMs"`
+	EmbeddingModel   string         `json:"embeddingModel,omitempty"`
 	Relationships    []Relationship `json:"relationships,omitempty"`
 	CreatedAt        time.Time      `json:"createdAt"`
 	UpdatedAt        time.Time      `json:"updatedAt"`

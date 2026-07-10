@@ -1,15 +1,12 @@
 """Embedding wrapper around sentence-transformers with multi-model support.
 
-Supports two embedding models:
-  - all-MiniLM-L6-v2 (384-dim, default) — fast, lightweight
-  - BAAI/bge-large-en-v1.5 (1024-dim, via model="bge-large") — high quality
+Supports four embedding models:
+  - BAAI/bge-m3 (1024-dim, default as of v0.11.0) — multilingual, 8K context
+  - BAAI/bge-large-en-v1.5 (1024-dim, "bge-large" alias) — English-only, legacy
+  - all-MiniLM-L6-v2 (384-dim) — fast, lightweight
+  - BAAI/bge-large-en-v1.5 (1024-dim, via model="bge-large") — high quality English
 
-Precision modes (NEURALGENTICS_EMBED_DTYPE / --quantize):
-  - fp32: full precision (default, identical to v0.7.x behavior)
-  - fp16: half precision (GPU only, ~50% VRAM savings, negligible accuracy loss)
-  - int8: 8-bit quantization (~75% VRAM savings vs fp32, ~50% vs fp16, ~1% quality loss)
-          Uses bitsandbytes (GPU) when available; falls back to PyTorch dynamic
-          quantization (CPU-compatible but slower).
+Supports FP16 / INT8 / FP32 inference.
 
 Lazy loading & idle unload:
   - Models are loaded on first use (lazy) and kept in memory.
@@ -53,9 +50,9 @@ if _EMBED_DTYPE not in {"fp32", "fp16", "int8"}:
 # ─── Model Registry ───────────────────────────────────────────────────────────
 
 MODEL_REGISTRY: dict[str, dict] = {
-    "": {
-        "hf_name": "all-MiniLM-L6-v2",
-        "dimensions": 384,
+    "": {  # default — alias for bge-m3 (backwards compat for empty string)
+        "hf_name": "BAAI/bge-m3",
+        "dimensions": 1024,
     },
     "all-MiniLM-L6-v2": {
         "hf_name": "all-MiniLM-L6-v2",
@@ -65,10 +62,14 @@ MODEL_REGISTRY: dict[str, dict] = {
         "hf_name": "BAAI/bge-large-en-v1.5",
         "dimensions": 1024,
     },
+    "bge-m3": {
+        "hf_name": "BAAI/bge-m3",
+        "dimensions": 1024,
+    },
 }
 
-DEFAULT_MODEL = ""
-DEFAULT_DIMENSIONS = 384
+DEFAULT_MODEL = "bge-m3"  # was "" (all-MiniLM-L6-v2 pre-v0.11.0)
+DEFAULT_DIMENSIONS = 1024  # was 384
 
 
 def _load_model_unlocked(hf_name: str) -> SentenceTransformer:
@@ -237,6 +238,13 @@ class ModelManager:
         with self._lock:
             now = time.time()
             return {
+                "default_model": DEFAULT_MODEL,
+                "hf_name": MODEL_REGISTRY.get(DEFAULT_MODEL, {}).get(
+                    "hf_name", "unknown"
+                ),
+                "dimensions": MODEL_REGISTRY.get(DEFAULT_MODEL, {}).get(
+                    "dimensions", 0
+                ),
                 "loaded_models": list(self._models.keys()),
                 "last_used": {k: now - v for k, v in self._last_used.items()},
                 "idle_min": self._idle_min,

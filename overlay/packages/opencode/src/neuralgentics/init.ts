@@ -211,6 +211,7 @@ export interface InitOptions {
   noLazyLoad?: boolean; // true => EAGER=true
   idleMin?: number; // minutes before idle sidecar unloads the model
   statusPort?: number; // sidecar HTTP /status port
+  embedModel?: string; // "bge-m3" | "bge-large" | "all-MiniLM-L6-v2" (default "bge-m3")
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +286,7 @@ interface QuantizeEnvVars {
   eager: string; // "true" | "false"
   idleMin: string;
   statusPort: string;
+  embedModel: string;
 }
 
 function resolveQuantizeEnvVars(args: InitOptions): QuantizeEnvVars {
@@ -294,6 +296,7 @@ function resolveQuantizeEnvVars(args: InitOptions): QuantizeEnvVars {
     eager: args.noLazyLoad === true ? "true" : "false",
     idleMin: String(args.idleMin ?? 5),
     statusPort: String(args.statusPort ?? 50052),
+    embedModel: args.embedModel ?? "bge-m3",
   };
 }
 
@@ -317,6 +320,7 @@ async function writeEnvQuantizeVars(target: string, args: InitOptions): Promise<
     `EAGER=${vars.eager}`,
     `IDLE_MIN=${vars.idleMin}`,
     `NEURALGENTICS_SIDECAR_STATUS_PORT=${vars.statusPort}`,
+    `NEURALGENTICS_EMBED_MODEL=${vars.embedModel}`,
   ];
 
   if (!existsSync(envPath)) {
@@ -336,6 +340,7 @@ async function writeEnvQuantizeVars(target: string, args: InitOptions): Promise<
     "EAGER",
     "IDLE_MIN",
     "NEURALGENTICS_SIDECAR_STATUS_PORT",
+    "NEURALGENTICS_EMBED_MODEL",
   ]);
   const updated = new Set<string>();
   const result: string[] = [];
@@ -364,6 +369,9 @@ async function writeEnvQuantizeVars(target: string, args: InitOptions): Promise<
           break;
         case "NEURALGENTICS_SIDECAR_STATUS_PORT":
           result.push(`NEURALGENTICS_SIDECAR_STATUS_PORT=${vars.statusPort}`);
+          break;
+        case "NEURALGENTICS_EMBED_MODEL":
+          result.push(`NEURALGENTICS_EMBED_MODEL=${vars.embedModel}`);
           break;
       }
       updated.add(key);
@@ -1095,3 +1103,13 @@ function askQuestion(prompt: string): Promise<string> {
     });
   });
 }
+
+// ---------------------------------------------------------------------------
+// Re-exports from sibling modules (single import surface for cli.ts)
+// ---------------------------------------------------------------------------
+
+export {
+  runMigrateEmbeddings,
+  type MigrateEmbeddingsOptions,
+  type MigrateEmbeddingsResult,
+} from "./migrate.js";

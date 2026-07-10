@@ -10,7 +10,13 @@
  */
 
 import { parseArgs } from "node:util";
-import { CLI_VERSION, runInit, InitOptions, NeuralgenticsError } from "./neuralgentics/init.js";
+import {
+  CLI_VERSION,
+  runInit,
+  InitOptions,
+  NeuralgenticsError,
+} from "./neuralgentics/init.js";
+import type { MigrateEmbeddingsOptions } from "./neuralgentics/migrate.js";
 
 /** Sentinel for `--version` with no argument (distinguishes bare vs. with-arg). */
 const CLI_VERSION_SENTINEL = "__cli__";
@@ -29,8 +35,15 @@ interface ParsedArgs {
   quantize: string; // "auto" | "fp32" | "fp16" | "int8"
   device: string | undefined; // "cpu" | "cuda" | undefined (env fallback)
   noLazyLoad: boolean; // true => EAGER=true
-  idleMin: number; // minutes before idle sidecar unloads
+  idleMin: number; // minutes before idle sidecar unloads the model
   statusPort: number; // sidecar HTTP /status port
+  embedModel: string; // "bge-m3" | "bge-large" | "all-MiniLM-L6-v2"
+  // migrate-embeddings subcommand
+  from: string | undefined; // source model filter (default: all)
+  to: string; // target model (default: bge-m3)
+  batch: number; // batch size (default: 10)
+  backup: boolean; // preserve old vectors (default: true)
+  dryRunMigrate: boolean; // --dry-run for migrate (distinct from init --dry-run)
   command: string | undefined;
 }
 
@@ -54,6 +67,12 @@ function parseArgv(argv: string[]): ParsedArgs {
       "no-lazy-load": { type: "boolean", default: false },
       "idle-min": { type: "string", default: "5" }, // numeric, parsed below
       "status-port": { type: "string", default: "50052" }, // numeric
+      "embed-model": { type: "string" },
+      // migrate-embeddings subcommand flags
+      from: { type: "string" },
+      to: { type: "string" },
+      batch: { type: "string" }, // numeric, parsed below
+      "no-backup": { type: "boolean", default: false },
     },
     allowPositionals: true,
   });
@@ -71,6 +90,8 @@ function parseArgv(argv: string[]): ParsedArgs {
   const valueFlags = new Set([
     "--version", "--target", "-t", "--repo",
     "--quantize", "--embed-dtype", "--device", "--idle-min", "--status-port",
+    "--embed-model",
+    "--from", "--to", "--batch",
   ]);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -99,6 +120,12 @@ function parseArgv(argv: string[]): ParsedArgs {
     noLazyLoad: values["no-lazy-load"] === true,
     idleMin: parseInt(values["idle-min"] ?? "5", 10),
     statusPort: parseInt(values["status-port"] ?? "50052", 10),
+    embedModel: values["embed-model"] ?? "bge-m3",
+    from: values.from as string | undefined,
+    to: values.to ?? "bge-m3",
+    batch: parseInt(values.batch ?? "10", 10),
+    backup: !(values["no-backup"] === true),
+    dryRunMigrate: values["dry-run"] === true,
     command,
   };
 }
@@ -127,6 +154,16 @@ function printHelp(): void {
       `  --no-lazy-load      Eagerly load the model at sidecar start (default: lazy-load on first embed).\n` +
       `  --idle-min MIN      Minutes of idleness before the lazy sidecar unloads the model (default: 5).\n` +
       `  --status-port PORT  Sidecar HTTP /status port (default: 50052).\n` +
+      `\n` +
+      `  --embed-model MODEL  Embedding model: bge-m3 (default, multilingual 8K), bge-large (English 512), or all-MiniLM-L6-v2 (fast 384). Env: NEURALGENTICS_EMBED_MODEL.\n` +
+      `\n` +
+      `Migrate embeddings:\n` +
+      `  neuralgentics migrate-embeddings [options]\n` +
+      `    --from MODEL     Only migrate memories currently using this model (default: all)\n` +
+      `    --to MODEL        Target embedding model (default: bge-m3)\n` +
+      `    --batch N         Memories per batch (default: 10)\n` +
+      `    --dry-run         Preview what would be done without making changes\n` +
+      `    --no-backup       Don't preserve old vectors in embedding_legacy column\n` +
       `\n` +
       `  -h, --help          Show this help and exit.\n` +
       `\n` +
@@ -178,9 +215,24 @@ async function main(argv: string[]): Promise<number> {
 
   // init requested via --init or the positional `init` alias.
   const initRequested = parsed.init || parsed.command === "init";
-  if (!initRequested) {
+  const migrateRequested = parsed.command === "migrate-embeddings";
+
+  if (!initRequested && !migrateRequested) {
     printHelp();
     return 0;
+  }
+
+  // migrate-embeddings is a parallel command, not a subcommand of init.
+  if (migrateRequested) {
+    const { runMigrateEmbeddings } = await import("./neuralgentics/migrate.js");
+    const migrateOpts: MigrateEmbeddingsOptions = {
+      from: parsed.from,
+      to: parsed.to,
+      batch: parsed.batch,
+      dryRun: parsed.dryRunMigrate,
+      backup: parsed.backup,
+    };
+    return await runMigrateEmbeddings(migrateOpts);
   }
 
   const opts: InitOptions = {
@@ -198,6 +250,7 @@ async function main(argv: string[]): Promise<number> {
     noLazyLoad: parsed.noLazyLoad,
     idleMin: parsed.idleMin,
     statusPort: parsed.statusPort,
+    embedModel: parsed.embedModel,
   };
 
   try {

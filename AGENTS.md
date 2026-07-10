@@ -122,7 +122,7 @@ Neuralgentics is an **OpenCode plugin** — not a standalone TUI. The user runs 
 docker compose -f ~/.neuralgentics/docker-compose.yml up -d
 ```
 - **neuralgentics-postgres**: PostgreSQL 18 + pgvector + TimescaleDB (port 6200)
-- **neuralgentics-sidecar**: Python gRPC embedding service (BGE-Large, port 50051)
+- **neuralgentics-sidecar**: Python gRPC embedding service (BGE-M3 by default, port 50051). BGE-Large is still available via `--embed-model bge-large` for backwards compat.
 - **neuralgentics-backend**: Go JSON-RPC memory server (trust engine, knowledge graph, thought chains)
 
 ### Sidecar lifecycle (v0.9.6+)

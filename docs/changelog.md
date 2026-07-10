@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-07-10
+
+Minor release: BGE-M3 is now the default embedding model, with a new `migrate-embeddings` command for upgrading existing installs.
+
+### Changed
+
+- **Default embedding model**: BGE-M3 (`bge-m3`) replaces BGE-Large (`bge-large-en-v1.5`) as the default. BGE-M3 supports 100+ languages, 8192 token context (vs 512), and produces more accurate embeddings for code and long documents. BGE-Large is still available via `--embed-model bge-large` for backwards compat.
+- **Embedding dimensions**: 1024 (was 1024 for BGE-Large too — no change in storage, but the vector geometry is different so existing memories need re-embedding).
+- **CLI flag**: New `--embed-model {bge-m3|bge-large|all-MiniLM-L6-v2}` flag, default `bge-m3`. Env: `NEURALGENTICS_EMBED_MODEL`.
+- **Quantize auto-default**: BGE-M3 + CUDA → fp16, BGE-M3 + CPU → int8 (unchanged from v0.10.0).
+
+### Added
+
+- **`memory.migrate_embeddings` JSON-RPC method**: Re-embeds all memories in the database with a new model. Safe to interrupt (writes happen after embed succeeds). Reports progress.
+- **`migrate-embeddings` CLI command**: Thin wrapper that calls the JSON-RPC method. Usage: `npx @veedubin/neuralgentics migrate-embeddings --from bge-large --to bge-m3 --batch 10`. Old vectors preserved in `embedding_legacy` column by default for safe rollback.
+- **`embedding_model` column on memories table**: New migration `000005_add_embedding_model.up.sql` tracks which model produced each memory's vector. Additive — existing rows default to `bge-large-en-v1.5`.
+- **`embedding_legacy` + `embedding_model_legacy` columns**: Added by the migration tool when `--backup` is on (default). Can be dropped after verifying the migration.
+
+### Migration
+
+If you have existing memories embedded with BGE-Large, run the migration to re-embed them with BGE-M3:
+
+```bash
+# Preview what will be migrated
+npx @veedubin/neuralgentics migrate-embeddings --dry-run
+
+# Run the migration (safe — old vectors backed up)
+npx @veedubin/neuralgentics migrate-embeddings --from bge-large --to bge-m3
+
+# Rollback if needed (SQL)
+psql ... -c "UPDATE memories SET embedding = embedding_legacy, embedding_model = embedding_model_legacy WHERE embedding_legacy IS NOT NULL;"
+
+# Drop backup columns after verifying
+psql ... -c "ALTER TABLE memories DROP COLUMN embedding_legacy, DROP COLUMN embedding_model_legacy;"
+```
+
+For ~80 memories, the migration takes ~2-5 minutes (includes a 2-15s cold model load on first embed call).
+
+### Quality gates
+
+- TypeScript: `npx tsc --noEmit` clean
+- Go build + vet: clean in `packages/memory` and `packages/backend-go`
+- Migration tested: column added to running `neuralgentics-postgres` on port 6200 (or 6000 if user kept the old container)
+
+---
+
 ## [0.10.0] - 2026-07-09
 
 Patch release: Lazy-load + quantize support for the embedding sidecar, and sidecar lifecycle management via the Go memory server.

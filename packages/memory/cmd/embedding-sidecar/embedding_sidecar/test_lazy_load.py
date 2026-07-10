@@ -18,30 +18,54 @@ import time
 
 import pytest
 
-from embedding_sidecar.embed import model_manager
+from embedding_sidecar.embed import (
+    DEFAULT_DIMENSIONS,
+    DEFAULT_MODEL,
+    MODEL_REGISTRY,
+    model_manager,
+)
 
 
-def test_lazy_load() -> None:
-    """First call loads the model; second call returns the cached instance."""
-    # First call loads the model (may take several seconds on first run)
+def test_lazy_load_bge_m3() -> None:
+    """BGE-M3 (the new default) loads on first call, cached on second."""
     t0 = time.time()
-    m1 = model_manager.get("all-MiniLM-L6-v2")
+    m1 = model_manager.get("BAAI/bge-m3")
     cold_time = time.time() - t0
 
-    # Second call should be near-instant (cached)
     t0 = time.time()
-    m2 = model_manager.get("all-MiniLM-L6-v2")
+    m2 = model_manager.get("BAAI/bge-m3")
     hot_time = time.time() - t0
 
     assert m1 is m2, "second get() should return the same cached object"
     assert hot_time < 0.1, f"hot load took {hot_time:.3f}s, expected <0.1s"
-    # Cold load can be slow on first download; just log it
-    print(f"\ncold load: {cold_time:.3f}s, hot load: {hot_time:.3f}s")
+    # BGE-M3 is 1024-dim
+    assert m1.get_sentence_embedding_dimension() == 1024
+    print(f"\nBGE-M3 cold load: {cold_time:.3f}s, hot load: {hot_time:.3f}s")
+
+
+def test_lazy_load_bge_large() -> None:
+    """BGE-Large still works (backwards compat)."""
+    m1 = model_manager.get("BAAI/bge-large-en-v1.5")
+    assert m1.get_sentence_embedding_dimension() == 1024
+
+
+def test_lazy_load_minilm() -> None:
+    """all-MiniLM-L6-v2 still works (backwards compat)."""
+    m1 = model_manager.get("all-MiniLM-L6-v2")
+    assert m1.get_sentence_embedding_dimension() == 384
+
+
+def test_status_includes_model_info() -> None:
+    """status() returns default_model, hf_name, and dimensions."""
+    s = model_manager.status()
+    assert s["default_model"] == DEFAULT_MODEL
+    assert s["dimensions"] == MODEL_REGISTRY[DEFAULT_MODEL]["dimensions"]
+    assert s["hf_name"] == MODEL_REGISTRY[DEFAULT_MODEL]["hf_name"]
 
 
 def test_status() -> None:
     """status() returns a dict with the expected keys after a get()."""
-    model_manager.get("all-MiniLM-L6-v2")
+    model_manager.get("BAAI/bge-m3")
     s = model_manager.status()
 
     assert isinstance(s, dict)
@@ -51,7 +75,10 @@ def test_status() -> None:
     assert "eager" in s
     assert "dtype" in s
     assert "device" in s
-    assert "all-MiniLM-L6-v2" in s["loaded_models"]
+    assert "default_model" in s
+    assert "hf_name" in s
+    assert "dimensions" in s
+    assert "BAAI/bge-m3" in s["loaded_models"]
     assert isinstance(s["idle_min"], int)
     assert isinstance(s["eager"], bool)
 
@@ -71,6 +98,9 @@ def test_status_empty_when_unloaded() -> None:
         s = mgr.status()
         assert s["loaded_models"] == []
         assert s["last_used"] == {}
+        # Even with no models loaded, default_model info should be present
+        assert s["default_model"] == DEFAULT_MODEL
+        assert s["dimensions"] == DEFAULT_DIMENSIONS
     finally:
         mgr.shutdown()
 
@@ -109,7 +139,7 @@ def test_embed_dtype_validation_rejects_invalid() -> None:
 
 if __name__ == "__main__":
     # Allow running without pytest for a quick manual smoke test
-    test_lazy_load()
+    test_lazy_load_bge_m3()
     test_status()
     print("\nAll smoke tests passed.")
     model_manager.shutdown()

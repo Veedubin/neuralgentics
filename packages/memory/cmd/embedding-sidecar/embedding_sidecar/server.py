@@ -78,9 +78,16 @@ class EmbeddingServiceServicer(embedding_pb2_grpc.EmbeddingServiceServicer):
 
 async def serve(
     listen_addr: str = "unix:///tmp/neuralgentics-embed.sock",
+    model: str = "bge-m3",
 ) -> grpc.aio.Server:
-    """Create and start the gRPC embedding sidecar server."""
-    engine = EmbeddingEngine()
+    """Create and start the gRPC embedding sidecar server.
+
+    Args:
+        listen_addr: gRPC listen address (Unix socket or TCP host:port).
+        model: Embedding model shortname (e.g. "bge-m3", "bge-large",
+               "all-MiniLM-L6-v2"). Defaults to "bge-m3".
+    """
+    engine = EmbeddingEngine(default_model=model)
 
     server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=4))
     embedding_pb2_grpc.add_EmbeddingServiceServicer_to_server(
