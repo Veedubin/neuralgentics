@@ -331,10 +331,15 @@
     "videre-mcp": {
       "type": "local",
       "command": [
-        "/home/jcharles/Projects/python/videre-mcp/.venv/bin/python",
-        "-m",
-        "videre_mcp"
+        "uvx",
+        "--from",
+        "videre-mcp[vision]==0.3.0",
+        "videre-mcp"
       ],
+      "environment": {
+        "MEMINI_IMAGE_SEARCH_ENABLED": "false",
+        "MEMINI_IMAGE_DIR": "/home/jcharles/.memini-ai/images"
+      },
       "enabled": true,
       "timeout": 120000
     },
