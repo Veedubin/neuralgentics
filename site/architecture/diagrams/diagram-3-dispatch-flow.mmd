@@ -1,0 +1,50 @@
+graph TD
+    subgraph PRE["Pre-Dispatch (Orchestrator)"]
+        USER["USER PROMPT"]
+        THINK["THOUGHT CHAIN<br/>memoryManager_add_thought<br/>Prevents hallucinated paths"]
+        DECOMP["TASK DECOMPOSE<br/>Create Kanban cards<br/>Triage &rarr; Ready &rarr; Running"]
+        ROUTE["ROUTE MATRIX<br/>Research&rarr;architect<br/>FileFind&rarr;explorer<br/>Impl&rarr;coder"]
+        CTX["CONTEXT PACKAGE<br/>User request + search_project<br/>L1 decisions + IN/OUT scope"]
+    end
+
+    subgraph DISPATCH["Dispatch"]
+        TASK["TASK() CALL<br/>OpenCode Dispatch<br/>Seed prompt + memory_id"]
+        SPEC["SPECIALIST AGENT<br/>boomerang-coder / architect / tester"]
+        GATES{"QUALITY GATES<br/>Lint &rarr; Typecheck &rarr; Test"}
+    end
+
+    subgraph WRAP["Post-Dispatch Wrap-Up"]
+        IMPROVE["IMPROVE<br/>Extract patterns<br/>Bump trust (agent_used)"]
+        DOCS["DOC UPDATE<br/>TASKS.md, AGENTS.md"]
+        SAVE["MEMORY SAVE<br/>{memory_id, description}<br/>Wrap-up to memini-core"]
+    end
+
+    MORE{"More Cards<br/>in Kanban?"}
+    DONE["SESSION COMPLETE"]
+
+    USER --> THINK
+    THINK -->|"thought chain logged"| DECOMP
+    DECOMP -->|"kanban cards"| ROUTE
+    ROUTE -->|"agent role"| CTX
+    CTX -->|"context package"| TASK
+    TASK -->|"seed prompt + memory_id"| SPEC
+    SPEC -->|"{memory_id, desc}"| GATES
+    GATES -->|"PASS"| IMPROVE
+    GATES -->|"FAIL<br/>re-dispatch"| SPEC
+    IMPROVE -->|"patterns + trust bump"| DOCS
+    DOCS -->|"docs updated"| SAVE
+    SAVE -->|"wrap-up stored"| MORE
+    MORE -->|"YES<br/>next card"| ROUTE
+    MORE -->|"NO"| DONE
+
+    classDef orchestrator fill:#5B7FA5,stroke:#3A5A7A,color:#fff
+    classDef agent fill:#C07030,stroke:#8B4F20,color:#fff
+    classDef decision fill:#D4A050,stroke:#8B4F20,color:#222
+    classDef terminal fill:#4A8C4A,stroke:#2D6B2D,color:#fff
+    classDef user fill:#444,stroke:#222,color:#ccc
+
+    class THINK,DECOMP,ROUTE,CTX,TASK orchestrator
+    class SPEC agent
+    class GATES,MORE decision
+    class IMPROVE,DOCS,SAVE,DONE terminal
+    class USER user

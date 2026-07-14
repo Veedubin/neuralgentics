@@ -1,0 +1,26 @@
+graph TD
+    USER["USER / DEVELOPER"]
+    OPENCODE["OPENCODE PLUGIN<br/>TUI, Kanban, Orchestrator"]
+    BROKER["MCP BROKER<br/>RBAC + Token Reduction<br/>Multi-Transport (v0.4.0)<br/>HTTP/SSE (v0.5.0)"]
+    EXTERNAL["EXTERNAL MCP SERVERS<br/>GitHub, Web, etc."]
+    MEMINI["MEMINI-AI<br/>Trust-Weighted Memory Engine"]
+    POSTGRES["POSTGRESQL<br/>pgvector, KG Entities"]
+
+    USER -->|"prompt / intent"| OPENCODE
+    OPENCODE -->|"JSON-RPC (stdio)"| BROKER
+    BROKER -.->|"MCP Boundary<br/>role-gated"| EXTERNAL
+    BROKER -->|"HTTP/REST"| MEMINI
+    MEMINI -->|"SQL / pgvector"| POSTGRES
+
+    classDef interface fill:#5B7FA5,stroke:#3A5A7A,color:#fff
+    classDef broker fill:#C07030,stroke:#8B4F20,color:#fff
+    classDef memory fill:#4A8C4A,stroke:#2D6B2D,color:#fff
+    classDef external fill:#888,stroke:#555,color:#fff
+    classDef user fill:#444,stroke:#222,color:#ccc
+
+    class OPENCODE interface
+    class BROKER broker
+    class MEMINI memory
+    class POSTGRES memory
+    class EXTERNAL external
+    class USER user
