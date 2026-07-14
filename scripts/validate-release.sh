@@ -94,17 +94,55 @@ do
 done
 
 # ─── 4. Version consistency ───────────────────────────────────────────────────
+# The NPM release artifact is overlay/packages/opencode/package.json — that is
+# what .github/workflows/release.yml publish-npm publishes. It is the PRIMARY
+# source of truth. The root package.json, install.sh DEFAULT_VERSION, and
+# packages/tui/package.json MUST stay in sync with it, otherwise the
+# validator and the install script point at a version the archive doesn't
+# contain (see Session 46 v0.12.1 recovery).
 echo ""
 echo "── 4. Version consistency ──"
 
+OVERLAY_VERSION=$(python3 -c "import json; print(json.load(open('overlay/packages/opencode/package.json'))['version'])")
+ROOT_VERSION=$(python3 -c "import json; print(json.load(open('package.json'))['version'])")
 INSTALL_VERSION=$(grep '^DEFAULT_VERSION=' scripts/install.sh | sed 's/.*"\(.*\)"/\1/')
-PKG_VERSION=$(python3 -c "import json; print(json.load(open('package.json'))['version'])")
 TUI_VERSION=$(python3 -c "import json; print(json.load(open('packages/tui/package.json'))['version'])")
 
-if [[ "$INSTALL_VERSION" == "$PKG_VERSION" && "$PKG_VERSION" == "$TUI_VERSION" ]]; then
-    pass "Version consistent: $INSTALL_VERSION across install.sh, package.json, packages/tui/package.json"
+DRIFT=0
+drift_msg=""
+
+check_sync() {
+    local label="$1" file_ver="$2"
+    if [[ "$file_ver" != "$OVERLAY_VERSION" ]]; then
+        drift_msg="${drift_msg}    ${label}: ${file_ver} (expected ${OVERLAY_VERSION})\n"
+        DRIFT=$((DRIFT + 1))
+    fi
+}
+
+check_sync "overlay/packages/opencode/package.json (primary)" "$OVERLAY_VERSION"
+check_sync "package.json (root)"                              "$ROOT_VERSION"
+check_sync "scripts/install.sh DEFAULT_VERSION"               "$INSTALL_VERSION"
+check_sync "packages/tui/package.json"                        "$TUI_VERSION"
+
+if [[ $DRIFT -eq 0 ]]; then
+    pass "✓ All version sources agree on ${OVERLAY_VERSION}"
 else
-    fail "Version MISMATCH: install.sh=$INSTALL_VERSION, root=$PKG_VERSION, tui=$TUI_VERSION"
+    fail "Version sources disagree (primary = overlay = ${OVERLAY_VERSION}):"
+    printf "%b" "$drift_msg"
+fi
+
+# ─── 4b. Git tag match (if a tag is provided) ─────────────────────────────────
+# Pass the intended tag via the TAG env var or the first CLI arg, e.g.:
+#   TAG=v0.12.2 ./scripts/validate-release.sh
+#   ./scripts/validate-release.sh v0.12.2
+if [[ -n "${1:-${TAG:-}}" ]]; then
+    INTENDED_TAG="${1:-${TAG}}"
+    INTENDED_TAG="${INTENDED_TAG#v}"   # strip leading 'v'
+    if [[ "$INTENDED_TAG" == "$OVERLAY_VERSION" ]]; then
+        pass "Git tag v${INTENDED_TAG} matches overlay version ${OVERLAY_VERSION}"
+    else
+        fail "Git tag v${INTENDED_TAG} does NOT match overlay version ${OVERLAY_VERSION}"
+    fi
 fi
 
 # ─── 5. Release file existence (simulate archive assembly) ────────────────────
@@ -213,7 +251,7 @@ else
 fi
 
 # Check that the tag doesn't already exist
-CURRENT_VERSION="$PKG_VERSION"
+CURRENT_VERSION="$OVERLAY_VERSION"
 if git tag -l "v$CURRENT_VERSION" | grep -q "v$CURRENT_VERSION"; then
     fail "Tag v$CURRENT_VERSION already exists — bump version before re-tagging"
 else
@@ -231,7 +269,10 @@ if [[ $FAIL -gt 0 ]]; then
     echo "  ❌ VALIDATION FAILED — fix the issues above before tagging."
     echo "  Common fixes:"
     echo "    - Missing file:  git add -f <path>  (check .gitignore)"
-    echo "    - Version mismatch: bump all three version fields"
+    echo "    - Version mismatch: overlay/packages/opencode/package.json is the"
+    echo "      primary source (that is what release.yml publishes to NPM)."
+    echo "      Bump root package.json, install.sh DEFAULT_VERSION, and"
+    echo "      packages/tui/package.json to match it."
     echo "    - JSON/YAML error: fix syntax in the file"
     echo "    - TypeScript error: fix type errors in packages/tui/src/"
     echo "    - Go vet error: fix the reported issue"
