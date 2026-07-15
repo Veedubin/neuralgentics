@@ -228,7 +228,7 @@ container's actual credentials — the historical wrong default
 
 ## Release Engineering Notes
 
-- **v0.9.4** is the latest tagged release (2026-07-09). Ships as an npm plugin with an `npx --init` bootstrapper and a hardened container stack.
+- **v0.12.5** is the latest tagged release (2026-07-15). Process-correction patch per AGENTS.md "Never Retag a Public Release" rule — v0.12.4 was already on npm, so a 1-character patch bump (0.12.4 → 0.12.5) was applied to unblock the failed re-publish. No code changes; see HANDOFF.md Session 48.
 - **Release workflow**: Single job compiles the overlay plugin (`npx tsc`), bundles `.opencode/` config, and publishes the `@veedubin/neuralgentics` npm package. Container job builds and pushes postgres/sidecar/backend to ghcr.io.
 - **Install flow**: Users run `npx @veedubin/neuralgentics --init` to bootstrap their project. The old curl-bash installer is deprecated.
 - **Pre-release validation**: `scripts/validate-release.sh` — 8 checks (shell syntax, YAML, JSON, version consistency, file existence, TypeScript typecheck, Go vet, git status). Run before every `git tag`.
