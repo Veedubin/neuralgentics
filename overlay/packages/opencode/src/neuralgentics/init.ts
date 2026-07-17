@@ -1350,7 +1350,10 @@ function buildProjectOpencodeJson(promptConfig: PromptConfig): Record<string, un
         const host = promptConfig.teamHost ?? "localhost";
         const port = promptConfig.teamPort ?? "5432";
         const db = promptConfig.teamDatabase ?? "neuralgentics";
-        env.MEMINI_DB_URL = `postgresql://neuralgentics:neuralgentics@${host}:${port}/${db}`;
+        const user = promptConfig.teamUser ?? "postgres";
+        const password = promptConfig.teamPassword ?? "";
+        env.MEMINI_DB_URL = `postgresql://${user}:${password}@${host}:${port}/${db}`;
+        env.MEMINI_VECTOR_BACKEND = "postgres-external";
       }
     }
     mcpBlock[name] = {
@@ -1592,6 +1595,8 @@ async function runInstall(
         host: promptConfig.teamHost,
         port: promptConfig.teamPort,
         database: promptConfig.teamDatabase,
+        user: promptConfig.teamUser,
+        password: promptConfig.teamPassword,
       },
       args.dryRun,
     );
@@ -1614,8 +1619,8 @@ async function runInstall(
     process.stdout.write(`  ✗ ${fail.name}: ${fail.error}\n`);
   }
 
-  // Database section (team server only)
-  if (dbResult !== null) {
+  // Database section
+  if (promptConfig.backend === "team" && dbResult !== null) {
     process.stdout.write("\nDatabase:\n");
     if (dbResult.success) {
       process.stdout.write(`  ✓ ${dbResult.message}\n`);
@@ -1627,6 +1632,12 @@ async function runInstall(
           `      neuralgentics ${rerunCmd}\n`,
       );
     }
+  } else if (promptConfig.backend === "pgembed") {
+    process.stdout.write("\nDatabase:\n");
+    process.stdout.write("  ✓ Built-in database (pgembed)\n");
+    process.stdout.write("    Uses a local Unix socket — no username or password needed.\n");
+    process.stdout.write("    Data stored in ~/.local/share/memini-ai/pgembed/data\n");
+    process.stdout.write("    To switch to a team server later, re-run with --team\n");
   }
 
   process.stdout.write(`\nState:   ${configDir}/${STATE_FILENAME}\n`);

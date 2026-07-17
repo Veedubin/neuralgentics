@@ -29,6 +29,10 @@ export interface PromptConfig {
   teamHost?: string;
   teamPort?: string;
   teamDatabase?: string;
+  teamUser?: string;
+  teamPassword?: string;
+  /** Whether team DB is existing or new */
+  teamIsNew?: boolean;
   embedding: EmbeddingMode;
   ollamaApiKey?: string;
 }
@@ -115,18 +119,85 @@ async function promptBackendMode(session: PromptSession, flags: PromptFlags): Pr
 /**
  * Prompt for team server connection details.
  *
- * Only called when backend === "team".
+ * Asks: existing or new database, then host/port/user/password.
+ * Offers to save credentials to .env.
  */
-async function promptTeamConnection(session: PromptSession): Promise<{
+async function promptTeamConnection(
+  session: PromptSession,
+  configDir: string,
+): Promise<{
   host: string;
   port: string;
   database: string;
+  user: string;
+  password: string;
+  isNew: boolean;
 }> {
-  process.stdout.write("\n  Enter your team server details:\n");
-  const host = (await session.ask("  Server IP or hostname [localhost]: ")).trim() || "localhost";
+  process.stdout.write("\n  Team server setup:\n");
+  process.stdout.write("\n");
+  process.stdout.write("  1. Connect to an existing PostgreSQL database\n");
+  process.stdout.write("  2. Connect to a new database (I'll create it)\n");
+  process.stdout.write("\n");
+  const isNewAnswer = await session.ask("  Enter 1 or 2 [1]: ");
+  const isNew = isNewAnswer.trim() === "2";
+
+  const host = (await session.ask("\n  Server IP or hostname [localhost]: ")).trim() || "localhost";
   const port = (await session.ask("  Port [5432]: ")).trim() || "5432";
   const database = (await session.ask("  Database name [neuralgentics]: ")).trim() || "neuralgentics";
-  return { host, port, database };
+
+  process.stdout.write("\n  Database credentials:\n");
+  const user = (await session.ask("  Username [postgres]: ")).trim() || "postgres";
+  const password = (await session.ask("  Password: ")).trim();
+
+  // Offer to save credentials to .env
+  if (password) {
+    process.stdout.write("\n");
+    process.stdout.write("  Save credentials to .env so you don't have to re-enter them?\n");
+    const saveCreds = (await session.ask("  [Y/n]: ")).trim().toLowerCase();
+    if (!saveCreds.startsWith("n")) {
+      const envPath = path.join(configDir, ".env");
+      const dbUrl = `postgresql://${user}:${password}@${host}:${port}/${database}`;
+      const envLines = [
+        `MEMINI_DB_URL=${dbUrl}`,
+        `MEMINI_VECTOR_BACKEND=postgres-external`,
+      ];
+      if (existsSync(envPath)) {
+        const existing = await fs.readFile(envPath, "utf-8");
+        const lines = existing.split("\n");
+        const updated = new Set<string>();
+        const result: string[] = [];
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith("#") || trimmed === "") {
+            result.push(line);
+            continue;
+          }
+          const eqIdx = trimmed.indexOf("=");
+          const k = eqIdx > 0 ? trimmed.slice(0, eqIdx).trim() : "";
+          if (k === "MEMINI_DB_URL" || k === "MEMINI_VECTOR_BACKEND") {
+            const replacement = envLines.find(l => l.startsWith(k + "="));
+            if (replacement) {
+              result.push(replacement);
+              updated.add(k);
+            }
+          } else {
+            result.push(line);
+          }
+        }
+        for (const l of envLines) {
+          const k = l.split("=")[0];
+          if (!updated.has(k)) result.push(l);
+        }
+        await fs.writeFile(envPath, result.join("\n") + "\n", "utf-8");
+      } else {
+        await fs.writeFile(envPath, envLines.join("\n") + "\n", "utf-8");
+      }
+      process.stdout.write(`  ✓ Saved to ${envPath}\n`);
+      process.stdout.write("  WARNING: Do NOT commit .env to git. Add .env to .gitignore.\n");
+    }
+  }
+
+  return { host, port, database, user, password, isNew };
 }
 
 /**
@@ -277,14 +348,18 @@ export async function runAllPrompts(
         config.teamHost = "localhost";
         config.teamPort = "5432";
         config.teamDatabase = "neuralgentics";
+        config.teamUser = "postgres";
+        config.teamPassword = "";
       } else {
-        // Shouldn't reach here (needsBackend would be true), but just in case
         const session = new PromptSession();
         try {
-          const conn = await promptTeamConnection(session);
+          const conn = await promptTeamConnection(session, configDir);
           config.teamHost = conn.host;
           config.teamPort = conn.port;
           config.teamDatabase = conn.database;
+          config.teamUser = conn.user;
+          config.teamPassword = conn.password;
+          config.teamIsNew = conn.isNew;
         } finally {
           session.close();
         }
@@ -299,10 +374,13 @@ export async function runAllPrompts(
     // 1. Backend mode
     config.backend = await promptBackendMode(session, flags);
     if (config.backend === "team") {
-      const conn = await promptTeamConnection(session);
+      const conn = await promptTeamConnection(session, configDir);
       config.teamHost = conn.host;
       config.teamPort = conn.port;
       config.teamDatabase = conn.database;
+      config.teamUser = conn.user;
+      config.teamPassword = conn.password;
+      config.teamIsNew = conn.isNew;
     }
 
     // 2. Embedding mode
