@@ -1,14 +1,15 @@
 /**
  * Interactive prompts for the neuralgentics two-init installer.
  *
- * Uses Node's `readline` for all prompts. All prompts have a default shown in
- * brackets. If a skip flag is set (e.g. `--yes`, `--embedded`), the prompt is
- * skipped and the default is used.
+ * Uses a SINGLE persistent readline interface for the entire prompt
+ * session. This prevents the bug where closing/reopening readline
+ * causes the next question to immediately receive buffered stdin
+ * (e.g. the user's Enter keypress from the previous question).
  *
  * Prompt types:
  *   1. Backend mode   — pgembed (recommended) vs team server
  *   2. Embedding mode — CPU / Auto (recommended) / GPU
- *   3. Ollama API key — written into provider block + .env file
+ *   3. Ollama API key — optional, written to .env file
  */
 
 import * as readline from "node:readline";
@@ -54,17 +55,33 @@ export const DEFAULT_PROMPT_CONFIG: PromptConfig = {
   embedding: "auto",
 };
 
-function askQuestion(prompt: string): Promise<string> {
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({
+/**
+ * A persistent prompt session using a single readline interface.
+ * Create one, ask all questions, then close it.
+ */
+class PromptSession {
+  private rl: readline.Interface;
+
+  constructor() {
+    this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
     });
-    rl.question(prompt, (answer: string) => {
-      rl.close();
-      resolve(answer);
+  }
+
+  /** Ask a question and wait for the user's answer. */
+  ask(prompt: string): Promise<string> {
+    return new Promise((resolve) => {
+      this.rl.question(prompt, (answer: string) => {
+        resolve(answer);
+      });
     });
-  });
+  }
+
+  /** Close the readline interface. Call after all questions are done. */
+  close(): void {
+    this.rl.close();
+  }
 }
 
 /**
@@ -72,7 +89,7 @@ function askQuestion(prompt: string): Promise<string> {
  *
  * Skipped if `--embedded` or `--team` is set.
  */
-export async function promptBackendMode(flags: PromptFlags): Promise<BackendMode> {
+async function promptBackendMode(session: PromptSession, flags: PromptFlags): Promise<BackendMode> {
   if (flags.embedded) return "pgembed";
   if (flags.team) return "team";
   if (flags.yes) return "pgembed";
@@ -80,7 +97,7 @@ export async function promptBackendMode(flags: PromptFlags): Promise<BackendMode
   process.stdout.write("\n? memini-ai backend:\n");
   process.stdout.write("  > pgembed (recommended — zero Docker, just works)\n");
   process.stdout.write("    team server (connect to shared PostgreSQL)\n");
-  const answer = await askQuestion("\nChoose [pgembed]: ");
+  const answer = await session.ask("\nChoose [pgembed]: ");
   const trimmed = answer.trim().toLowerCase();
   if (trimmed.startsWith("t")) return "team";
   return "pgembed";
@@ -91,14 +108,14 @@ export async function promptBackendMode(flags: PromptFlags): Promise<BackendMode
  *
  * Only called when backend === "team".
  */
-export async function promptTeamConnection(): Promise<{
+async function promptTeamConnection(session: PromptSession): Promise<{
   host: string;
   port: string;
   database: string;
 }> {
-  const host = (await askQuestion("? Team server IP [localhost]: ")).trim() || "localhost";
-  const port = (await askQuestion("? Team server port [5432]: ")).trim() || "5432";
-  const database = (await askQuestion("? Database name [neuralgentics]: ")).trim() || "neuralgentics";
+  const host = (await session.ask("? Team server IP [localhost]: ")).trim() || "localhost";
+  const port = (await session.ask("? Team server port [5432]: ")).trim() || "5432";
+  const database = (await session.ask("? Database name [neuralgentics]: ")).trim() || "neuralgentics";
   return { host, port, database };
 }
 
@@ -107,7 +124,7 @@ export async function promptTeamConnection(): Promise<{
  *
  * Skipped if `--CPU-Embed`, `--Auto-Embed`, or `--GPU-Embed` is set.
  */
-export async function promptEmbeddingMode(flags: PromptFlags): Promise<EmbeddingMode> {
+async function promptEmbeddingMode(session: PromptSession, flags: PromptFlags): Promise<EmbeddingMode> {
   if (flags.cpuEmbed) return "cpu";
   if (flags.autoEmbed) return "auto";
   if (flags.gpuEmbed) return "gpu";
@@ -117,7 +134,7 @@ export async function promptEmbeddingMode(flags: PromptFlags): Promise<Embedding
   process.stdout.write("  > CPU (384-dim, fast, runs anywhere)\n");
   process.stdout.write("    Auto (384-dim default + optional 1024-dim elevation) [recommended]\n");
   process.stdout.write("    GPU (1024-dim only, requires CUDA/MPS)\n");
-  const answer = await askQuestion("\nChoose [auto]: ");
+  const answer = await session.ask("\nChoose [auto]: ");
   const trimmed = answer.trim().toLowerCase();
   if (trimmed.startsWith("cpu")) return "cpu";
   if (trimmed.startsWith("gpu")) return "gpu";
@@ -135,7 +152,8 @@ export async function promptEmbeddingMode(flags: PromptFlags): Promise<Embedding
  *
  * Warns the user: "Do NOT commit the .env file to git. Add .env to your .gitignore."
  */
-export async function promptOllamaApiKey(
+async function promptOllamaApiKey(
+  session: PromptSession,
   configDir: string,
   flags: PromptFlags,
 ): Promise<string | undefined> {
@@ -148,15 +166,14 @@ export async function promptOllamaApiKey(
 
   process.stdout.write("\n? Want to add your Ollama Cloud API key now? (get one at https://ollama.com)\n");
   process.stdout.write("  You can skip and add it later to ~/.config/opencode/.env\n");
-  const wantKey = (await askQuestion("  [y/N]: ")).trim().toLowerCase();
+  const wantKey = (await session.ask("  [y/N]: ")).trim().toLowerCase();
   if (!wantKey.startsWith("y")) {
     process.stdout.write("  Skipped — provider will use {env:OLLAMA_API_KEY} placeholder.\n");
     process.stdout.write("  Add OLLAMA_API_KEY=<your-key> to ~/.config/opencode/.env when ready.\n\n");
     return undefined;
   }
 
-  process.stdout.write("  > ");
-  const key = (await askQuestion("")).trim();
+  const key = (await session.ask("  Enter your key: ")).trim();
   if (!key) {
     process.stdout.write("  Skipped — no key entered.\n\n");
     return undefined;
@@ -200,6 +217,10 @@ export async function promptOllamaApiKey(
 
 /**
  * Run all interactive prompts and return a unified config.
+ *
+ * Uses a single persistent readline interface for the entire session
+ * to avoid the buffered-stdin bug where closing/reopening readline
+ * causes the next question to receive leftover input.
  */
 export async function runAllPrompts(
   configDir: string,
@@ -207,20 +228,36 @@ export async function runAllPrompts(
 ): Promise<PromptConfig> {
   const config: PromptConfig = { ...DEFAULT_PROMPT_CONFIG };
 
-  // 1. Backend mode
-  config.backend = await promptBackendMode(flags);
-  if (config.backend === "team") {
-    const conn = await promptTeamConnection();
-    config.teamHost = conn.host;
-    config.teamPort = conn.port;
-    config.teamDatabase = conn.database;
+  // Check if any prompts will actually be shown.
+  // If all are skipped by flags, don't create a readline interface at all.
+  const needsBackend = !flags.embedded && !flags.team && !flags.yes;
+  const needsEmbedding = !flags.cpuEmbed && !flags.autoEmbed && !flags.gpuEmbed && !flags.yes;
+  const needsKey = !flags.yes && !process.env.OLLAMA_API_KEY;
+
+  if (!needsBackend && !needsEmbedding && !needsKey) {
+    return config; // All prompts skipped
   }
 
-  // 2. Embedding mode
-  config.embedding = await promptEmbeddingMode(flags);
+  const session = new PromptSession();
 
-  // 3. Ollama API key
-  config.ollamaApiKey = await promptOllamaApiKey(configDir, flags);
+  try {
+    // 1. Backend mode
+    config.backend = await promptBackendMode(session, flags);
+    if (config.backend === "team") {
+      const conn = await promptTeamConnection(session);
+      config.teamHost = conn.host;
+      config.teamPort = conn.port;
+      config.teamDatabase = conn.database;
+    }
+
+    // 2. Embedding mode
+    config.embedding = await promptEmbeddingMode(session, flags);
+
+    // 3. Ollama API key
+    config.ollamaApiKey = await promptOllamaApiKey(session, configDir, flags);
+  } finally {
+    session.close();
+  }
 
   return config;
 }
