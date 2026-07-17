@@ -20,6 +20,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as readline from "node:readline";
 import { randomBytes } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
 import {
   downloadTarball,
@@ -37,6 +38,114 @@ import { getHomedirConfigPath, getProjectConfigPath, getBackupDir } from "./path
 import { HOMEDIR_MCP_TEMPLATES, PROJECT_MCP_TEMPLATES, type McpBlock } from "./mcp-templates.js";
 import { runAllPrompts, DEFAULT_PROMPT_CONFIG, type PromptFlags, type PromptConfig, type BackendMode, type EmbeddingMode } from "./prompts.js";
 import { backupFile, type BackupRecord } from "./backup.js";
+
+/**
+ * Copy static assets (agent personas, skills, AGENTS.md) from the npm
+ * package directory to the target config directory.
+ *
+ * The npm package ships `.opencode/agents/`, `.opencode/skills/`, and
+ * `.opencode/AGENTS.md` alongside `dist/`. When the CLI runs via `npx`,
+ * `__dirname` points to `dist/` inside the extracted package, so
+ * `path.join(__dirname, "..", ".opencode")` finds the bundled assets.
+ *
+ * Files are copied with SHA-256 idempotency — existing files with
+ * identical content are skipped (no backup created). Modified files
+ * are backed up before overwrite.
+ *
+ * Returns the count of agents, skills, and AGENTS.md status.
+ */
+async function copyStaticAssets(
+  targetDir: string,
+  dryRun: boolean,
+): Promise<{ agents: number; skills: number; agentsMd: boolean }> {
+  // Find the bundled .opencode directory (sibling of dist/, two levels up from init.js)
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const bundledOpencode = path.join(__dirname, "..", "..", ".opencode");
+  const bundledAgents = path.join(bundledOpencode, "agents");
+  const bundledSkills = path.join(bundledOpencode, "skills");
+  const bundledAgentsMd = path.join(bundledOpencode, "AGENTS.md");
+
+  let agentCount = 0;
+  let skillCount = 0;
+  let agentsMdCopied = false;
+
+  // Copy agent personas
+  if (existsSync(bundledAgents)) {
+    const targetAgents = path.join(targetDir, "agents");
+    await fs.mkdir(targetAgents, { recursive: true });
+    const files = await fs.readdir(bundledAgents);
+    for (const file of files) {
+      if (!file.endsWith(".md")) continue;
+      const src = path.join(bundledAgents, file);
+      const dest = path.join(targetAgents, file);
+      const srcContent = await fs.readFile(src, "utf-8");
+      const srcHash = createHash("sha256").update(srcContent).digest("hex");
+      if (existsSync(dest)) {
+        const destContent = await fs.readFile(dest, "utf-8");
+        const destHash = createHash("sha256").update(destContent).digest("hex");
+        if (srcHash === destHash) {
+          agentCount++;
+          continue; // Identical, skip
+        }
+        // Different — back up then overwrite
+        if (!dryRun) {
+          await backupFile(targetAgents, file);
+          await fs.writeFile(dest, srcContent, "utf-8");
+        }
+      } else {
+        if (!dryRun) await fs.writeFile(dest, srcContent, "utf-8");
+      }
+      agentCount++;
+    }
+  }
+
+  // Copy skills (directories with SKILL.md)
+  if (existsSync(bundledSkills)) {
+    const targetSkills = path.join(targetDir, "skills");
+    await fs.mkdir(targetSkills, { recursive: true });
+    const dirs = await fs.readdir(bundledSkills);
+    for (const dir of dirs) {
+      const srcDir = path.join(bundledSkills, dir);
+      const stat = await fs.stat(srcDir);
+      if (!stat.isDirectory()) continue;
+      const destDir = path.join(targetSkills, dir);
+      // Copy the entire skill directory
+      await fs.mkdir(destDir, { recursive: true });
+      const entries = await fs.readdir(srcDir, { withFileTypes: true });
+      for (const entry of entries) {
+        const srcPath = path.join(srcDir, entry.name);
+        const destPath = path.join(destDir, entry.name);
+        if (entry.isDirectory()) {
+          await fs.mkdir(destPath, { recursive: true });
+          const subEntries = await fs.readdir(srcDir + "/" + entry.name);
+          for (const sub of subEntries) {
+            await fs.copyFile(
+              path.join(srcDir, entry.name, sub),
+              path.join(destDir, entry.name, sub),
+            );
+          }
+        } else {
+          await fs.copyFile(srcPath, destPath);
+        }
+      }
+      skillCount++;
+    }
+  }
+
+  // Copy AGENTS.md (only if it doesn't exist — don't overwrite user's)
+  if (existsSync(bundledAgentsMd)) {
+    const destAgentsMd = path.join(targetDir, "AGENTS.md");
+    if (!existsSync(destAgentsMd)) {
+      if (!dryRun) {
+        await fs.copyFile(bundledAgentsMd, destAgentsMd);
+      }
+      agentsMdCopied = true;
+    }
+  }
+
+  return { agents: agentCount, skills: skillCount, agentsMd: agentsMdCopied };
+}
 
 /**
  * Local base class for init-flow errors. Extends the download module's
@@ -1383,11 +1492,16 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
     { "opencode.json": { path: "opencode.json", sha256: sha } },
   );
 
+  // Copy agent personas, skills, AGENTS.md from the npm package
+  const assets = await copyStaticAssets(configDir, args.dryRun || false);
+
   // Print summary
   process.stdout.write(`\nOK neuralgentics homedir config installed in ${configDir}\n`);
   process.stdout.write(`Config:  ${configDir}/opencode.json\n`);
   process.stdout.write(`Backend: ${promptConfig.backend}\n`);
   process.stdout.write(`Embed:   ${promptConfig.embedding}\n`);
+  process.stdout.write(`Agents:  ${assets.agents} personas\n`);
+  process.stdout.write(`Skills:  ${assets.skills} skills\n`);
   process.stdout.write(`State:   ${configDir}/${STATE_FILENAME}\n`);
   process.stdout.write(`\nNext: neuralgentics --init-project\n`);
   return 0;
@@ -1443,11 +1557,16 @@ export async function runInitProject(args: InitProjectOptions): Promise<number> 
     { "opencode.json": { path: "opencode.json", sha256: sha } },
   );
 
+  // Copy agent personas, skills, AGENTS.md from the npm package
+  const assets = await copyStaticAssets(configDir, args.dryRun || false);
+
   // Print summary
   process.stdout.write(`\nOK neuralgentics project config installed in ${configDir}\n`);
   process.stdout.write(`Config:  ${configDir}/opencode.json\n`);
   process.stdout.write(`Backend: ${promptConfig.backend}\n`);
   process.stdout.write(`Embed:   ${promptConfig.embedding}\n`);
+  process.stdout.write(`Agents:  ${assets.agents} personas\n`);
+  process.stdout.write(`Skills:  ${assets.skills} skills\n`);
   process.stdout.write(`State:   ${configDir}/${STATE_FILENAME}\n`);
   process.stdout.write(`\nNext: opencode\n`);
   return 0;
