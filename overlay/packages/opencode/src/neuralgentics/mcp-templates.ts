@@ -37,7 +37,7 @@ export const HOMEDIR_MCP_TEMPLATES: McpBlock = {
   "memini-ai-dev": {
     type: "local",
     enabled: false,
-    command: ["uvx", "memini-ai-dev"],
+    command: ["uvx", "--from", "memini-ai-dev", "memini-ai"],
     env: {
       MEMINI_DB_URL: "postgresql://neuralgentics:neuralgentics@localhost:6200/neuralgentics",
       MEMINI_VECTOR_BACKEND: "pgvector",
@@ -141,7 +141,7 @@ export const PROJECT_MCP_TEMPLATES: McpBlock = {
   "memini-ai-dev": {
     type: "local",
     enabled: true,
-    command: ["uvx", "memini-ai-dev"],
+    command: ["uvx", "--from", "memini-ai-dev", "memini-ai"],
     env: {
       MEMINI_DB_URL: "pgembed",
       MEMINI_VECTOR_BACKEND: "pgvector",

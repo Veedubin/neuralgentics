@@ -228,6 +228,15 @@ export async function runAllPrompts(
 ): Promise<PromptConfig> {
   const config: PromptConfig = { ...DEFAULT_PROMPT_CONFIG };
 
+  // Apply flag-determined values BEFORE the early-return check.
+  // These flags set the value without prompting, so we must populate
+  // the config even when we skip the interactive prompt.
+  if (flags.embedded) config.backend = "pgembed";
+  if (flags.team) config.backend = "team";
+  if (flags.cpuEmbed) config.embedding = "cpu";
+  if (flags.autoEmbed) config.embedding = "auto";
+  if (flags.gpuEmbed) config.embedding = "gpu";
+
   // Check if any prompts will actually be shown.
   // If all are skipped by flags, don't create a readline interface at all.
   const needsBackend = !flags.embedded && !flags.team && !flags.yes;
@@ -235,7 +244,28 @@ export async function runAllPrompts(
   const needsKey = !flags.yes && !process.env.OLLAMA_API_KEY;
 
   if (!needsBackend && !needsEmbedding && !needsKey) {
-    return config; // All prompts skipped
+    // All prompts skipped — but team connection details still need prompting
+    // if --team was used without --yes (user needs to provide IP/port/db).
+    // With --yes --team, use defaults.
+    if (config.backend === "team") {
+      if (flags.yes) {
+        config.teamHost = "localhost";
+        config.teamPort = "5432";
+        config.teamDatabase = "neuralgentics";
+      } else {
+        // Shouldn't reach here (needsBackend would be true), but just in case
+        const session = new PromptSession();
+        try {
+          const conn = await promptTeamConnection(session);
+          config.teamHost = conn.host;
+          config.teamPort = conn.port;
+          config.teamDatabase = conn.database;
+        } finally {
+          session.close();
+        }
+      }
+    }
+    return config;
   }
 
   const session = new PromptSession();
