@@ -1445,18 +1445,42 @@ async function writeTwoInitState(
 }
 
 /**
- * Install global config to the homedir config directory.
+ * Shared install logic for both --init-homedir and --init-project.
  *
- * Writes: provider block, LSP, formatter, compaction, tool_output,
- * small_model, server, HOMEDIR_MCP_TEMPLATES, global agents, global skills,
- * AGENTS.md.
+ * The only differences are:
+ *   - Target directory (homedir config path vs project config path)
+ *   - Config builder (homedir config vs project config)
+ *   - State type label ("homedir" vs "project")
+ *   - Re-run command string for the error message
+ *   - DB bootstrap only runs for team server (pgembed manages its own DB)
  */
-export async function runInitHomedir(args: InitHomedirOptions): Promise<number> {
+interface InstallOptions {
+  target: string;
+  force: boolean;
+  dryRun: boolean;
+  yes: boolean;
+  version: string;
+  embedded: boolean;
+  team: boolean;
+  cpuEmbed: boolean;
+  autoEmbed: boolean;
+  gpuEmbed: boolean;
+}
+
+async function runInstall(
+  args: InstallOptions,
+  mode: "homedir" | "project",
+): Promise<number> {
   const configDir = args.target && args.target !== "."
     ? path.resolve(args.target)
-    : getHomedirConfigPath();
+    : mode === "homedir"
+      ? getHomedirConfigPath()
+      : getProjectConfigPath();
 
-  process.stdout.write(`\nInstalling global config to: ${configDir}\n`);
+  const label = mode === "homedir" ? "global" : "project";
+  const rerunCmd = mode === "homedir" ? "--init-homedir" : "--init-project";
+
+  process.stdout.write(`\nInstalling ${label} config to: ${configDir}\n`);
 
   // Run interactive prompts unless flags skip them
   const promptFlags: PromptFlags = {
@@ -1470,15 +1494,13 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
 
   if (args.dryRun) {
     const dryConfig = { ...DEFAULT_PROMPT_CONFIG };
-    process.stdout.write(`[DRY-RUN] Would write homedir config to ${configDir}\n`);
+    process.stdout.write(`[DRY-RUN] Would write ${label} config to ${configDir}\n`);
     process.stdout.write(`[DRY-RUN] Backend: ${dryConfig.backend}\n`);
     process.stdout.write(`[DRY-RUN] Embedding: ${dryConfig.embedding}\n`);
     return 0;
   }
 
   // CHECK SYSTEM DEPS FIRST — before writing any files.
-  // If anything required is missing, print the install commands and exit.
-  // Nothing gets written to disk until deps are satisfied.
   process.stdout.write("\nChecking system dependencies...\n\n");
   const sysDeps = await checkAndInstallSystemDeps(args.dryRun);
 
@@ -1502,7 +1524,6 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
     }
     process.stdout.write("\n");
 
-    // Show ALL missing dep install commands — blocking and non-blocking
     const seenCmds = new Set<string>();
     for (const dep of sysDeps.deps) {
       if (!dep.present && dep.installCommand) {
@@ -1513,11 +1534,10 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
       }
     }
 
-    // Only exit if blocking deps (uv/node/npx) are missing
     if (hasBlocking) {
       process.stdout.write("\n");
       process.stdout.write("  After installing the above, re-run:\n");
-      process.stdout.write("    neuralgentics --init-homedir\n");
+      process.stdout.write(`    neuralgentics ${rerunCmd}\n`);
       return 1;
     } else {
       process.stdout.write("\n");
@@ -1533,9 +1553,11 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
 
   const promptConfig = await runAllPrompts(configDir, promptFlags);
 
-  // Write opencode.json
-  const homedirConfig = buildHomedirOpencodeJson(promptConfig);
-  const configJson = JSON.stringify(homedirConfig, null, 2) + "\n";
+  // Write opencode.json (different builder per mode)
+  const config = mode === "homedir"
+    ? buildHomedirOpencodeJson(promptConfig)
+    : buildProjectOpencodeJson(promptConfig);
+  const configJson = JSON.stringify(config, null, 2) + "\n";
   await writeConfigWithBackup(configDir, "opencode.json", configJson, args.force, args.dryRun);
 
   // Write state file
@@ -1543,26 +1565,40 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
   await writeTwoInitState(
     configDir,
     args.version === "latest" ? "latest" : args.version,
-    "homedir",
+    mode,
     { "opencode.json": { path: "opencode.json", sha256: sha } },
   );
 
   // Copy agent personas, skills, AGENTS.md from the npm package
   const assets = await copyStaticAssets(configDir, args.dryRun || false);
 
-  process.stdout.write("\n");
-
-  // Pre-download MCP packages so the first `opencode` launch is not
-  // blocked on a cold `uvx` / `npx` fetch. One package failing does NOT
-  // abort the install — failures are reported in the summary.
-  process.stdout.write("Pre-downloading MCP packages...\n");
+  // Pre-download MCP packages (both modes)
+  process.stdout.write("\nPre-downloading MCP packages...\n");
   const pkgResult: PreDownloadResult = await preDownloadPackages(
     { ...HOMEDIR_MCP_TEMPLATES, ...PROJECT_MCP_TEMPLATES },
     args.dryRun,
   );
 
+  // DB bootstrap — ONLY for team server mode (pgembed manages its own DB)
+  let dbResult: BootstrapResult | null = null;
+  if (promptConfig.backend === "team" &&
+      promptConfig.teamHost !== undefined &&
+      promptConfig.teamPort !== undefined &&
+      promptConfig.teamDatabase !== undefined) {
+    process.stdout.write("\nSetting up team database connection...\n");
+    dbResult = await bootstrapDatabase(
+      promptConfig.backend,
+      {
+        host: promptConfig.teamHost,
+        port: promptConfig.teamPort,
+        database: promptConfig.teamDatabase,
+      },
+      args.dryRun,
+    );
+  }
+
   // Print summary
-  process.stdout.write(`\nOK neuralgentics homedir config installed in ${configDir}\n`);
+  process.stdout.write(`\nOK neuralgentics ${label} config installed in ${configDir}\n`);
   process.stdout.write(`Config:  ${configDir}/opencode.json\n`);
   process.stdout.write(`Backend: ${promptConfig.backend}\n`);
   process.stdout.write(`Embed:   ${promptConfig.embedding}\n`);
@@ -1572,177 +1608,40 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
   // Packages installed section
   process.stdout.write("\nPackages installed:\n");
   for (const name of pkgResult.installed) {
-    const via = (HOMEDIR_MCP_TEMPLATES[name]?.command?.[0] ??
-      PROJECT_MCP_TEMPLATES[name]?.command?.[0] ?? "?");
-    process.stdout.write(`  ✓ ${name} (via ${via})\n`);
+    process.stdout.write(`  ✓ ${name}\n`);
   }
   for (const fail of pkgResult.failed) {
     process.stdout.write(`  ✗ ${fail.name}: ${fail.error}\n`);
   }
-  // Surface any missing system deps (e.g. libgl1) with the exact remediation.
-  const missingLibs = sysDeps.missing.filter((m) => m.startsWith("lib"));
-  if (missingLibs.length > 0) {
-    process.stdout.write(
-      `  ✗ videre-mcp system deps: ${missingLibs.join(", ")} missing — ` +
-        `run: sudo apt-get install ${missingLibs.join(" ")}\n`,
-    );
+
+  // Database section (team server only)
+  if (dbResult !== null) {
+    process.stdout.write("\nDatabase:\n");
+    if (dbResult.success) {
+      process.stdout.write(`  ✓ ${dbResult.message}\n`);
+      if (dbResult.details) process.stdout.write(`  ✓ ${dbResult.details}\n`);
+    } else {
+      process.stdout.write(`  ✗ ${dbResult.message}\n`);
+      process.stdout.write(
+        `  ⚠ The DB is not ready. Fix the issue above, then re-run:\n` +
+          `      neuralgentics ${rerunCmd}\n`,
+      );
+    }
   }
 
   process.stdout.write(`\nState:   ${configDir}/${STATE_FILENAME}\n`);
-  process.stdout.write(`\nNext: neuralgentics --init-project\n`);
+  process.stdout.write(`\nNext: ${mode === "homedir" ? "neuralgentics --init-project" : "opencode"}\n`);
   return 0;
 }
 
-/**
- * Install project config to {CWD}/.opencode/ (or --target).
- *
- * Writes: plugin, instructions, PROJECT_MCP_TEMPLATES with memini-ai-dev
- * (pgembed defaults), project agents, project skills, AGENTS.md.
- */
+/** Install global config to the homedir config directory. */
+export async function runInitHomedir(args: InitHomedirOptions): Promise<number> {
+  return runInstall(args, "homedir");
+}
+
+/** Install project config to {CWD}/.opencode/ (or --target). */
 export async function runInitProject(args: InitProjectOptions): Promise<number> {
-  const configDir = args.target && args.target !== "."
-    ? path.resolve(args.target)
-    : getProjectConfigPath();
-
-  process.stdout.write(`\nInstalling project config to: ${configDir}\n`);
-
-  // Run interactive prompts unless flags skip them
-  const promptFlags: PromptFlags = {
-    yes: args.yes,
-    embedded: args.embedded,
-    team: args.team,
-    cpuEmbed: args.cpuEmbed,
-    autoEmbed: args.autoEmbed,
-    gpuEmbed: args.gpuEmbed,
-  };
-
-  if (args.dryRun) {
-    const dryConfig = { ...DEFAULT_PROMPT_CONFIG };
-    process.stdout.write(`[DRY-RUN] Would write project config to ${configDir}\n`);
-    process.stdout.write(`[DRY-RUN] Backend: ${dryConfig.backend}\n`);
-    process.stdout.write(`[DRY-RUN] Embedding: ${dryConfig.embedding}\n`);
-    return 0;
-  }
-
-  // CHECK SYSTEM DEPS FIRST — before writing any files.
-  process.stdout.write("\nChecking system dependencies...\n\n");
-  const sysDeps = await checkAndInstallSystemDeps(args.dryRun);
-
-  for (const dep of sysDeps.deps) {
-    if (dep.present) {
-      process.stdout.write(`  ✓ ${dep.name}\n`);
-    } else {
-      process.stdout.write(`  ✗ ${dep.name}\n`);
-    }
-  }
-
-  // If ANY deps are missing, show ALL install commands at once
-  if (sysDeps.missing.length > 0) {
-    const hasBlocking = sysDeps.blockingMissing.length > 0;
-
-    process.stdout.write("\n");
-    if (hasBlocking) {
-      process.stdout.write("  The following commands need to be run before continuing:\n");
-    } else {
-      process.stdout.write("  Some optional dependencies are missing. Install them when ready:\n");
-    }
-    process.stdout.write("\n");
-
-    // Show ALL missing dep install commands — blocking and non-blocking
-    const seenCmds = new Set<string>();
-    for (const dep of sysDeps.deps) {
-      if (!dep.present && dep.installCommand) {
-        if (!seenCmds.has(dep.installCommand)) {
-          seenCmds.add(dep.installCommand);
-          process.stdout.write(`    ${dep.installCommand}\n`);
-        }
-      }
-    }
-
-    // Only exit if blocking deps (uv/node/npx) are missing
-    if (hasBlocking) {
-      process.stdout.write("\n");
-      process.stdout.write("  After installing the above, re-run:\n");
-      process.stdout.write("    neuralgentics --init-project\n");
-      return 1;
-    } else {
-      process.stdout.write("\n");
-      process.stdout.write("  Everything else will work without these.\n");
-    }
-  }
-
-  process.stdout.write("\n");
-
-  // All deps present — proceed with the install.
-  // Create config dir BEFORE prompts (prompts write .env to this dir)
-  await fs.mkdir(configDir, { recursive: true });
-
-  const promptConfig = await runAllPrompts(configDir, promptFlags);
-
-  // Write opencode.json
-  const projectConfig = buildProjectOpencodeJson(promptConfig);
-  const configJson = JSON.stringify(projectConfig, null, 2) + "\n";
-  await writeConfigWithBackup(configDir, "opencode.json", configJson, args.force, args.dryRun);
-
-  // Write state file
-  const sha = createHash("sha256").update(configJson).digest("hex");
-  await writeTwoInitState(
-    configDir,
-    args.version === "latest" ? "latest" : args.version,
-    "project",
-    { "opencode.json": { path: "opencode.json", sha256: sha } },
-  );
-
-  // Copy agent personas, skills, AGENTS.md from the npm package
-  const assets = await copyStaticAssets(configDir, args.dryRun || false);
-
-  // NEW: Bootstrap the memini-ai database.
-  //      pgembed: create + start embedded Postgres, run migrations.
-  //      team:    connect to remote server, run migrations.
-  //      A failure here does NOT crash the installer — the user can fix the
-  //      DB later and re-run (init is idempotent).
-  process.stdout.write("\nBootstrapping database...\n");
-  const teamConfig: TeamDbConfig | undefined =
-    promptConfig.backend === "team" &&
-    promptConfig.teamHost !== undefined &&
-    promptConfig.teamPort !== undefined &&
-    promptConfig.teamDatabase !== undefined
-      ? {
-          host: promptConfig.teamHost,
-          port: promptConfig.teamPort,
-          database: promptConfig.teamDatabase,
-        }
-      : undefined;
-  const dbResult: BootstrapResult = await bootstrapDatabase(
-    promptConfig.backend,
-    teamConfig,
-    args.dryRun,
-  );
-
-  // Print summary
-  process.stdout.write(`\nOK neuralgentics project config installed in ${configDir}\n`);
-  process.stdout.write(`Config:  ${configDir}/opencode.json\n`);
-  process.stdout.write(`Backend: ${promptConfig.backend}\n`);
-  process.stdout.write(`Embed:   ${promptConfig.embedding}\n`);
-  process.stdout.write(`Agents:  ${assets.agents} personas\n`);
-  process.stdout.write(`Skills:  ${assets.skills} skills\n`);
-
-  // Database section
-  process.stdout.write("\nDatabase:\n");
-  if (dbResult.success) {
-    process.stdout.write(`  ✓ ${dbResult.message}\n`);
-    if (dbResult.details) process.stdout.write(`  ✓ ${dbResult.details}\n`);
-  } else {
-    process.stdout.write(`  ✗ ${dbResult.message}\n`);
-    process.stdout.write(
-      "  ⚠ The DB is not ready. Fix the issue above, then re-run:\n" +
-        "      neuralgentics --init-project\n",
-    );
-  }
-
-  process.stdout.write(`\nState:   ${configDir}/${STATE_FILENAME}\n`);
-  process.stdout.write(`\nNext: opencode\n`);
-  return 0;
+  return runInstall(args, "project");
 }
 
 // ---------------------------------------------------------------------------
