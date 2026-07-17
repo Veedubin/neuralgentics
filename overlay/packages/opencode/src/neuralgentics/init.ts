@@ -1476,6 +1476,58 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
     return 0;
   }
 
+  // CHECK SYSTEM DEPS FIRST — before writing any files.
+  // If anything required is missing, print the install commands and exit.
+  // Nothing gets written to disk until deps are satisfied.
+  process.stdout.write("\nChecking system dependencies...\n\n");
+  const sysDeps = await checkAndInstallSystemDeps(args.dryRun);
+
+  for (const dep of sysDeps.deps) {
+    if (dep.present) {
+      process.stdout.write(`  ✓ ${dep.name}\n`);
+    } else {
+      process.stdout.write(`  ✗ ${dep.name}\n`);
+    }
+  }
+
+  // If ANY deps are missing, show ALL install commands at once
+  if (sysDeps.missing.length > 0) {
+    const hasBlocking = sysDeps.blockingMissing.length > 0;
+
+    process.stdout.write("\n");
+    if (hasBlocking) {
+      process.stdout.write("  The following commands need to be run before continuing:\n");
+    } else {
+      process.stdout.write("  Some optional dependencies are missing. Install them when ready:\n");
+    }
+    process.stdout.write("\n");
+
+    // Show ALL missing dep install commands — blocking and non-blocking
+    const seenCmds = new Set<string>();
+    for (const dep of sysDeps.deps) {
+      if (!dep.present && dep.installCommand) {
+        if (!seenCmds.has(dep.installCommand)) {
+          seenCmds.add(dep.installCommand);
+          process.stdout.write(`    ${dep.installCommand}\n`);
+        }
+      }
+    }
+
+    // Only exit if blocking deps (uv/node/npx) are missing
+    if (hasBlocking) {
+      process.stdout.write("\n");
+      process.stdout.write("  After installing the above, re-run:\n");
+      process.stdout.write("    neuralgentics --init-homedir\n");
+      return 1;
+    } else {
+      process.stdout.write("\n");
+      process.stdout.write("  Everything else will work without these.\n");
+    }
+  }
+
+  process.stdout.write("\n");
+
+  // All deps present — proceed with the install.
   // Create config dir BEFORE prompts (prompts write .env to this dir)
   await fs.mkdir(configDir, { recursive: true });
 
@@ -1497,55 +1549,6 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
 
   // Copy agent personas, skills, AGENTS.md from the npm package
   const assets = await copyStaticAssets(configDir, args.dryRun || false);
-
-  // Check system deps (uv / node / npx + Linux ML libs for videre-mcp).
-  process.stdout.write("\nChecking system dependencies...\n\n");
-  const sysDeps = await checkAndInstallSystemDeps(args.dryRun);
-
-  // Print the status list first — all ✓ and ✗ in a clean column
-  for (const dep of sysDeps.deps) {
-    if (dep.present) {
-      process.stdout.write(`  ✓ ${dep.name}\n`);
-    } else {
-      process.stdout.write(`  ✗ ${dep.name}\n`);
-    }
-  }
-
-  // If anything is missing, print a copy-pasteable install commands block
-  if (sysDeps.missing.length > 0) {
-    process.stdout.write("\n");
-    process.stdout.write("  The following commands need to be run before continuing:\n");
-    process.stdout.write("\n");
-
-    // Deduplicate install commands (libgl1 + libglib2.0-0 share the same apt-get)
-    const seenCmds = new Set<string>();
-    for (const dep of sysDeps.deps) {
-      if (!dep.present && dep.installCommand) {
-        if (!seenCmds.has(dep.installCommand)) {
-          seenCmds.add(dep.installCommand);
-          process.stdout.write(`    ${dep.installCommand}\n`);
-        }
-      }
-    }
-
-    // If uv is missing, we can't proceed with package pre-download
-    if (sysDeps.missing.includes("uv")) {
-      process.stdout.write("\n");
-      process.stdout.write("  After installing the above, re-run:\n");
-      process.stdout.write("    neuralgentics --init-homedir\n");
-      process.stdout.write("\n");
-      process.stdout.write("  Your config and agents are already written —\n");
-      process.stdout.write("  only the package pre-download was skipped.\n");
-      return 0;
-    }
-
-    // If only ML libs are missing (uv is present), warn but continue
-    if (sysDeps.missing.some(m => m !== "uv")) {
-      process.stdout.write("\n");
-      process.stdout.write("  videre-mcp will not start until the ML libraries above are installed.\n");
-      process.stdout.write("  Everything else will work — continuing with package pre-download...\n");
-    }
-  }
 
   process.stdout.write("\n");
 
@@ -1621,6 +1624,56 @@ export async function runInitProject(args: InitProjectOptions): Promise<number> 
     return 0;
   }
 
+  // CHECK SYSTEM DEPS FIRST — before writing any files.
+  process.stdout.write("\nChecking system dependencies...\n\n");
+  const sysDeps = await checkAndInstallSystemDeps(args.dryRun);
+
+  for (const dep of sysDeps.deps) {
+    if (dep.present) {
+      process.stdout.write(`  ✓ ${dep.name}\n`);
+    } else {
+      process.stdout.write(`  ✗ ${dep.name}\n`);
+    }
+  }
+
+  // If ANY deps are missing, show ALL install commands at once
+  if (sysDeps.missing.length > 0) {
+    const hasBlocking = sysDeps.blockingMissing.length > 0;
+
+    process.stdout.write("\n");
+    if (hasBlocking) {
+      process.stdout.write("  The following commands need to be run before continuing:\n");
+    } else {
+      process.stdout.write("  Some optional dependencies are missing. Install them when ready:\n");
+    }
+    process.stdout.write("\n");
+
+    // Show ALL missing dep install commands — blocking and non-blocking
+    const seenCmds = new Set<string>();
+    for (const dep of sysDeps.deps) {
+      if (!dep.present && dep.installCommand) {
+        if (!seenCmds.has(dep.installCommand)) {
+          seenCmds.add(dep.installCommand);
+          process.stdout.write(`    ${dep.installCommand}\n`);
+        }
+      }
+    }
+
+    // Only exit if blocking deps (uv/node/npx) are missing
+    if (hasBlocking) {
+      process.stdout.write("\n");
+      process.stdout.write("  After installing the above, re-run:\n");
+      process.stdout.write("    neuralgentics --init-project\n");
+      return 1;
+    } else {
+      process.stdout.write("\n");
+      process.stdout.write("  Everything else will work without these.\n");
+    }
+  }
+
+  process.stdout.write("\n");
+
+  // All deps present — proceed with the install.
   // Create config dir BEFORE prompts (prompts write .env to this dir)
   await fs.mkdir(configDir, { recursive: true });
 

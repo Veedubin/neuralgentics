@@ -32,6 +32,9 @@ export interface SysDep {
   installCommand?: string;
   /** Short note about what this dep is for */
   note?: string;
+  /** If true, missing this dep blocks the entire install (uv, node, npx).
+   *  If false, missing this dep only warns (ML libs for videre-mcp). */
+  blocksInstall: boolean;
 }
 
 export interface SysDepsResult {
@@ -39,6 +42,8 @@ export interface SysDepsResult {
   deps: SysDep[];
   /** Convenience: names of missing deps */
   missing: string[];
+  /** Convenience: names of missing deps that block the install */
+  blockingMissing: string[];
 }
 
 /** Check whether a command exists on PATH. */
@@ -104,11 +109,12 @@ function isMac(): boolean {
 export async function checkAndInstallSystemDeps(_dryRun: boolean): Promise<SysDepsResult> {
   const deps: SysDep[] = [];
   const missing: string[] = [];
+  const blockingMissing: string[] = [];
 
-  // --- Required runner tools ---
+  // --- Required runner tools (block install if missing) ---
 
   if (hasCmd("uv")) {
-    deps.push({ name: `uv (${versionOf("uv")})`, present: true });
+    deps.push({ name: `uv (${versionOf("uv")})`, present: true, blocksInstall: false });
   } else {
     const isMacWithBrew = isMac() && hasCmd("brew");
     const installCmd = isMacWithBrew
@@ -119,35 +125,41 @@ export async function checkAndInstallSystemDeps(_dryRun: boolean): Promise<SysDe
       present: false,
       installCommand: installCmd,
       note: "Required for Python MCP servers (memini-ai-dev, videre-mcp, markitdown, duckdb)",
+      blocksInstall: true,
     });
     missing.push("uv");
+    blockingMissing.push("uv");
   }
 
   if (hasCmd("node")) {
-    deps.push({ name: `node (${versionOf("node")})`, present: true });
+    deps.push({ name: `node (${versionOf("node")})`, present: true, blocksInstall: false });
   } else {
     deps.push({
       name: "node",
       present: false,
       installCommand: "https://nodejs.org/en/download/",
       note: "Required for Node MCP servers (ssh-mcp, playwright, github-mcp, searxng, calculator)",
+      blocksInstall: true,
     });
     missing.push("node");
+    blockingMissing.push("node");
   }
 
   if (hasCmd("npx")) {
-    deps.push({ name: `npx (${versionOf("npx")})`, present: true });
+    deps.push({ name: `npx (${versionOf("npx")})`, present: true, blocksInstall: false });
   } else {
     deps.push({
       name: "npx",
       present: false,
       installCommand: "https://nodejs.org/en/download/",
       note: "Ships with Node.js",
+      blocksInstall: true,
     });
     missing.push("npx");
+    blockingMissing.push("npx");
   }
 
-  // --- videre-mcp system ML deps (Linux only) ---
+  // --- videre-mcp system ML deps (Linux only, non-blocking) ---
 
   if (isLinux()) {
     const libs = [
@@ -157,21 +169,20 @@ export async function checkAndInstallSystemDeps(_dryRun: boolean): Promise<SysDe
     const missingLibs: string[] = [];
     for (const lib of libs) {
       if (dpkgInstalled(lib.pkg)) {
-        deps.push({ name: lib.pkg, present: true });
+        deps.push({ name: lib.pkg, present: true, blocksInstall: false });
       } else {
         deps.push({
           name: lib.pkg,
           present: false,
           installCommand: `sudo apt-get install -y ${lib.pkg}`,
           note: lib.note,
+          blocksInstall: false,
         });
         missingLibs.push(lib.pkg);
         missing.push(lib.pkg);
       }
     }
-    // If any ML libs are missing, add a combined install command hint
     if (missingLibs.length > 0) {
-      // Replace individual installCommands with the combined one
       const combined = `sudo apt-get install -y ${missingLibs.join(" ")}`;
       for (const d of deps) {
         if (!d.present && missingLibs.includes(d.name)) {
@@ -181,5 +192,5 @@ export async function checkAndInstallSystemDeps(_dryRun: boolean): Promise<SysDe
     }
   }
 
-  return { deps, missing };
+  return { deps, missing, blockingMissing };
 }
