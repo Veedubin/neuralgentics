@@ -1173,7 +1173,10 @@ function buildHomedirOpencodeJson(promptConfig: PromptConfig): Record<string, un
   return {
     "$schema": "https://opencode.ai/config.json",
     "autoupdate": true,
-    "tool_output": "terminal",
+    "tool_output": {
+      "max_lines": 10000,
+      "max_bytes": 512000,
+    },
     "compaction": {
       "keep": [
         "**/AGENTS.md",
@@ -1205,13 +1208,14 @@ function buildHomedirOpencodeJson(promptConfig: PromptConfig): Record<string, un
     },
     "lsp": {
       "typescript": {
-        "command": "typescript-language-server",
-        "args": ["--stdio"],
-        "enabled": true,
+        "disabled": false,
+        "command": ["npx", "typescript-language-server", "--stdio"],
       },
     },
     "formatter": {
-      "typescript": "prettier --write",
+      "prettier": {
+        "disabled": false,
+      },
     },
     "mcp": mcpBlock,
   };
