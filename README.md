@@ -158,7 +158,12 @@ neuralgentics --update-project
 neuralgentics --update-homedir
 ```
 
-Updates back up overwritten files to `opencode-bak/` with timestamps before replacing them. Since we're not deleting (just moving), running from the wrong directory is safe.
+The update flow:
+1. **Updates config files** — opencode.json, agent personas, skills, AGENTS.md from the latest release. Old files backed up to `opencode-bak/` before overwrite.
+2. **Checks system dependencies** — offers to install missing system packages (same as init).
+3. **Offers to refresh MCP packages** — re-downloads all MCP servers via `uvx`/`npx` so they're at the latest version.
+
+Since we're not deleting (just moving to `opencode-bak/`), running from the wrong directory is safe.
 
 ## Manual install (alternative)
 

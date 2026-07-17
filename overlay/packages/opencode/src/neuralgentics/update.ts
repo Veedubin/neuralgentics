@@ -26,6 +26,7 @@ import { createHash } from "node:crypto";
 import { promises as fs, existsSync } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import * as readline from "node:readline";
 
 import {
   downloadTarball,
@@ -343,6 +344,7 @@ export async function updateAll(opts: UpdateOptions): Promise<UpdateResult[]> {
     }
   }
   printUpdateSummary(results);
+  await offerPackageUpdates(opts.dryRun);
   return results;
 }
 
@@ -354,6 +356,7 @@ export async function updateProject(opts: UpdateOptions): Promise<UpdateResult[]
   const configDir = getProjectConfigPath();
   const result = await updateConfigDir(configDir, extractDir, version, opts);
   printUpdateSummary([result]);
+  await offerPackageUpdates(opts.dryRun);
   return [result];
 }
 
@@ -365,6 +368,7 @@ export async function updateHomedir(opts: UpdateOptions): Promise<UpdateResult[]
   const configDir = getHomedirConfigPath();
   const result = await updateConfigDir(configDir, extractDir, version, opts);
   printUpdateSummary([result]);
+  await offerPackageUpdates(opts.dryRun);
   return [result];
 }
 
@@ -393,5 +397,68 @@ function printUpdateSummary(results: UpdateResult[]): void {
         `\nPersonalize the updated files if needed — your old versions are backed up at ${path.dirname(firstBackupDir)}/\n`,
       );
     }
+  }
+}
+
+/**
+ * Offer to update MCP packages (uvx/npx cache refresh) and check system deps.
+ *
+ * Called after config files are updated. Runs the same dep check as init,
+ * then re-warms the uvx/npx cache for all MCP servers.
+ */
+async function offerPackageUpdates(dryRun: boolean): Promise<void> {
+  // Re-check system deps (may need updates since last install)
+  process.stdout.write("\nChecking system dependencies...\n\n");
+  const { checkAndInstallSystemDeps } = await import("./sysdeps.js");
+  const sysDeps = await checkAndInstallSystemDeps(dryRun);
+
+  for (const dep of sysDeps.deps) {
+    if (dep.present) {
+      process.stdout.write(`  ✓ ${dep.name}\n`);
+    } else {
+      process.stdout.write(`  ✗ ${dep.name}\n`);
+    }
+  }
+
+  if (sysDeps.missing.length > 0) {
+    process.stdout.write("\n");
+    process.stdout.write("  Some dependencies are missing. See the messages above.\n");
+  }
+
+  // Offer to refresh MCP package cache
+  process.stdout.write("\n");
+  process.stdout.write("Refresh MCP server packages (updates to latest versions)?\n");
+  process.stdout.write("  This re-downloads all MCP servers via uvx/npx.\n");
+
+  if (dryRun) {
+    process.stdout.write("[DRY-RUN] Would refresh all MCP packages\n");
+    return;
+  }
+
+  const answer = await new Promise<string>((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question("  [Y/n]: ", (a: string) => { rl.close(); resolve(a); });
+  });
+
+  if (answer.trim().toLowerCase().startsWith("n")) {
+    process.stdout.write("  Skipped — MCP packages will update on next opencode launch.\n");
+    return;
+  }
+
+  // Re-warm the uvx/npx cache
+  process.stdout.write("\nRefreshing MCP packages...\n");
+  const { preDownloadPackages } = await import("./install-packages.js");
+  const { HOMEDIR_MCP_TEMPLATES, PROJECT_MCP_TEMPLATES } = await import("./mcp-templates.js");
+  const pkgResult = await preDownloadPackages(
+    { ...HOMEDIR_MCP_TEMPLATES, ...PROJECT_MCP_TEMPLATES },
+    dryRun,
+  );
+
+  process.stdout.write("\nPackages refreshed:\n");
+  for (const name of pkgResult.installed) {
+    process.stdout.write(`  ✓ ${name}\n`);
+  }
+  for (const fail of pkgResult.failed) {
+    process.stdout.write(`  ✗ ${fail.name}: ${fail.error}\n`);
   }
 }
