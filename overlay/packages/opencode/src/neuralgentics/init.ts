@@ -1214,7 +1214,6 @@ function buildHomedirOpencodeJson(promptConfig: PromptConfig): Record<string, un
       "typescript": "prettier --write",
     },
     "mcp": mcpBlock,
-    "_neuralgentics_embedding_dim": embeddingDim,
   };
 }
 

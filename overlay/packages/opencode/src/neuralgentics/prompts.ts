@@ -146,10 +146,21 @@ export async function promptOllamaApiKey(
   // Skip if --yes.
   if (flags.yes) return undefined;
 
-  process.stdout.write("\n? Enter your Ollama Cloud API key (get one at https://ollama.com):\n");
+  process.stdout.write("\n? Want to add your Ollama Cloud API key now? (get one at https://ollama.com)\n");
+  process.stdout.write("  You can skip and add it later to ~/.config/opencode/.env\n");
+  const wantKey = (await askQuestion("  [y/N]: ")).trim().toLowerCase();
+  if (!wantKey.startsWith("y")) {
+    process.stdout.write("  Skipped — provider will use {env:OLLAMA_API_KEY} placeholder.\n");
+    process.stdout.write("  Add OLLAMA_API_KEY=<your-key> to ~/.config/opencode/.env when ready.\n\n");
+    return undefined;
+  }
+
   process.stdout.write("  > ");
   const key = (await askQuestion("")).trim();
-  if (!key) return undefined;
+  if (!key) {
+    process.stdout.write("  Skipped — no key entered.\n\n");
+    return undefined;
+  }
 
   // Write to .env file in config dir.
   const envPath = path.join(configDir, ".env");
