@@ -1504,6 +1504,7 @@ async function runInstall(
   }
 
   // CHECK SYSTEM DEPS FIRST — before writing any files.
+  // The check function offers to auto-install missing deps (uv, ML libs).
   process.stdout.write("\nChecking system dependencies...\n\n");
   const sysDeps = await checkAndInstallSystemDeps(args.dryRun);
 
@@ -1515,7 +1516,7 @@ async function runInstall(
     }
   }
 
-  // If ANY deps are missing, show ALL install commands at once
+  // If deps are still missing after the auto-install attempt:
   if (sysDeps.missing.length > 0) {
     const hasBlocking = sysDeps.blockingMissing.length > 0;
 
