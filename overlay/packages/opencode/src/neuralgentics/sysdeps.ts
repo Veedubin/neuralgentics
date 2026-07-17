@@ -1,5 +1,5 @@
 /**
- * System dependency check + install.
+ * System dependency check.
  *
  * Verifies the host has the tools required to run the MCP server fleet:
  *   - uv   (Python package runner — used by videre-mcp, markitdown, duckdb, memini-ai-dev)
@@ -7,31 +7,37 @@
  *   - npx  (Node package runner — used by ssh-mcp-server, playwright, github-mcp,
  *           searxng, calculator)
  *
- * On Linux, also verifies the system ML libraries videre-mcp (Florence-2 /
- * PaddleOCR) needs:
+ * On Linux, also verifies the system ML libraries videre-mcp needs:
  *   - libgl1
  *   - libglib2.0-0
  *
  * Policy:
- *   - If uv / node / npx are missing, print install instructions and return
- *     them in `missing`. The caller decides whether to exit (the homedir flow
- *     cannot proceed without these) or just warn.
- *   - If Linux system ML deps are missing, return them in `missing` with the
- *     exact `sudo apt-get install` command the user should run. We NEVER
- *     auto-sudo — the user must consent to root-level package installs.
+ *   - This function ONLY checks and collects results. It does NOT print anything.
+ *   - The caller (init.ts) prints a clean summary with ✓/✗ and install commands.
+ *   - If uv / node / npx are missing, the caller should exit gracefully.
+ *   - If Linux system ML deps are missing, the caller surfaces the exact
+ *     sudo apt-get install command. We NEVER auto-sudo.
  *   - On macOS the ML libs ship with the system, so the check is skipped.
  */
 
 import { execSync } from "node:child_process";
 import * as os from "node:os";
-import * as path from "node:path";
+
+export interface SysDep {
+  /** Display name (e.g. "uv 0.11.26", "node v22.22.1", "libgl1") */
+  name: string;
+  /** Whether the dep is present on this system */
+  present: boolean;
+  /** Install command to run if missing (empty if present) */
+  installCommand?: string;
+  /** Short note about what this dep is for */
+  note?: string;
+}
 
 export interface SysDepsResult {
-  /** Tools that were already present (no action taken). */
-  installed: string[];
-  /** Tools that were present but optional / out of scope (e.g. ML libs on mac). */
-  skipped: string[];
-  /** Tools / libs that are missing. The caller should surface remediation. */
+  /** All checked deps with their status */
+  deps: SysDep[];
+  /** Convenience: names of missing deps */
   missing: string[];
 }
 
@@ -84,95 +90,96 @@ function isLinux(): boolean {
   return os.platform() === "linux";
 }
 
+/** Whether this host is macOS. */
+function isMac(): boolean {
+  return os.platform() === "darwin";
+}
+
 /**
- * Check + (best effort) install system dependencies required by the MCP fleet.
+ * Check all system dependencies required by the MCP fleet.
  *
- * @param dryRun  When true, print what would be installed but execute nothing.
- *                We still CHECK presence (so we can report what's missing).
+ * Does NOT print anything — returns a structured result for the caller
+ * to format and print.
  */
-export async function checkAndInstallSystemDeps(dryRun: boolean): Promise<SysDepsResult> {
-  const installed: string[] = [];
-  const skipped: string[] = [];
+export async function checkAndInstallSystemDeps(_dryRun: boolean): Promise<SysDepsResult> {
+  const deps: SysDep[] = [];
   const missing: string[] = [];
 
-  // --- Required runner tools -------------------------------------------------
+  // --- Required runner tools ---
 
   if (hasCmd("uv")) {
-    installed.push(`uv (${versionOf("uv")})`);
+    deps.push({ name: `uv (${versionOf("uv")})`, present: true });
   } else {
+    const isMacWithBrew = isMac() && hasCmd("brew");
+    const installCmd = isMacWithBrew
+      ? "brew install uv"
+      : "curl -LsSf https://astral.sh/uv/install.sh | sh";
+    deps.push({
+      name: "uv",
+      present: false,
+      installCommand: installCmd,
+      note: "Required for Python MCP servers (memini-ai-dev, videre-mcp, markitdown, duckdb)",
+    });
     missing.push("uv");
-    // Detect package manager and give the right install command
-    const isMac = os.platform() === "darwin";
-    const hasBrew = hasCmd("brew");
-    let installCmd: string;
-    if (isMac && hasBrew) {
-      installCmd = "brew install uv";
-    } else {
-      installCmd = "curl -LsSf https://astral.sh/uv/install.sh | sh";
-    }
-    process.stdout.write(
-      "✗ uv is not installed (required for Python MCP servers like memini-ai-dev).\n" +
-        "  Install it with:\n" +
-        `    ${installCmd}\n` +
-        "  Then re-run: neuralgentics --init-homedir\n",
-    );
   }
 
   if (hasCmd("node")) {
-    installed.push(`node (${versionOf("node")})`);
+    deps.push({ name: `node (${versionOf("node")})`, present: true });
   } else {
+    deps.push({
+      name: "node",
+      present: false,
+      installCommand: "https://nodejs.org/en/download/",
+      note: "Required for Node MCP servers (ssh-mcp, playwright, github-mcp, searxng, calculator)",
+    });
     missing.push("node");
-    process.stdout.write(
-      "✗ node is not installed. Install Node.js 20+:\n" +
-        "    https://nodejs.org/en/download/\n",
-    );
   }
 
   if (hasCmd("npx")) {
-    installed.push(`npx (${versionOf("npx")})`);
+    deps.push({ name: `npx (${versionOf("npx")})`, present: true });
   } else {
+    deps.push({
+      name: "npx",
+      present: false,
+      installCommand: "https://nodejs.org/en/download/",
+      note: "Ships with Node.js",
+    });
     missing.push("npx");
-    process.stdout.write(
-      "✗ npx is not installed. It ships with Node.js — install Node.js 20+:\n" +
-        "    https://nodejs.org/en/download/\n",
-    );
   }
 
-  // --- videre-mcp system ML deps (Linux only) --------------------------------
+  // --- videre-mcp system ML deps (Linux only) ---
 
   if (isLinux()) {
-    const libs = ["libgl1", "libglib2.0-0"];
-    const aptCmd = `sudo apt-get install -y ${libs.join(" ")}`;
-    let allPresent = true;
+    const libs = [
+      { pkg: "libgl1", note: "OpenGL — needed by videre-mcp (Florence-2/PaddleOCR)" },
+      { pkg: "libglib2.0-0", note: "GLib — needed by videre-mcp (Florence-2/PaddleOCR)" },
+    ];
+    const missingLibs: string[] = [];
     for (const lib of libs) {
-      if (dpkgInstalled(lib)) {
-        installed.push(lib);
+      if (dpkgInstalled(lib.pkg)) {
+        deps.push({ name: lib.pkg, present: true });
       } else {
-        allPresent = false;
-        missing.push(lib);
+        deps.push({
+          name: lib.pkg,
+          present: false,
+          installCommand: `sudo apt-get install -y ${lib.pkg}`,
+          note: lib.note,
+        });
+        missingLibs.push(lib.pkg);
+        missing.push(lib.pkg);
       }
     }
-    if (!allPresent) {
-      if (dryRun) {
-        process.stdout.write(
-          `[DRY-RUN] Would install system ML deps: ${libs.join(", ")}\n` +
-            `  Command: ${aptCmd}\n`,
-        );
-      } else {
-        // NEVER auto-sudo. Surface the exact command for the user to run.
-        process.stdout.write(
-          "✗ videre-mcp needs system ML libraries that are missing: " +
-            `${libs.join(", ")}.\n` +
-            "  Run this command (requires sudo):\n" +
-            `    ${aptCmd}\n`,
-        );
+    // If any ML libs are missing, add a combined install command hint
+    if (missingLibs.length > 0) {
+      // Replace individual installCommands with the combined one
+      const combined = `sudo apt-get install -y ${missingLibs.join(" ")}`;
+      for (const d of deps) {
+        if (!d.present && missingLibs.includes(d.name)) {
+          d.installCommand = combined;
+        }
       }
     }
-  } else {
-    // macOS / other: ML libs ship with the system.
-    skipped.push("libgl1 (macos/system-provided)");
-    skipped.push("libglib2.0-0 (macos/system-provided)");
   }
 
-  return { installed, skipped, missing };
+  return { deps, missing };
 }

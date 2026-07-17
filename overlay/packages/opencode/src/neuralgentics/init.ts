@@ -1498,12 +1498,18 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
   // Copy agent personas, skills, AGENTS.md from the npm package
   const assets = await copyStaticAssets(configDir, args.dryRun || false);
 
-  // NEW: Check system deps (uv / node / npx + Linux ML libs for videre-mcp).
+  // Check system deps (uv / node / npx + Linux ML libs for videre-mcp).
   process.stdout.write("\nChecking system dependencies...\n");
   const sysDeps = await checkAndInstallSystemDeps(args.dryRun);
-  for (const ok of sysDeps.installed) process.stdout.write(`  ✓ ${ok}\n`);
-  for (const skip of sysDeps.skipped) process.stdout.write(`  ⊘ ${skip}\n`);
-  for (const miss of sysDeps.missing) process.stdout.write(`  ✗ ${miss} (see instructions above)\n`);
+  for (const dep of sysDeps.deps) {
+    if (dep.present) {
+      process.stdout.write(`  ✓ ${dep.name}\n`);
+    } else {
+      process.stdout.write(`  ✗ ${dep.name}\n`);
+      if (dep.note) process.stdout.write(`      ${dep.note}\n`);
+      if (dep.installCommand) process.stdout.write(`      Install: ${dep.installCommand}\n`);
+    }
+  }
 
   // If uv is missing, exit gracefully — Python MCP packages can't be installed without it.
   if (sysDeps.missing.includes("uv")) {
@@ -1514,9 +1520,9 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
     return 0;
   }
 
-  // NEW: Pre-download MCP packages so the first `opencode` launch is not
-  //      blocked on a cold `uvx` / `npx` fetch. One package failing does NOT
-  //      abort the install — failures are reported in the summary.
+  // Pre-download MCP packages so the first `opencode` launch is not
+  // blocked on a cold `uvx` / `npx` fetch. One package failing does NOT
+  // abort the install — failures are reported in the summary.
   process.stdout.write("\nPre-downloading MCP packages...\n");
   const pkgResult: PreDownloadResult = await preDownloadPackages(
     { ...HOMEDIR_MCP_TEMPLATES, ...PROJECT_MCP_TEMPLATES },
