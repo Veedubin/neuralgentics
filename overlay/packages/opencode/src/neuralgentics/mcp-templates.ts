@@ -30,8 +30,14 @@ export type McpBlock = Record<string, McpServerEntry>;
 /**
  * Global (homedir) MCP server templates.
  *
- * Most servers are disabled by default. The user enables them by editing
- * `opencode.json` or re-running the installer with appropriate flags.
+ * 9 servers total:
+ *   - memini-ai-dev: disabled (team DB URL) — also lives in PROJECT_MCP_TEMPLATES
+ *     as the enabled pgembed instance. Kept here so `preDownloadPackages`
+ *     caches the wheel for both flows.
+ *   - videre-mcp:    ENABLED (vision: OCR, image description). Needs system ML deps.
+ *   - all others:    disabled by default (user opts in via opencode.json).
+ *
+ * Removed (not published): mlflow-mcp, prefect, redis.
  */
 export const HOMEDIR_MCP_TEMPLATES: McpBlock = {
   "memini-ai-dev": {
@@ -58,7 +64,7 @@ export const HOMEDIR_MCP_TEMPLATES: McpBlock = {
   },
   "videre-mcp": {
     type: "local",
-    enabled: false,
+    enabled: true,
     command: ["uvx", "videre-mcp[vision]"],
     env: {
       MEMINI_IMAGE_SEARCH_ENABLED: "true",
@@ -105,29 +111,10 @@ export const HOMEDIR_MCP_TEMPLATES: McpBlock = {
       SEARXNG_URL: "http://localhost:8080",
     },
   },
-  redis: {
-    type: "local",
-    enabled: false,
-    command: ["npx", "-y", "@gongrzhe/server-redis-mcp"],
-    args: ["redis://localhost:6379"],
-  },
   calculator: {
     type: "local",
     enabled: false,
     command: ["npx", "-y", "@wrtnlabs/calculator-mcp"],
-  },
-  prefect: {
-    type: "local",
-    enabled: false,
-    command: ["uvx", "--from", "prefect-mcp", "prefect-mcp-server"],
-  },
-  "mlflow-mcp": {
-    type: "local",
-    enabled: false,
-    command: ["uv", "run", "--with", "mlflow[mcp]>=3.5.1", "mlflow", "mcp", "run"],
-    env: {
-      MLFLOW_TRACKING_URI: "sqlite:///~/.neuralgentics/mlflow.db",
-    },
   },
 };
 

@@ -38,6 +38,9 @@ import { getHomedirConfigPath, getProjectConfigPath, getBackupDir } from "./path
 import { HOMEDIR_MCP_TEMPLATES, PROJECT_MCP_TEMPLATES, type McpBlock } from "./mcp-templates.js";
 import { runAllPrompts, DEFAULT_PROMPT_CONFIG, type PromptFlags, type PromptConfig, type BackendMode, type EmbeddingMode } from "./prompts.js";
 import { backupFile, type BackupRecord } from "./backup.js";
+import { preDownloadPackages, type PreDownloadResult } from "./install-packages.js";
+import { checkAndInstallSystemDeps, type SysDepsResult } from "./sysdeps.js";
+import { bootstrapDatabase, type BootstrapResult, type TeamDbConfig } from "./db-setup.js";
 
 /**
  * Copy static assets (agent personas, skills, AGENTS.md) from the npm
@@ -1495,6 +1498,22 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
   // Copy agent personas, skills, AGENTS.md from the npm package
   const assets = await copyStaticAssets(configDir, args.dryRun || false);
 
+  // NEW: Check system deps (uv / node / npx + Linux ML libs for videre-mcp).
+  process.stdout.write("\nChecking system dependencies...\n");
+  const sysDeps = await checkAndInstallSystemDeps(args.dryRun);
+  for (const ok of sysDeps.installed) process.stdout.write(`  ✓ ${ok}\n`);
+  for (const skip of sysDeps.skipped) process.stdout.write(`  ⊘ ${skip}\n`);
+  for (const miss of sysDeps.missing) process.stdout.write(`  ✗ ${miss} (see instructions above)\n`);
+
+  // NEW: Pre-download MCP packages so the first `opencode` launch is not
+  //      blocked on a cold `uvx` / `npx` fetch. One package failing does NOT
+  //      abort the install — failures are reported in the summary.
+  process.stdout.write("\nPre-downloading MCP packages...\n");
+  const pkgResult: PreDownloadResult = await preDownloadPackages(
+    { ...HOMEDIR_MCP_TEMPLATES, ...PROJECT_MCP_TEMPLATES },
+    args.dryRun,
+  );
+
   // Print summary
   process.stdout.write(`\nOK neuralgentics homedir config installed in ${configDir}\n`);
   process.stdout.write(`Config:  ${configDir}/opencode.json\n`);
@@ -1502,7 +1521,27 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
   process.stdout.write(`Embed:   ${promptConfig.embedding}\n`);
   process.stdout.write(`Agents:  ${assets.agents} personas\n`);
   process.stdout.write(`Skills:  ${assets.skills} skills\n`);
-  process.stdout.write(`State:   ${configDir}/${STATE_FILENAME}\n`);
+
+  // Packages installed section
+  process.stdout.write("\nPackages installed:\n");
+  for (const name of pkgResult.installed) {
+    const via = (HOMEDIR_MCP_TEMPLATES[name]?.command?.[0] ??
+      PROJECT_MCP_TEMPLATES[name]?.command?.[0] ?? "?");
+    process.stdout.write(`  ✓ ${name} (via ${via})\n`);
+  }
+  for (const fail of pkgResult.failed) {
+    process.stdout.write(`  ✗ ${fail.name}: ${fail.error}\n`);
+  }
+  // Surface any missing system deps (e.g. libgl1) with the exact remediation.
+  const missingLibs = sysDeps.missing.filter((m) => m.startsWith("lib"));
+  if (missingLibs.length > 0) {
+    process.stdout.write(
+      `  ✗ videre-mcp system deps: ${missingLibs.join(", ")} missing — ` +
+        `run: sudo apt-get install ${missingLibs.join(" ")}\n`,
+    );
+  }
+
+  process.stdout.write(`\nState:   ${configDir}/${STATE_FILENAME}\n`);
   process.stdout.write(`\nNext: neuralgentics --init-project\n`);
   return 0;
 }
@@ -1560,6 +1599,29 @@ export async function runInitProject(args: InitProjectOptions): Promise<number> 
   // Copy agent personas, skills, AGENTS.md from the npm package
   const assets = await copyStaticAssets(configDir, args.dryRun || false);
 
+  // NEW: Bootstrap the memini-ai database.
+  //      pgembed: create + start embedded Postgres, run migrations.
+  //      team:    connect to remote server, run migrations.
+  //      A failure here does NOT crash the installer — the user can fix the
+  //      DB later and re-run (init is idempotent).
+  process.stdout.write("\nBootstrapping database...\n");
+  const teamConfig: TeamDbConfig | undefined =
+    promptConfig.backend === "team" &&
+    promptConfig.teamHost !== undefined &&
+    promptConfig.teamPort !== undefined &&
+    promptConfig.teamDatabase !== undefined
+      ? {
+          host: promptConfig.teamHost,
+          port: promptConfig.teamPort,
+          database: promptConfig.teamDatabase,
+        }
+      : undefined;
+  const dbResult: BootstrapResult = await bootstrapDatabase(
+    promptConfig.backend,
+    teamConfig,
+    args.dryRun,
+  );
+
   // Print summary
   process.stdout.write(`\nOK neuralgentics project config installed in ${configDir}\n`);
   process.stdout.write(`Config:  ${configDir}/opencode.json\n`);
@@ -1567,7 +1629,21 @@ export async function runInitProject(args: InitProjectOptions): Promise<number> 
   process.stdout.write(`Embed:   ${promptConfig.embedding}\n`);
   process.stdout.write(`Agents:  ${assets.agents} personas\n`);
   process.stdout.write(`Skills:  ${assets.skills} skills\n`);
-  process.stdout.write(`State:   ${configDir}/${STATE_FILENAME}\n`);
+
+  // Database section
+  process.stdout.write("\nDatabase:\n");
+  if (dbResult.success) {
+    process.stdout.write(`  ✓ ${dbResult.message}\n`);
+    if (dbResult.details) process.stdout.write(`  ✓ ${dbResult.details}\n`);
+  } else {
+    process.stdout.write(`  ✗ ${dbResult.message}\n`);
+    process.stdout.write(
+      "  ⚠ The DB is not ready. Fix the issue above, then re-run:\n" +
+        "      neuralgentics --init-project\n",
+    );
+  }
+
+  process.stdout.write(`\nState:   ${configDir}/${STATE_FILENAME}\n`);
   process.stdout.write(`\nNext: opencode\n`);
   return 0;
 }
