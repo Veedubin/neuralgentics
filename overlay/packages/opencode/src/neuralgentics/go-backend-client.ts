@@ -12,26 +12,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 
-/**
- * Default database URL the Go backend connects to.
- *
- * IMPORTANT: lib/pq (the Go postgres driver) defaults `sslmode` to `require`
- * when no `sslmode` is specified in the connection string. That works against
- * databases with `ssl = on` but fails against databases with `ssl = off`
- * (e.g. the user's prod timescale-pg18 on 5434). The dev test DB on 6200
- * has SSL enabled, so `?sslmode=require` matches the server's capability
- * and lets the migrator + queries succeed without any CA verification.
- *
- * Override at spawn time by setting `NEURALGENTICS_DB_URL` in the parent
- * process's environment before OpenCode launches the plugin.
- */
-const DEFAULT_DB_URL =
-  "postgresql://postgres:testpassword@localhost:6200/neuralgentics_test?sslmode=require";
-
-/** Resolve the DB URL — explicit env override wins, otherwise the dev DB. */
-function resolveDbUrl(): string {
-  return process.env.NEURALGENTICS_DB_URL ?? DEFAULT_DB_URL;
-}
+// DB URL: we do NOT override the Go backend's built-in default
+// (neuralgentics:neuralgentics@localhost:6200/neuralgentics), which matches
+// the `neuralgentics-postgres` compose-stack container. If the user has
+// explicitly set `NEURALGENTICS_DB_URL` in their environment, it is passed
+// through automatically via the `process.env` spread below — otherwise the
+// Go binary uses its own sensible default.
 
 // ---------------------------------------------------------------------------
 // Sidecar status check + lazy-load support (v0.9.6+)
@@ -168,14 +154,14 @@ export class GoBackendClient {
    *                     Falls back to $PATH lookup if just the binary name is given.
    */
   constructor(binaryPath: string) {
-    // Set NEURALGENTICS_DB_URL so the backend doesn't fall back to its
-    // 5434 default (which has no SSL and breaks lib/pq's implicit
-    // sslmode=require). Override the env var before launch to point at
-    // any database; default is the dev/test DB on 6200 with SSL.
-    const childEnv = {
-      ...process.env,
-      NEURALGENTICS_DB_URL: resolveDbUrl(),
-    };
+    // Build the child environment from the parent process env. We do NOT
+    // force a NEURALGENTICS_DB_URL here — the Go binary has its own
+    // built-in default (neuralgentics:neuralgentics@localhost:6200/
+    // neuralgentics) which matches the `neuralgentics-postgres` compose
+    // stack. If the user has set NEURALGENTICS_DB_URL in their environment,
+    // it is already in childEnv via the spread and will override the Go
+    // binary's default. Otherwise the binary uses its own default.
+    const childEnv = { ...process.env };
 
     this.process = spawn(binaryPath, [], {
       stdio: ["pipe", "pipe", "inherit"],

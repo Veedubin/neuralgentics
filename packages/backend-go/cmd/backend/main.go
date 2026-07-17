@@ -661,7 +661,7 @@ func main() {
 
 	dbURL := os.Getenv("NEURALGENTICS_DB_URL")
 	if dbURL == "" {
-		// Default matches the running `neuralgentics-postgres` podman container
+		// Default matches the `neuralgentics-postgres` compose-stack container
 		// (localhost:6200, user/db `neuralgentics`, password `neuralgentics`).
 		// Port 5434 belongs to `memini-postgres` (the memini-ai timescale DB),
 		// which has databases `postgres` and `memini` only — no `neuralgentics`.
