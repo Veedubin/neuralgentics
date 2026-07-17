@@ -1499,31 +1499,60 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
   const assets = await copyStaticAssets(configDir, args.dryRun || false);
 
   // Check system deps (uv / node / npx + Linux ML libs for videre-mcp).
-  process.stdout.write("\nChecking system dependencies...\n");
+  process.stdout.write("\nChecking system dependencies...\n\n");
   const sysDeps = await checkAndInstallSystemDeps(args.dryRun);
+
+  // Print the status list first — all ✓ and ✗ in a clean column
   for (const dep of sysDeps.deps) {
     if (dep.present) {
       process.stdout.write(`  ✓ ${dep.name}\n`);
     } else {
       process.stdout.write(`  ✗ ${dep.name}\n`);
-      if (dep.note) process.stdout.write(`      ${dep.note}\n`);
-      if (dep.installCommand) process.stdout.write(`      Install: ${dep.installCommand}\n`);
     }
   }
 
-  // If uv is missing, exit gracefully — Python MCP packages can't be installed without it.
-  if (sysDeps.missing.includes("uv")) {
-    process.stdout.write(
-      "\n  Install uv first, then re-run: neuralgentics --init-homedir\n" +
-      "  Your config and agents are already written — only the package pre-download was skipped.\n",
-    );
-    return 0;
+  // If anything is missing, print a copy-pasteable install commands block
+  if (sysDeps.missing.length > 0) {
+    process.stdout.write("\n");
+    process.stdout.write("  The following commands need to be run before continuing:\n");
+    process.stdout.write("\n");
+
+    // Deduplicate install commands (libgl1 + libglib2.0-0 share the same apt-get)
+    const seenCmds = new Set<string>();
+    for (const dep of sysDeps.deps) {
+      if (!dep.present && dep.installCommand) {
+        if (!seenCmds.has(dep.installCommand)) {
+          seenCmds.add(dep.installCommand);
+          process.stdout.write(`    ${dep.installCommand}\n`);
+        }
+      }
+    }
+
+    // If uv is missing, we can't proceed with package pre-download
+    if (sysDeps.missing.includes("uv")) {
+      process.stdout.write("\n");
+      process.stdout.write("  After installing the above, re-run:\n");
+      process.stdout.write("    neuralgentics --init-homedir\n");
+      process.stdout.write("\n");
+      process.stdout.write("  Your config and agents are already written —\n");
+      process.stdout.write("  only the package pre-download was skipped.\n");
+      return 0;
+    }
+
+    // If only ML libs are missing (uv is present), warn but continue
+    if (sysDeps.missing.some(m => m !== "uv")) {
+      process.stdout.write("\n");
+      process.stdout.write("  videre-mcp will not start until the ML libraries above are installed.\n");
+      process.stdout.write("  Everything else will work — continuing with package pre-download...\n");
+    }
   }
+
+  process.stdout.write("\n");
 
   // Pre-download MCP packages so the first `opencode` launch is not
   // blocked on a cold `uvx` / `npx` fetch. One package failing does NOT
   // abort the install — failures are reported in the summary.
-  process.stdout.write("\nPre-downloading MCP packages...\n");
+  process.stdout.write("Pre-downloading MCP packages...\n");
   const pkgResult: PreDownloadResult = await preDownloadPackages(
     { ...HOMEDIR_MCP_TEMPLATES, ...PROJECT_MCP_TEMPLATES },
     args.dryRun,
