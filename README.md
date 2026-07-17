@@ -1,107 +1,151 @@
 # Neuralgentics
 
-> **Open-source agent runtime** — 12 MCP servers, 8 agent personas, 5 skills, 1 npm plugin, 3 containers, 1 stateless protocol, 0 lock-in.
-
-- **12 MCP servers** — memini-ai, markitdown, duckdb, redis, playwright, calculator, prefect, mlflow-mcp, doc2png, github-mcp, videre-mcp, searxng
-- **12 agent personas** — orchestrator, architect, coder, explorer, tester, reviewer, linter, git, writer, researcher, release, agent-builder
-- **5 skills** — kanban-board-manager, todo-list-updater, skill-self-audit, boomerang-agent-builder, mcp-specialist
-- **1 npm plugin** — `@veedubin/neuralgentics` (340 KB)
-- **3 containers** — postgres (1.2 GB), sidecar (180 MB), backend (26 MB)
-- **1 stateless protocol** — MCP over JSON-RPC 2.0
-- **0 lock-in** — MIT licensed, no telemetry, no mandatory cloud
-
-Neuralgentics is the **agentic core** for [OpenCode](https://github.com/modelcontextprotocol/opencode) — a **skills broker**, **auto-evolving agent team**, and **memory engine** that turns any codebase into a **self-orchestrating workspace**.
-
-## What's New
-
-### v0.9.4: Plugin-only, container-safe, PyPI-free
-- **Single install path**: `npx @veedubin/neuralgentics --init` — no more curl-bash, no more PyPI package
-- **Container stack**: `docker compose up -d` brings up postgres, sidecar, and backend — no binary downloads, no systemd
-- **Plugin architecture**: Neuralgentics is now an **OpenCode plugin** — installed via npm, not a standalone binary
-- **Memory safety**: The Go backend runs in a container, not as a downloaded binary — no more `neuralgentics` CLI
-- **Deleted**: PyPI package, TUI binary, `scripts/install.sh`, `packages/sdk/`, `packages/plugin/`, `packages/tui/`
-
-## What it does
-
-Neuralgentics provides **12 agent personas**, **5 skills**, and **12 MCP servers** that turn any codebase into a **self-orchestrating workspace**.
-
-| Feature | What it does |
-|---------|--------------|
-| **Skills brokering** | Routes tasks to the best agent based on the [Routing Matrix](https://github.com/veedubin/neuralgentics/blob/main/AGENTS.md#routing-matrix) |
-| **Auto-evolving agents** | Detects repeated processes and formalizes them as skills (via `skill-self-audit` and `boomerang-agent-builder`) |
-| **Memory engine** | Tiered semantic memory with trust scoring, knowledge graph, and dialectic resolution (via `memini-ai-dev`) |
-| **MCP broker** | Exposes 12 MCP servers (memini-ai, github-mcp, searxng, etc.) as tools to agents |
-| **Kanban-native** | Tracks work in `TASKS.md` as a kanban board (via `kanban-board-manager`) |
-| **Tiered context** | Auto-injects L0 (~100 tokens) and L1 (~2K tokens) summaries at session start |
-| **Multi-agent routing** | Dispatches tasks to the correct agent based on the [Routing Matrix](https://github.com/veedubin/neuralgentics/blob/main/AGENTS.md#routing-matrix) |
-| **Stateless protocol** | MCP over JSON-RPC 2.0 — no state, no lock-in |
+> Agent orchestration for [OpenCode](https://github.com/sst/opencode) — 12 agent personas, 7 skills, 9 MCP servers, one plugin.
 
 ## Quick Start
 
-### Install
-
 ```bash
-# 1. Install global config (provider, MCP server templates, global agents)
-neuralgentics --init-homedir
+# 1. Install global config (provider, MCP servers, agents, skills)
+npx @veedubin/neuralgentics --init-homedir
 
-# 2. In your project directory, install project config
+# 2. In your project directory, install project config + database
 cd my-project
-neuralgentics --init-project
+npx @veedubin/neuralgentics --init-project
 
-# 3. Start opencode
+# 3. Launch opencode (the installer offers to do this for you)
 opencode
 ```
 
-### Install Flags
+That's it. The built-in database (pgembed) needs zero Docker — it just works.
+
+## What the installer does
+
+### `--init-homedir`
+
+Installs to `~/.config/opencode/` (Linux) or `~/Library/Application Support/opencode/` (Mac):
+
+- **Provider config** — Ollama Cloud with 10 models pre-configured
+- **9 MCP server templates** — videre-mcp enabled, rest disabled (enable what you need)
+- **12 agent personas** — orchestrator, architect, coder, explorer, tester, reviewer, linter, git, writer, researcher, release, agent-builder
+- **7 skills** — kanban-board-manager, todo-list-updater, skill-self-audit, boomerang-orchestrator, boomerang-handoff, external-skills-fetcher, update-gh-docs
+- **AGENTS.md** — project instructions and agent protocol
+- **Pre-downloads all MCP packages** via `uvx`/`npx` so first launch is fast
+
+### `--init-project`
+
+Installs to `./.opencode/` (or `--target <dir>`):
+
+- **Plugin registration** — `@veedubin/neuralgentics` in the plugin array
+- **memini-ai-dev MCP server** — enabled with your chosen database backend
+- **Same agents, skills, AGENTS.md** as homedir (or project-specific overrides)
+- **Database setup**:
+  - **Built-in (pgembed)**: Zero Docker. Uses a local Unix socket — no username or password needed. Data stored in `~/.local/share/memini-ai/pgembed/data`.
+  - **Team server**: Connects to a shared PostgreSQL. Asks for host, port, database name, username, and password. Saves credentials to `.env` if you want.
+- **Offers to launch opencode** when done
+
+## Interactive Prompts
+
+Running `npx @veedubin/neuralgentics --init-homedir` without skip flags walks you through:
+
+1. **How should memini-ai store memories?**
+   - `1. Built-in database` (recommended) — No setup needed, everything runs locally.
+   - `2. Team server` — Connect to a shared PostgreSQL database for team memory.
+
+2. **Team server setup** (only if you chose team server):
+   - `1. Connect to an existing database` or `2. Connect to a new database`
+   - Server IP/hostname (default: `localhost`)
+   - Port (default: `5432`)
+   - Database name (default: `neuralgentics`)
+   - Username (default: `postgres`)
+   - Password (you enter)
+   - Save credentials to `.env`? (default: yes)
+
+3. **What embedding model should memini-ai use?**
+   - `1. CPU` — Fast and lightweight, runs on any machine.
+   - `2. Auto` (recommended) — Same as CPU by default, can upgrade to higher quality if you add a GPU later.
+   - `3. GPU` — Highest quality, but requires a dedicated GPU (NVIDIA CUDA or Apple Silicon MPS).
+
+4. **Want to add your Ollama Cloud API key now?**
+   - Get one at https://ollama.com (free tier available).
+   - You can skip and add it later to `~/.config/opencode/.env`.
+
+### System Dependencies
+
+The installer checks for required tools before writing anything:
+
+| Tool | Required for | Install |
+|------|-------------|---------|
+| **uv** | Python MCP servers (memini-ai-dev, videre-mcp, markitdown, duckdb) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` (Linux) or `brew install uv` (Mac) |
+| **node** | Node MCP servers (ssh-mcp, playwright, github-mcp, searxng, calculator) | https://nodejs.org/ |
+| **npx** | Same as above (ships with Node.js) | https://nodejs.org/ |
+| **libgl1** | videre-mcp vision (Linux only) | `sudo apt-get install -y libgl1 libglib2.0-0` |
+| **libglib2.0-0** | videre-mcp vision (Linux only) | Same as above |
+
+If any required tools are missing, the installer prints the install commands and exits. Nothing gets written until deps are satisfied. Missing ML libs (for videre-mcp) are non-blocking — everything else works without them.
+
+## Flags
 
 | Flag | Purpose |
 |------|---------|
-| `--init-homedir` | Install global config to `~/.config/opencode/` (Linux) or `~/Library/Application Support/opencode/` (Mac) |
-| `--init-project` | Install project config to `./.opencode/` |
-| `--init` | Alias for `--init-project` (backward compat) |
+| `--init-homedir` | Install global config |
+| `--init-project` | Install project config |
+| `--init` | Alias for `--init-project` |
 | `--update` | Update ALL installs (projects + homedir) |
 | `--update-project` | Update just this project |
 | `--update-homedir` | Update just the home dir |
-| `--embedded` | Use pgembed (zero Docker, just works) — skips backend prompt |
-| `--team` | Use team PostgreSQL server — prompts for IP/port |
-| `--CPU-Embed` | 384-dim CPU only — skips embed mode prompt |
-| `--Auto-Embed` | 384-dim default + optional 1024 elevation — skips embed mode prompt |
-| `--GPU-Embed` | 1024-dim GPU only — skips embed mode prompt |
+| `--embedded` | Skip backend prompt, use built-in database |
+| `--team` | Skip backend prompt, use team server |
+| `--CPU-Embed` | Skip embedding prompt, use CPU mode |
+| `--Auto-Embed` | Skip embedding prompt, use Auto mode |
+| `--GPU-Embed` | Skip embedding prompt, use GPU mode |
 | `--yes` | Skip all prompts (use defaults) |
+| `--target <dir>` | Override install target directory |
+| `--dry-run` | Print what would happen without writing anything |
 
-### Interactive Prompts
+## MCP Servers
 
-If you run `neuralgentics --init-homedir` without skip flags, you'll be asked:
-1. **Backend mode**: pgembed (recommended) or team server
-2. **Embedding mode**: CPU (384-dim), Auto (384+1024), or GPU (1024-dim)
-3. **Ollama API key**: enter your key (get one at https://ollama.com)
+9 servers are configured. All use `uvx` (Python) or `npx` (Node) so you get the latest version on each launch. Packages are pre-downloaded during install so first launch is fast.
 
-### MCP Servers
+| Server | Enabled by default | What it does |
+|--------|-------------------|--------------|
+| **memini-ai-dev** | Project only | Semantic memory, trust scoring, knowledge graph |
+| **videre-mcp** | Homedir | Vision: OCR, image description (Florence-2 / PaddleOCR) |
+| ssh-mcp-server | No | SSH remote command execution |
+| markitdown | No | File conversion: PDF/DOCX/HTML to Markdown |
+| playwright | No | Browser automation |
+| github-mcp | No | GitHub repos, issues, PRs (needs `GITHUB_PERSONAL_ACCESS_TOKEN`) |
+| duckdb | No | In-memory SQL via DuckDB |
+| searxng | No | Web search (needs local SearXNG at `http://localhost:8080` — see [install docs](https://docs.searxng.org/admin/installation.html)) |
+| calculator | No | Math evaluation |
 
-The installer configures 12 MCP servers. Only `videre-mcp` is enabled by default. The rest are disabled — enable the ones you need by editing `~/.config/opencode/opencode.json`.
+Enable a server by editing your `opencode.json` and setting `enabled: true`.
 
-| Server | Enabled | Install | Notes |
-|--------|---------|---------|-------|
-| videre-mcp | ✅ | `uvx videre-mcp[vision]` | Vision: OCR, image description |
-| memini-ai-dev | ✅ (project) | `uvx memini-ai-dev` | Memory: semantic search, trust scoring, knowledge graph |
-| ssh-mcp-server | ❌ | `npx -y @fangjunjie/ssh-mcp-server` | SSH: remote command exec (Tailscale recommended) |
-| searxng | ❌ | `npx -y mcp-searxng` | Web search. Requires local SearXNG at `http://localhost:8080` — see [SearXNG install docs](https://docs.searxng.org/admin/installation.html) |
-| github-mcp | ❌ | `npx -y @modelcontextprotocol/server-github` | GitHub: repos, issues, PRs. Requires `GITHUB_PERSONAL_ACCESS_TOKEN` |
-| markitdown | ❌ | `uvx markitdown-mcp` | File conversion: PDF/DOCX/HTML → Markdown |
-| playwright | ❌ | `npx -y @playwright/mcp@latest` | Browser automation |
-| duckdb | ❌ | `uvx mcp-server-motherduck` | In-memory SQL via DuckDB |
-| redis | ❌ | `npx -y @gongrzhe/server-redis-mcp` | Redis key-value (localhost:6379) |
-| calculator | ❌ | `npx -y @wrtnlabs/calculator-mcp` | Math evaluation |
-| prefect | ❌ | `uvx --from prefect-mcp prefect-mcp-server` | Prefect workflow orchestration |
-| mlflow-mcp | ❌ | `uv run --with mlflow[mcp]>=3.5.1 mlflow mcp run` | MLflow experiment tracking |
+## Agents
 
-### Cross-Platform
+| Agent | Model | Role |
+|-------|-------|------|
+| orchestrator | kimi-k2.6 | Main coordinator, delegates to sub-agents |
+| architect | deepseek-v4-pro | System design, trade-off analysis, research |
+| coder | glm-5.2 | Fast code generation, bug fixes |
+| explorer | devstral-2:123b | Codebase exploration, file finding |
+| tester | deepseek-v4-flash | Test writing, test execution |
+| reviewer | deepseek-v4-pro | Code review: logic, security, consistency |
+| linter | qwen3-coder-next | Mechanical linting: ESLint, Ruff, mypy, tsc |
+| git | minimax-m3 | Version control: commits, branches, tags |
+| writer | mistral-large-3:675b | Documentation, markdown |
+| researcher | qwen3.5 | Web research, data gathering, scraping |
+| release | devstral-small-2:24b | Version bumps, changelogs, tagging |
+| agent-builder | glm-5.2 | Pattern detection, skill/agent creation |
+
+Model names in agent files use `ollama/<model>` format. To use a different provider, see the [provider switching guide](docs/providers.md).
+
+## Cross-Platform
 
 - **Linux**: `~/.config/opencode/` for global config
 - **Mac**: `~/Library/Application Support/opencode/` for global config
 - **Windows**: Use WSL (treated as Linux)
 
-### Update
+## Update
 
 ```bash
 # Update everything (global + all projects)
@@ -114,217 +158,28 @@ neuralgentics --update-project
 neuralgentics --update-homedir
 ```
 
-Updates back up overwritten files to `opencode-bak/<name>-<timestamp>.json` before replacing them. Files changed in the same update run share a timestamp (down to milliseconds) so you can see which files were moved together.
+Updates back up overwritten files to `opencode-bak/` with timestamps before replacing them. Since we're not deleting (just moving), running from the wrong directory is safe.
 
-After an update, you'll see a prompt reminding you to re-apply any personalizations to the updated files. Your old versions are in `opencode-bak/`.
+## Manual install (alternative)
 
-## Quick links
-
-| Resource | Link |
-|----------|------|
-| **Docs** | [neuralgentics.veedubin.com](https://neuralgentics.veedubin.com) |
-| **Source** | [github.com/veedubin/neuralgentics](https://github.com/veedubin/neuralgentics) |
-| **License** | [MIT](https://github.com/veedubin/neuralgentics/blob/main/LICENSE) |
-| **npm** | [`@veedubin/neuralgentics`](https://www.npmjs.com/package/@veedubin/neuralgentics) |
-| **Changelog** | [CHANGELOG.md](https://github.com/veedubin/neuralgentics/blob/main/CHANGELOG.md) |
-
-## Install
-
-Neuralgentics uses a **two-init flow** — see the [Quick Start](#quick-start) section above for the recommended install process.
-
-```bash
-# 1. Install global config (provider, MCP server templates, global agents)
-npx @veedubin/neuralgentics --init-homedir
-
-# 2. In your project directory, install project config
-cd my-project
-npx @veedubin/neuralgentics --init-project
-
-# 3. Start opencode
-opencode
-```
-
-### What `--init-project` does (alias: `--init`)
-
-1. **Downloads** the latest release tarball from GitHub
-2. **Backs up** your existing `.opencode/` directory (if any)
-3. **Merges** the plugin's `.opencode/` directory with yours (preserves your agents, adds Neuralgentics tools and personas)
-4. **Updates** `.opencode/opencode.json` to include the plugin and its MCP servers
-5. **Offers** to set up the container stack (`docker compose up -d`)
-    - Skips if containers are already running (respects `.env`)
-    - Uses `docker/postgres.Dockerfile` and `docker-compose.yml`
-6. **Prints** next steps (e.g., `opencode` to start the TUI)
-
-### Sidecar lifecycle
-
-The embedding sidecar runs as a container with **lazy-load by default** — the model is only loaded into memory when you issue your first embedding call, and unloads after 5 minutes of inactivity. This means the sidecar costs ~80MB of RAM when idle, vs ~1.3GB when the model is loaded.
-
-- **Default embedding model**: **BGE-M3** (1024-dim, multilingual, 8K context, ~1.1GB VRAM @ FP16). BGE-Large is still available via `--embed-model bge-large` for backwards compat (English-only, 512 token context, ~670MB VRAM).
-- **Default (lazy)**: Model loads on first request, unloads after 5 min idle. Cold load takes 2-15s.
-- **`--no-lazy-load` (eager)**: Model loads at startup, stays loaded while clients are connected.
-- **`--quantize {fp32|fp16|int8}`**: Pick precision. INT8 is ~4x smaller, FP16 is ~2x smaller than FP32. Quality loss is <1% for BGE-M3.
-- **Status endpoint**: `curl http://localhost:50052/status` shows `{loaded_models, last_used, dtype, device, embedding_model}`.
-
-### When to use which
-
-- **Laptop / shared machine**: Lazy + int8. Zero idle cost, slight cold-load wait.
-- **Workstation / server**: `--no-lazy-load` + fp16 (GPU) or int8 (CPU). Always ready.
-- **Cluster / homelab**: Lazy + fp16/int8. Multiple clients share one sidecar.
-
-The sidecar has no per-project state — one instance serves all your projects.
-
-### Multi-model RRF (v0.12.0+)
-
-The memory backend supports storing and querying memories embedded with different models simultaneously. New `embedding_bge_m3 vector(1024)` and `embedding_bge_large vector(1024)` columns exist alongside the original `embedding vector(384)` column. When you query, RRF (Reciprocal Rank Fusion) merges top-k results from each populated column automatically. No user action required.
-
-### Manual install (alternative)
-
-Add `@veedubin/neuralgentics` to your `.opencode/opencode.json` `plugins` array:
+Add `@veedubin/neuralgentics` to your `.opencode/opencode.json` plugin array:
 
 ```json
 {
-  "plugins": [
-    "@veedubin/neuralgentics"
-  ]
+  "plugin": ["@veedubin/neuralgentics"]
 }
 ```
 
 Then run `opencode` to load the plugin.
 
-### Container stack
+## Links
 
-The memory backend runs as a **3-service Docker stack** (postgres, sidecar, backend). To start it:
-
-```bash
-cd neuralgentics
-cp .env.example .env  # Edit if needed
-docker compose up -d
-```
-
-- **Postgres**: TimescaleDB + pgvector (port `6200`)
-- **Sidecar**: Python FastMCP server (port `6001`)
-- **Backend**: Go JSON-RPC memory server (port `6002`)
-
-The Go backend connects to Postgres on `localhost:6200` by default (configurable via `.env`).
-
-## Architecture at a glance
-
-```mermaid
-flowchart TD
-    subgraph OpenCode[OpenCode TUI]
-        A[User] -->|Prompt| B[Orchestrator]
-        B -->|Dispatch| C[Agent Personas]
-        C -->|Tools| D[MCP Broker]
-    end
-
-    subgraph Neuralgentics[Neuralgentics Plugin]
-        D -->|JSON-RPC| E[memini-ai-dev]
-        D -->|JSON-RPC| F[github-mcp]
-        D -->|JSON-RPC| G[searxng]
-        D -->|JSON-RPC| H[12 MCP Servers]
-    end
-
-    subgraph Containers[Docker Stack]
-        E -->|pgvector| I[Postgres 18]
-        J[Go Backend] -->|JSON-RPC| I
-    end
-```
-
-## Container stack
-
-Neuralgentics v0.7.0+ runs the memory backend as a **3-service Docker stack** (postgres, sidecar, backend).
-
-| Service | Image | Port | Purpose |
-|---------|-------|------|---------|
-| **Postgres** | `veedubin/neuralgentics-postgres:0.9.4` | `6200:5432` | TimescaleDB + pgvector for memory storage |
-| **Sidecar** | `veedubin/neuralgentics-sidecar:0.9.4` | `6001:6001` | Python FastMCP server for memini-ai tools |
-| **Backend** | `veedubin/neuralgentics-backend:0.9.4` | `6002:6002` | Go JSON-RPC memory server (MCP tools) |
-
-To start the stack:
-
-```bash
-cd neuralgentics
-cp .env.example .env  # Edit if needed
-docker compose up -d
-```
-
-The Go backend connects to Postgres on `localhost:6200` by default (configurable via `.env`).
-
-## What ships
-
-Neuralgentics v0.9.4 ships as an **npm package** (`@veedubin/neuralgentics`) with the following structure:
-
-| Path | Purpose |
-|------|---------|
-| `overlay/packages/opencode/` | npm package (`@veedubin/neuralgentics`) |
-| `overlay/packages/opencode/src/cli.ts` | CLI entry point (`neuralgentics --init`) |
-| `overlay/packages/opencode/src/server.ts` | OpenCode plugin entry |
-| `overlay/packages/opencode/src/neuralgentics/` | Internal modules (init, download, merge, orchestrator, routing) |
-| `overlay/packages/opencode/dist/` | Compiled output (shipped) |
-| `overlay/packages/opencode/.opencode/` | Bundled agent personas, skills, AGENTS.md |
-| `packages/backend-go/` | Go source for the JSON-RPC memory server |
-| `docker/postgres.Dockerfile` | Postgres 18 + pgvector + TimescaleDB image |
-| `docker-compose.yml` | 3-service stack: postgres, sidecar, backend |
-| `mkdocs.yml` + `docs/` | Documentation source |
-
-## 30-second pitch
-
-Neuralgentics turns any codebase into a **self-orchestrating workspace**.
-
-1. **Install**: `npx @veedubin/neuralgentics --init`
-2. **Start**: `docker compose up -d` (or skip if already running)
-3. **Run**: `opencode`
-4. **Watch**: Agents auto-route tasks, evolve skills, and remember decisions
-
-No lock-in, no telemetry, no mandatory cloud — just **12 MCP servers**, **12 agent personas**, and **5 skills** working for you.
-
-## Development setup
-
-### Prerequisites
-
-- Node.js 20+
-- Docker + Docker Compose
-- Go 1.22+
-- Python 3.11+
-- `uv` (for Python tooling)
-
-### Setup
-
-```bash
-# Clone the repo
-git clone https://github.com/veedubin/neuralgentics.git
-cd neuralgentics
-
-# Install npm dependencies
-npm install
-
-# Build the Go backend
-cd packages/backend-go
-go build -o neuralgentics-backend
-cd ../..
-
-# Set up the container stack
-cp .env.example .env  # Edit if needed
-docker compose up -d
-
-# Start OpenCode with the plugin
-opencode
-```
-
-### Key commands
-
-| Command | Purpose |
-|---------|---------|
-| `npm run build` | Build the npm package |
-| `npm run test` | Run tests |
-| `npm run lint` | Lint the codebase |
-| `docker compose up -d` | Start the container stack |
-| `docker compose down` | Stop the container stack |
+| Resource | Link |
+|----------|------|
+| Source | [github.com/Veedubin/neuralgentics](https://github.com/Veedubin/neuralgentics) |
+| npm | [`@veedubin/neuralgentics`](https://www.npmjs.com/package/@veedubin/neuralgentics) |
+| License | [MIT](https://github.com/Veedubin/neuralgentics/blob/main/LICENSE) |
 
 ## License
 
-Neuralgentics is **MIT licensed**. See [LICENSE](https://github.com/veedubin/neuralgentics/blob/main/LICENSE).
-
-## Versioning
-
-Neuralgentics follows [semantic versioning](https://semver.org/). See the [migration guide](https://neuralgentics.veedubin.com/migration/) for breaking changes.
+MIT licensed. See [LICENSE](https://github.com/Veedubin/neuralgentics/blob/main/LICENSE).

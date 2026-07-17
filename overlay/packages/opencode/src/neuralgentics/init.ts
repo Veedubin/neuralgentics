@@ -1641,7 +1641,32 @@ async function runInstall(
   }
 
   process.stdout.write(`\nState:   ${configDir}/${STATE_FILENAME}\n`);
-  process.stdout.write(`\nNext: ${mode === "homedir" ? "neuralgentics --init-project" : "opencode"}\n`);
+
+  // Only offer to launch opencode after --init-project (not --init-homedir,
+  // since homedir needs a project init before opencode can run).
+  if (mode === "project") {
+    process.stdout.write("\n");
+    // Create a fresh readline for the launch question
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const launch = await new Promise<string>((resolve) => {
+      rl.question("  Launch opencode now? [Y/n]: ", (answer: string) => resolve(answer));
+    });
+    rl.close();
+    if (!launch.trim().toLowerCase().startsWith("n")) {
+      process.stdout.write("\n  Starting opencode...\n\n");
+      try {
+        execSync("opencode", { stdio: "inherit", shell: process.env.SHELL ?? "bash" });
+      } catch {
+        process.stdout.write("  Could not launch opencode. Run it manually:\n");
+        process.stdout.write("    opencode\n");
+      }
+      return 0;
+    }
+    process.stdout.write("\n  To start opencode, run:\n");
+    process.stdout.write("    opencode\n");
+  } else {
+    process.stdout.write(`\nNext: neuralgentics --init-project\n`);
+  }
   return 0;
 }
 
