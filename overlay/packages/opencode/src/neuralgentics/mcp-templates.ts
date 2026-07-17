@@ -58,7 +58,7 @@ export const HOMEDIR_MCP_TEMPLATES: McpBlock = {
   },
   "videre-mcp": {
     type: "local",
-    enabled: true,
+    enabled: false,
     command: ["uvx", "videre-mcp[vision]"],
     env: {
       MEMINI_IMAGE_SEARCH_ENABLED: "true",
