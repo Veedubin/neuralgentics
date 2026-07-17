@@ -94,12 +94,21 @@ async function promptBackendMode(session: PromptSession, flags: PromptFlags): Pr
   if (flags.team) return "team";
   if (flags.yes) return "pgembed";
 
-  process.stdout.write("\n? memini-ai backend:\n");
-  process.stdout.write("  > pgembed (recommended — zero Docker, just works)\n");
-  process.stdout.write("    team server (connect to shared PostgreSQL)\n");
-  const answer = await session.ask("\nChoose [pgembed]: ");
-  const trimmed = answer.trim().toLowerCase();
-  if (trimmed.startsWith("t")) return "team";
+  process.stdout.write("\n? How should memini-ai store memories?\n");
+  process.stdout.write("\n");
+  process.stdout.write("  1. Built-in database (recommended)\n");
+  process.stdout.write("     No setup needed — everything runs locally.\n");
+  process.stdout.write("     Your memories are stored in a local file.\n");
+  process.stdout.write("     Best for getting started or solo use.\n");
+  process.stdout.write("\n");
+  process.stdout.write("  2. Team server\n");
+  process.stdout.write("     Connect to a shared PostgreSQL database.\n");
+  process.stdout.write("     Best for teams who want shared memory across machines.\n");
+  process.stdout.write("     You'll need a PostgreSQL server already running.\n");
+  process.stdout.write("\n");
+  const answer = await session.ask("  Enter 1 or 2 [1]: ");
+  const trimmed = answer.trim();
+  if (trimmed === "2" || trimmed.toLowerCase().startsWith("team")) return "team";
   return "pgembed";
 }
 
@@ -113,9 +122,10 @@ async function promptTeamConnection(session: PromptSession): Promise<{
   port: string;
   database: string;
 }> {
-  const host = (await session.ask("? Team server IP [localhost]: ")).trim() || "localhost";
-  const port = (await session.ask("? Team server port [5432]: ")).trim() || "5432";
-  const database = (await session.ask("? Database name [neuralgentics]: ")).trim() || "neuralgentics";
+  process.stdout.write("\n  Enter your team server details:\n");
+  const host = (await session.ask("  Server IP or hostname [localhost]: ")).trim() || "localhost";
+  const port = (await session.ask("  Port [5432]: ")).trim() || "5432";
+  const database = (await session.ask("  Database name [neuralgentics]: ")).trim() || "neuralgentics";
   return { host, port, database };
 }
 
@@ -130,14 +140,28 @@ async function promptEmbeddingMode(session: PromptSession, flags: PromptFlags): 
   if (flags.gpuEmbed) return "gpu";
   if (flags.yes) return "auto";
 
-  process.stdout.write("\n? Embedding mode:\n");
-  process.stdout.write("  > CPU (384-dim, fast, runs anywhere)\n");
-  process.stdout.write("    Auto (384-dim default + optional 1024-dim elevation) [recommended]\n");
-  process.stdout.write("    GPU (1024-dim only, requires CUDA/MPS)\n");
-  const answer = await session.ask("\nChoose [auto]: ");
-  const trimmed = answer.trim().toLowerCase();
-  if (trimmed.startsWith("cpu")) return "cpu";
-  if (trimmed.startsWith("gpu")) return "gpu";
+  process.stdout.write("\n? What embedding model should memini-ai use?\n");
+  process.stdout.write("\n");
+  process.stdout.write("  Embeddings convert text into vectors for semantic search.\n");
+  process.stdout.write("  This affects how well memini-ai can find related memories.\n");
+  process.stdout.write("\n");
+  process.stdout.write("  1. CPU — Fast and lightweight, runs on any machine.\n");
+  process.stdout.write("     Good search quality, low memory usage.\n");
+  process.stdout.write("     Best for laptops, small VMs, or machines without a GPU.\n");
+  process.stdout.write("\n");
+  process.stdout.write("  2. Auto (recommended) — Same as CPU by default, but can\n");
+  process.stdout.write("     automatically upgrade to higher quality if you add a GPU later.\n");
+  process.stdout.write("     Best if you're not sure or might change hardware.\n");
+  process.stdout.write("\n");
+  process.stdout.write("  3. GPU — Highest quality search, but requires a dedicated\n");
+  process.stdout.write("     GPU (NVIDIA CUDA or Apple Silicon MPS).\n");
+  process.stdout.write("     Uses more memory and processing power.\n");
+  process.stdout.write("     Best for machines with a GPU that need the best search quality.\n");
+  process.stdout.write("\n");
+  const answer = await session.ask("  Enter 1, 2, or 3 [2]: ");
+  const trimmed = answer.trim();
+  if (trimmed === "1" || trimmed.toLowerCase().startsWith("cpu")) return "cpu";
+  if (trimmed === "3" || trimmed.toLowerCase().startsWith("gpu")) return "gpu";
   return "auto";
 }
 
@@ -164,12 +188,13 @@ async function promptOllamaApiKey(
   // Skip if --yes.
   if (flags.yes) return undefined;
 
-  process.stdout.write("\n? Want to add your Ollama Cloud API key now? (get one at https://ollama.com)\n");
-  process.stdout.write("  You can skip and add it later to ~/.config/opencode/.env\n");
+  process.stdout.write("\n? Want to add your Ollama Cloud API key now?\n");
+  process.stdout.write("  Get one at https://ollama.com (free tier available).\n");
+  process.stdout.write("  You can skip this and add it later.\n");
   const wantKey = (await session.ask("  [y/N]: ")).trim().toLowerCase();
   if (!wantKey.startsWith("y")) {
-    process.stdout.write("  Skipped — provider will use {env:OLLAMA_API_KEY} placeholder.\n");
-    process.stdout.write("  Add OLLAMA_API_KEY=<your-key> to ~/.config/opencode/.env when ready.\n\n");
+    process.stdout.write("  Skipped — add it later in ~/.config/opencode/.env\n");
+    process.stdout.write("  as: OLLAMA_API_KEY=<your-key>\n\n");
     return undefined;
   }
 
