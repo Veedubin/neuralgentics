@@ -24,6 +24,7 @@
 
 import { execSync } from "node:child_process";
 import * as os from "node:os";
+import * as path from "node:path";
 
 export interface SysDepsResult {
   /** Tools that were already present (no action taken). */
@@ -100,9 +101,20 @@ export async function checkAndInstallSystemDeps(dryRun: boolean): Promise<SysDep
     installed.push(`uv (${versionOf("uv")})`);
   } else {
     missing.push("uv");
+    // Detect package manager and give the right install command
+    const isMac = os.platform() === "darwin";
+    const hasBrew = hasCmd("brew");
+    let installCmd: string;
+    if (isMac && hasBrew) {
+      installCmd = "brew install uv";
+    } else {
+      installCmd = "curl -LsSf https://astral.sh/uv/install.sh | sh";
+    }
     process.stdout.write(
-      "✗ uv is not installed. Install uv:\n" +
-        "    curl -LsSf https://astral.sh/uv/install.sh | sh\n",
+      "✗ uv is not installed (required for Python MCP servers like memini-ai-dev).\n" +
+        "  Install it with:\n" +
+        `    ${installCmd}\n` +
+        "  Then re-run: neuralgentics --init-homedir\n",
     );
   }
 

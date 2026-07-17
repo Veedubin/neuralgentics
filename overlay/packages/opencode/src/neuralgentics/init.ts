@@ -1505,6 +1505,15 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
   for (const skip of sysDeps.skipped) process.stdout.write(`  ⊘ ${skip}\n`);
   for (const miss of sysDeps.missing) process.stdout.write(`  ✗ ${miss} (see instructions above)\n`);
 
+  // If uv is missing, exit gracefully — Python MCP packages can't be installed without it.
+  if (sysDeps.missing.includes("uv")) {
+    process.stdout.write(
+      "\n  Install uv first, then re-run: neuralgentics --init-homedir\n" +
+      "  Your config and agents are already written — only the package pre-download was skipped.\n",
+    );
+    return 0;
+  }
+
   // NEW: Pre-download MCP packages so the first `opencode` launch is not
   //      blocked on a cold `uvx` / `npx` fetch. One package failing does NOT
   //      abort the install — failures are reported in the summary.
