@@ -5,12 +5,15 @@
  * package referenced in the written opencode.json so that the first
  * `opencode` launch does not block on a cold `uvx` / `npx` fetch.
  *
- * - `uvx` packages  → `uv tool install "<pkg>"` (warms the uv wheel cache +
- *                     installs the binary on PATH; opencode still runs the
- *                     server via `uvx`, which hits the warm cache on launch).
- *                     NOTE: the original spec said `uvx --install`, but
- *                     `uvx` (uv 0.11+) has no `--install` flag — `uv tool
- *                     install` is the supported pre-download path.
+ * The MCP config commands use `uvx` and `npx -y` (not `uv tool install`
+ * or global installs) so every launch gets the freshest version. To
+ * pre-warm the cache without pinning a version, we run the same command
+ * with `--help` or `--version` appended — this downloads + caches the
+ * package and its deps, then exits immediately without starting the
+ * MCP server.
+ *
+ * - `uvx` packages  → `uvx --from <pkg> <bin> --help` or `uvx <pkg> --help`
+ *                     (warms the uvx ephemeral cache)
  * - `npx` packages  → `npx --yes <pkg> --help` (downloads + caches, then exits)
  *
  * One package failing does NOT abort the install — failures are collected
@@ -33,45 +36,33 @@ const PER_PACKAGE_TIMEOUT_MS = 120_000;
 /**
  * Build the pre-download command for a single MCP server entry.
  *
- * Returns `null` if the entry uses neither `uvx` nor `npx` (so we skip it
- * rather than guess — e.g. a user-supplied local path command).
+ * The MCP config uses `uvx` / `npx -y` for freshest-on-launch. We pre-warm
+ * by running the same command with `--help` appended — this downloads +
+ * caches the package and deps, then exits immediately.
  *
- * NOTE: the original spec asked for `uvx --install ...`, but `uvx` (uv 0.11+)
- * has no `--install` flag. The supported pre-download path is
- * `uv tool install "<pkg>"` — it warms the wheel cache and installs the
- * binary on PATH. opencode still launches the server via `uvx ...`, which
- * hits the warm cache on first run instead of doing a cold fetch.
+ * Returns `null` if the entry uses neither `uvx` nor `npx`.
  */
 function buildPreDownloadCommand(entry: McpServerEntry): { cmd: string; via: "uvx" | "npx" } | null {
   const [runner, ...rest] = entry.command;
   if (runner === "uvx") {
     // Forms seen in mcp-templates.ts:
-    //   ["uvx", "--from", "memini-ai-dev", "memini-ai"]   →  uv tool install --force "memini-ai-dev"
-    //   ["uvx", "videre-mcp[vision]"]                    →  uv tool install --force "videre-mcp[vision]"
-    //   ["uvx", "markitdown-mcp"]                        →  uv tool install --force "markitdown-mcp"
-    //   ["uvx", "mcp-server-motherduck"]                →  uv tool install --force "mcp-server-motherduck"
+    //   ["uvx", "--from", "memini-ai-dev", "memini-ai"]  →  uvx --from memini-ai-dev memini-ai --help
+    //   ["uvx", "videre-mcp[vision]"]                   →  uvx videre-mcp[vision] --help
+    //   ["uvx", "markitdown-mcp"]                       →  uvx markitdown-mcp --help
+    //   ["uvx", "mcp-server-motherduck"]                →  uvx mcp-server-motherduck --help
     //
-    // `--force` is idempotent: it re-installs over an existing binary instead
-    // of exiting non-zero (which would be reported as a failure on re-runs).
-    if (rest.length >= 2 && rest[0] === "--from") {
-      const fromPkg = rest[1];
-      return { cmd: `uv tool install --force "${fromPkg}"`, via: "uvx" };
-    }
-    const pkg = rest.join(" ").trim();
-    if (!pkg) return null;
-    return { cmd: `uv tool install --force "${pkg}"`, via: "uvx" };
+    // We run the exact same uvx command + " --help" so the ephemeral
+    // cache is warmed. On real launch, opencode runs the same uvx
+    // command (without --help) and hits the warm cache.
+    const fullCmd = entry.command.join(" ");
+    return { cmd: `${fullCmd} --help`, via: "uvx" };
   }
 
   if (runner === "npx") {
     // Forms: ["npx", "-y", "<pkg>"]  OR  ["npx", "-y", "<pkg>@latest"]
-    // Drop the "-y" if present; we add our own --yes.
-    const pkgArgs = rest.filter((a) => a !== "-y");
-    const pkg = pkgArgs.join(" ").trim();
-    if (!pkg) return null;
-    return {
-      cmd: `npx --yes ${pkg} --help`,
-      via: "npx",
-    };
+    // We run the exact same npx command + " --help" to cache it.
+    const fullCmd = entry.command.join(" ");
+    return { cmd: `${fullCmd} --help`, via: "npx" };
   }
 
   return null;
