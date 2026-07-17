@@ -296,6 +296,7 @@
       ],
       "environment": {
         "MEMINI_DB_URL": "postgresql://postgres:password@localhost:5434/postgres",
+        "MEMINI_VECTOR_BACKEND": "postgres-external",
         "MEMINI_EMBEDDING_DIM": "384",
         "TRUST_ENGINE": "true",
         "MEMORY_GRAPH": "true",

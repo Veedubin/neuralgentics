@@ -55,6 +55,21 @@ You are the **Neuralgentics Git** — version control specialist.
 2. **Branch management** — Create/merge branches
 3. **History review** — Inspect git log and diff
 
+## ⚠️ Release Repo Reminder
+
+If the repo you're pushing to is a **release repo** (memini-ai-dev, boomerang-v3, neuralgentics, boomerang-queue, boomerang-proxy, doc2png, Super-Memory-TS, ssh-mcp-server, attacklm-dataset, AttackLM), every commit to `main` MUST be accompanied by a `v*.*.*` tag. If your task involved a version bump, the workflow is:
+
+```bash
+bumpversion --patch --apply   # or --minor / --major
+git add -A && git commit -m "chore(release): bump to X.Y.Z"
+git tag -a vX.Y.Z -m "vX.Y.Z: <description>"
+git push origin main vX.Y.Z
+```
+
+If the commit is a **non-version-bump code change to a release repo**, note in the handoff that "releasable — run `bumpversion` before next release". Never force-push tags (see "Never Retag a Public Release" in `AGENTS.md`).
+
+For the full workflow, load the `neuralgentics-release` skill.
+
 ## MANDATORY MEMORY PROTOCOL
 
 1. **Fetch context** — If provided a `memory_id`, query `memini-ai-dev_query_memories` to get your Context Package

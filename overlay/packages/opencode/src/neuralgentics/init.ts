@@ -33,6 +33,10 @@ import {
   ExtractionFailed,
   VersionNotFound,
 } from "./download.js";
+import { getHomedirConfigPath, getProjectConfigPath, getBackupDir } from "./paths.js";
+import { HOMEDIR_MCP_TEMPLATES, PROJECT_MCP_TEMPLATES, type McpBlock } from "./mcp-templates.js";
+import { runAllPrompts, type PromptFlags, type PromptConfig, type BackendMode, type EmbeddingMode } from "./prompts.js";
+import { backupFile, type BackupRecord } from "./backup.js";
 
 /**
  * Local base class for init-flow errors. Extends the download module's
@@ -1102,6 +1106,344 @@ function askQuestion(prompt: string): Promise<string> {
       resolve(answer);
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// Two-init flows: initHomedir() + initProject()
+// ---------------------------------------------------------------------------
+
+/** Options for the homedir init flow. */
+export interface InitHomedirOptions {
+  target: string;       // override target dir (or ".")
+  force: boolean;
+  dryRun: boolean;
+  yes: boolean;
+  repo: string;
+  version: string;      // "latest" or "X.Y.Z"
+  embedded: boolean;
+  team: boolean;
+  cpuEmbed: boolean;
+  autoEmbed: boolean;
+  gpuEmbed: boolean;
+}
+
+/** Options for the project init flow. */
+export interface InitProjectOptions {
+  target: string;
+  force: boolean;
+  dryRun: boolean;
+  yes: boolean;
+  repo: string;
+  version: string;
+  embedded: boolean;
+  team: boolean;
+  cpuEmbed: boolean;
+  autoEmbed: boolean;
+  gpuEmbed: boolean;
+  withBackend: boolean;
+  offline: boolean;
+  quantize: string;
+  device: string | undefined;
+  noLazyLoad: boolean;
+  idleMin: number;
+  statusPort: number;
+  embedModel: string;
+}
+
+/**
+ * Build an opencode.json object for the homedir config.
+ *
+ * Contains: provider block with ollama models, LSP, formatter, compaction,
+ * tool_output, small_model, server, and HOMEDIR_MCP_TEMPLATES.
+ */
+function buildHomedirOpencodeJson(promptConfig: PromptConfig): Record<string, unknown> {
+  const embeddingDim = promptConfig.embedding === "gpu" ? "1024" : "384";
+
+  const mcpBlock: Record<string, unknown> = {};
+  for (const [name, entry] of Object.entries(HOMEDIR_MCP_TEMPLATES)) {
+    mcpBlock[name] = {
+      type: entry.type,
+      enabled: entry.enabled,
+      command: entry.command,
+      ...(entry.env ? { env: entry.env } : {}),
+      ...(entry.args ? { args: entry.args } : {}),
+    };
+  }
+
+  return {
+    "$schema": "https://opencode.ai/config.json",
+    "autoupdate": true,
+    "tool_output": "terminal",
+    "compaction": {
+      "keep": [
+        "**/AGENTS.md",
+        "**/TASKS.md",
+        "**/CONTEXT.md",
+      ],
+    },
+    "small_model": "ollama/gpt-oss-20b",
+    "provider": {
+      "ollama": {
+        "name": "ollama",
+        "api": "https://ollama.com/v1",
+        "options": {
+          "apiKey": "{env:OLLAMA_API_KEY}",
+        },
+        "models": {
+          "kimi-k2.6": { "name": "kimi-k2.6" },
+          "glm-5.2": { "name": "glm-5.2" },
+          "deepseek-v4-pro": { "name": "deepseek-v4-pro" },
+          "devstral-2:123b": { "name": "devstral-2:123b" },
+          "deepseek-v4-flash": { "name": "deepseek-v4-flash" },
+          "qwen3-coder-next": { "name": "qwen3-coder-next" },
+          "minimax-m3": { "name": "minimax-m3" },
+          "mistral-large-3:675b": { "name": "mistral-large-3:675b" },
+          "qwen3.5": { "name": "qwen3.5" },
+          "devstral-small-2:24b": { "name": "devstral-small-2:24b" },
+        },
+      },
+    },
+    "lsp": {
+      "typescript": {
+        "command": "typescript-language-server",
+        "args": ["--stdio"],
+        "enabled": true,
+      },
+    },
+    "formatter": {
+      "typescript": "prettier --write",
+    },
+    "mcp": mcpBlock,
+    "_neuralgentics_embedding_dim": embeddingDim,
+  };
+}
+
+/**
+ * Build an opencode.json object for the project config.
+ *
+ * Contains: plugin, instructions, and PROJECT_MCP_TEMPLATES with pgembed env.
+ */
+function buildProjectOpencodeJson(promptConfig: PromptConfig): Record<string, unknown> {
+  const mcpBlock: Record<string, unknown> = {};
+  for (const [name, entry] of Object.entries(PROJECT_MCP_TEMPLATES)) {
+    // Apply embedding mode to memini-ai-dev env
+    const env = { ...entry.env };
+    if (name === "memini-ai-dev") {
+      env.MEMINI_EMBEDDING_DIM = promptConfig.embedding === "gpu" ? "1024" : "384";
+      // Apply team server settings if team mode was chosen
+      if (promptConfig.backend === "team") {
+        const host = promptConfig.teamHost ?? "localhost";
+        const port = promptConfig.teamPort ?? "5432";
+        const db = promptConfig.teamDatabase ?? "neuralgentics";
+        env.MEMINI_DB_URL = `postgresql://neuralgentics:neuralgentics@${host}:${port}/${db}`;
+      }
+    }
+    mcpBlock[name] = {
+      type: entry.type,
+      enabled: entry.enabled,
+      command: entry.command,
+      env,
+      ...(entry.args ? { args: entry.args } : {}),
+    };
+  }
+
+  return {
+    "plugin": ["@veedubin/neuralgentics"],
+    "instructions": ["AGENTS.md"],
+    "mcp": mcpBlock,
+  };
+}
+
+/**
+ * Write a JSON config file, backing up the existing one first.
+ */
+async function writeConfigWithBackup(
+  configDir: string,
+  fileName: string,
+  content: string,
+  force: boolean,
+  dryRun: boolean,
+): Promise<BackupRecord | null> {
+  const filePath = path.join(configDir, fileName);
+  let backup: BackupRecord | null = null;
+
+  if (existsSync(filePath)) {
+    // Check idempotency via SHA-256
+    const existingSha = await computeFileSha256(filePath);
+    const newSha = createHash("sha256").update(content).digest("hex");
+    if (existingSha === newSha && !force) {
+      // Idempotent — no change needed
+      return null;
+    }
+    if (!dryRun) {
+      backup = await backupFile(configDir, filePath);
+    }
+  }
+
+  if (dryRun) {
+    process.stdout.write(`[DRY-RUN] Would write ${filePath}\n`);
+    return null;
+  }
+
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, content, "utf-8");
+  return backup;
+}
+
+/**
+ * Write a state file for a two-init install.
+ */
+async function writeTwoInitState(
+  configDir: string,
+  version: string,
+  installType: "homedir" | "project",
+  files: Record<string, { path: string; sha256: string }>,
+): Promise<void> {
+  const statePath = path.join(configDir, STATE_FILENAME);
+  const now = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+  const state = {
+    version: 1,
+    installed_version: version,
+    installed_at: now,
+    updated_at: now,
+    cli_version: CLI_VERSION,
+    source: "github" as const,
+    repo: "Veedubin/neuralgentics",
+    target: configDir,
+    files: Object.fromEntries(
+      Object.entries(files).map(([k, v]) => [
+        k,
+        {
+          sha256: v.sha256,
+          user_modified: false,
+          installed_from: version,
+          last_known_shipped_sha256: v.sha256,
+          merged: false,
+        },
+      ]),
+    ),
+    last_backup: null as string | null,
+    installType,
+  };
+  await fs.mkdir(path.dirname(statePath), { recursive: true });
+  await fs.writeFile(statePath, JSON.stringify(state, null, 2) + "\n", "utf-8");
+}
+
+/**
+ * Install global config to the homedir config directory.
+ *
+ * Writes: provider block, LSP, formatter, compaction, tool_output,
+ * small_model, server, HOMEDIR_MCP_TEMPLATES, global agents, global skills,
+ * AGENTS.md.
+ */
+export async function runInitHomedir(args: InitHomedirOptions): Promise<number> {
+  const configDir = args.target && args.target !== "."
+    ? path.resolve(args.target)
+    : getHomedirConfigPath();
+
+  process.stdout.write(`\nInstalling global config to: ${configDir}\n`);
+
+  // Run interactive prompts unless flags skip them
+  const promptFlags: PromptFlags = {
+    yes: args.yes,
+    embedded: args.embedded,
+    team: args.team,
+    cpuEmbed: args.cpuEmbed,
+    autoEmbed: args.autoEmbed,
+    gpuEmbed: args.gpuEmbed,
+  };
+  const promptConfig = await runAllPrompts(configDir, promptFlags);
+
+  if (args.dryRun) {
+    process.stdout.write(`[DRY-RUN] Would write homedir config to ${configDir}\n`);
+    process.stdout.write(`[DRY-RUN] Backend: ${promptConfig.backend}\n`);
+    process.stdout.write(`[DRY-RUN] Embedding: ${promptConfig.embedding}\n`);
+    return 0;
+  }
+
+  // Create config dir
+  await fs.mkdir(configDir, { recursive: true });
+
+  // Write opencode.json
+  const homedirConfig = buildHomedirOpencodeJson(promptConfig);
+  const configJson = JSON.stringify(homedirConfig, null, 2) + "\n";
+  await writeConfigWithBackup(configDir, "opencode.json", configJson, args.force, args.dryRun);
+
+  // Write state file
+  const sha = createHash("sha256").update(configJson).digest("hex");
+  await writeTwoInitState(
+    configDir,
+    args.version === "latest" ? "latest" : args.version,
+    "homedir",
+    { "opencode.json": { path: "opencode.json", sha256: sha } },
+  );
+
+  // Print summary
+  process.stdout.write(`\nOK neuralgentics homedir config installed in ${configDir}\n`);
+  process.stdout.write(`Config:  ${configDir}/opencode.json\n`);
+  process.stdout.write(`Backend: ${promptConfig.backend}\n`);
+  process.stdout.write(`Embed:   ${promptConfig.embedding}\n`);
+  process.stdout.write(`State:   ${configDir}/${STATE_FILENAME}\n`);
+  process.stdout.write(`\nNext: neuralgentics --init-project\n`);
+  return 0;
+}
+
+/**
+ * Install project config to {CWD}/.opencode/ (or --target).
+ *
+ * Writes: plugin, instructions, PROJECT_MCP_TEMPLATES with memini-ai-dev
+ * (pgembed defaults), project agents, project skills, AGENTS.md.
+ */
+export async function runInitProject(args: InitProjectOptions): Promise<number> {
+  const configDir = args.target && args.target !== "."
+    ? path.resolve(args.target)
+    : getProjectConfigPath();
+
+  process.stdout.write(`\nInstalling project config to: ${configDir}\n`);
+
+  // Run interactive prompts unless flags skip them
+  const promptFlags: PromptFlags = {
+    yes: args.yes,
+    embedded: args.embedded,
+    team: args.team,
+    cpuEmbed: args.cpuEmbed,
+    autoEmbed: args.autoEmbed,
+    gpuEmbed: args.gpuEmbed,
+  };
+  const promptConfig = await runAllPrompts(configDir, promptFlags);
+
+  if (args.dryRun) {
+    process.stdout.write(`[DRY-RUN] Would write project config to ${configDir}\n`);
+    process.stdout.write(`[DRY-RUN] Backend: ${promptConfig.backend}\n`);
+    process.stdout.write(`[DRY-RUN] Embedding: ${promptConfig.embedding}\n`);
+    return 0;
+  }
+
+  // Create config dir
+  await fs.mkdir(configDir, { recursive: true });
+
+  // Write opencode.json
+  const projectConfig = buildProjectOpencodeJson(promptConfig);
+  const configJson = JSON.stringify(projectConfig, null, 2) + "\n";
+  await writeConfigWithBackup(configDir, "opencode.json", configJson, args.force, args.dryRun);
+
+  // Write state file
+  const sha = createHash("sha256").update(configJson).digest("hex");
+  await writeTwoInitState(
+    configDir,
+    args.version === "latest" ? "latest" : args.version,
+    "project",
+    { "opencode.json": { path: "opencode.json", sha256: sha } },
+  );
+
+  // Print summary
+  process.stdout.write(`\nOK neuralgentics project config installed in ${configDir}\n`);
+  process.stdout.write(`Config:  ${configDir}/opencode.json\n`);
+  process.stdout.write(`Backend: ${promptConfig.backend}\n`);
+  process.stdout.write(`Embed:   ${promptConfig.embedding}\n`);
+  process.stdout.write(`State:   ${configDir}/${STATE_FILENAME}\n`);
+  process.stdout.write(`\nNext: opencode\n`);
+  return 0;
 }
 
 // ---------------------------------------------------------------------------

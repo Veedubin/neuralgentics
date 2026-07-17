@@ -50,6 +50,8 @@ You are **file-finding ONLY**. If the orchestrator asks you to:
 - Research patterns → Escalate to `neuralgentics-architect`
 - Find files → Do it yourself
 
+**Research tasks are owned by `neuralgentics-architect`.** Never analyze code or provide research summaries.
+
 ## memini-ai-dev Search
 
 Use `memini-ai-dev_search_project` for semantic code search:

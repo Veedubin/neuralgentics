@@ -98,16 +98,24 @@ This ensures shared knowledge reflects verified outcomes, not speculative predic
 
 ## Agent Roster
 
-| Role | Model | Purpose |
-| :--- | :--- | :--- |
-| Orchestrator | Primary | Task decomposition, routing, and protocol enforcement |
-| Architect | Primary | System design, trade-off analysis, and research |
-| Coder | Secondary | High-speed implementation and bug fixing |
-| Reviewer | Primary | Code quality, security audit, and logic verification |
-| Explorer | Secondary | File finding and codebase mapping |
-| Tester | Secondary | Unit, integration, and E2E test generation |
-| Git | Secondary | Version control, commits, branches, tags |
-| Writer | Secondary | Documentation and markdown writing |
+Neuralgentics provides 12 specialized agents for different roles:
+
+| Agent | Model | Role |
+|-------|-------|------|
+| orchestrator | kimi-k2.6 | Main coordinator, delegates to sub-agents |
+| architect | deepseek-v4-pro | System design, trade-off analysis, research |
+| coder | glm-5.2 | Fast code generation, bug fixes |
+| explorer | devstral-2:123b | Codebase exploration, file finding |
+| tester | deepseek-v4-flash | Test writing, test execution |
+| reviewer | deepseek-v4-pro | Code review: logic, security, consistency |
+| linter | qwen3-coder-next | Mechanical linting: ESLint, Ruff, mypy, tsc |
+| git | minimax-m3 | Version control: commits, branches, tags |
+| writer | mistral-large-3:675b | Documentation, markdown |
+| researcher | qwen3.5 | Web research, data gathering, scraping |
+| release | devstral-small-2:24b | Version bumps via bumpversion, changelogs, tagging |
+| agent-builder | glm-5.2 | Pattern detection, skill/agent creation |
+
+Note: Model names in agent files use `ollama/<model>` format (NOT `:cloud` suffix). The table above shows the base model name for readability.
 
 ## Architecture (v0.9.4 — Plugin + npm init CLI)
 
@@ -145,7 +153,7 @@ The old curl-bash installer (`curl -fsSL https://raw.githubusercontent.com/Veedu
 
 ### What's in the archive
 - `@veedubin/neuralgentics` — npm package providing the OpenCode plugin (orchestrator, memory client, routing)
-- `.opencode/agents/` — 8 agent personas (architect, coder, explorer, git, orchestrator, reviewer, tester, writer)
+- `.opencode/agents/` — 12 agent personas (orchestrator, architect, coder, explorer, tester, reviewer, linter, git, writer, researcher, release, agent-builder)
 - `.opencode/skills/` — 5 skills (boomerang-orchestrator, kanban-board-manager, skill-self-audit, todo-list-updater, update-gh-docs)
 - `.opencode/opencode.json` — OpenCode config with Ollama Cloud models, MCP servers, LSP, formatter
 - `.opencode/AGENTS.md` — Project instructions and agent protocol

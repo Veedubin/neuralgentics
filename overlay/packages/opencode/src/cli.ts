@@ -15,14 +15,29 @@ import {
   runInit,
   InitOptions,
   NeuralgenticsError,
+  runInitHomedir,
+  runInitProject,
+  type InitHomedirOptions,
+  type InitProjectOptions,
 } from "./neuralgentics/init.js";
 import type { MigrateEmbeddingsOptions } from "./neuralgentics/migrate.js";
+import { updateAll, updateProject, updateHomedir, type UpdateOptions } from "./neuralgentics/update.js";
 
 /** Sentinel for `--version` with no argument (distinguishes bare vs. with-arg). */
 const CLI_VERSION_SENTINEL = "__cli__";
 
 interface ParsedArgs {
   init: boolean;
+  initHomedir: boolean;
+  initProject: boolean;
+  update: boolean;
+  updateProject: boolean;
+  updateHomedir: boolean;
+  embedded: boolean;
+  team: boolean;
+  cpuEmbed: boolean;
+  autoEmbed: boolean;
+  gpuEmbed: boolean;
   target: string;
   force: boolean;
   dryRun: boolean;
@@ -52,6 +67,16 @@ function parseArgv(argv: string[]): ParsedArgs {
     args: argv,
     options: {
       init: { type: "boolean", default: false },
+      "init-homedir": { type: "boolean", default: false },
+      "init-project": { type: "boolean", default: false },
+      update: { type: "boolean", default: false },
+      "update-project": { type: "boolean", default: false },
+      "update-homedir": { type: "boolean", default: false },
+      embedded: { type: "boolean", default: false },
+      team: { type: "boolean", default: false },
+      "CPU-Embed": { type: "boolean", default: false },
+      "Auto-Embed": { type: "boolean", default: false },
+      "GPU-Embed": { type: "boolean", default: false },
       version: { type: "string" },
       target: { type: "string", short: "t", default: "." },
       force: { type: "boolean", default: false },
@@ -84,7 +109,11 @@ function parseArgv(argv: string[]): ParsedArgs {
   // when tokens:false). We use a lightweight scan instead.
   const positionals: string[] = [];
   const knownFlags = new Set([
-    "--init", "--force", "--dry-run", "--yes", "-y", "--offline",
+    "--init", "--init-homedir", "--init-project",
+    "--update", "--update-project", "--update-homedir",
+    "--embedded", "--team",
+    "--CPU-Embed", "--Auto-Embed", "--GPU-Embed",
+    "--force", "--dry-run", "--yes", "-y", "--offline",
     "--with-backend", "--no-lazy-load", "-h", "--help",
   ]);
   const valueFlags = new Set([
@@ -107,6 +136,16 @@ function parseArgv(argv: string[]): ParsedArgs {
 
   return {
     init: values.init === true,
+    initHomedir: values["init-homedir"] === true,
+    initProject: values["init-project"] === true,
+    update: values.update === true,
+    updateProject: values["update-project"] === true,
+    updateHomedir: values["update-homedir"] === true,
+    embedded: values.embedded === true,
+    team: values.team === true,
+    cpuEmbed: values["CPU-Embed"] === true,
+    autoEmbed: values["Auto-Embed"] === true,
+    gpuEmbed: values["GPU-Embed"] === true,
     target: values.target ?? ".",
     force: values.force === true,
     dryRun: values["dry-run"] === true,
@@ -132,20 +171,36 @@ function parseArgv(argv: string[]): ParsedArgs {
 
 function printHelp(): void {
   process.stdout.write(
-    `Usage: neuralgentics [init] [options]\n` +
+    `Usage: neuralgentics [init|update] [options]\n` +
       `\n` +
       `Bootstrapper CLI for the neuralgentics OpenCode plugin.\n` +
       `\n` +
-      `Options:\n` +
-      `  --init              Bootstrap the target directory with the neuralgentics plugin.\n` +
-      `  --version [VER]     With no arg: print CLI version and exit. With arg: plugin version to install.\n` +
-      `  --target, -t DIR    Directory to bootstrap (default: current directory).\n` +
-      `  --force             Overwrite existing .opencode/ files even if user-modified.\n` +
-      `  --dry-run           Preview all actions without writing anything.\n` +
-      `  --yes, -y           Skip all confirmation prompts.\n` +
-      `  --repo REPO         GitHub repository to download from (default: Veedubin/neuralgentics).\n` +
-      `  --offline           Use a bundled tarball instead of downloading (not yet available).\n` +
-      `  --with-backend      Set up database containers (podman-compose / docker).\n` +
+      `Init options:\n` +
+      `  --init-homedir       Install global config to ~/.config/opencode/ (Linux) or ~/Library/Application Support/opencode/ (Mac).\n` +
+      `  --init-project       Install project config to ./.opencode/ (CWD).\n` +
+      `  --init               Alias for --init-project (backward compat).\n` +
+      `\n` +
+      `Update options:\n` +
+      `  --update             Update ALL installs under user's home (projects + homedir).\n` +
+      `  --update-project     Update just THIS project (CWD).\n` +
+      `  --update-homedir     Update just the home dir.\n` +
+      `\n` +
+      `Backend / embedding flags:\n` +
+      `  --embedded           Skip backend prompt, use pgembed (zero Docker).\n` +
+      `  --team                Use team server, prompt for IP/port.\n` +
+      `  --CPU-Embed           384-dim CPU only, skip embed mode prompt.\n` +
+      `  --Auto-Embed          384 default + optional 1024 elevation, skip embed mode prompt.\n` +
+      `  --GPU-Embed           1024-dim GPU only, skip embed mode prompt.\n` +
+      `\n` +
+      `General options:\n` +
+      `  --version [VER]      With no arg: print CLI version and exit. With arg: plugin version to install.\n` +
+      `  --target, -t DIR     Directory to bootstrap (default: current directory).\n` +
+      `  --force              Overwrite existing files even if user-modified.\n` +
+      `  --dry-run            Preview all actions without writing anything.\n` +
+      `  --yes, -y            Skip all confirmation prompts.\n` +
+      `  --repo REPO          GitHub repository to download from (default: Veedubin/neuralgentics).\n` +
+      `  --offline            Use a bundled tarball instead of downloading (not yet available).\n` +
+      `  --with-backend        Set up database containers (podman-compose / docker).\n` +
       `\n` +
       `Lazy-load + quantize options (opt-in, v0.9.6+):\n` +
       `  --quantize DTYPE    Embedding dtype: auto|fp32|fp16|int8 (default: auto).\n` +
@@ -213,11 +268,12 @@ async function main(argv: string[]): Promise<number> {
     // handled above. Otherwise it's a plugin version to install.
   }
 
-  // init requested via --init or the positional `init` alias.
-  const initRequested = parsed.init || parsed.command === "init";
+  // init requested via --init, --init-homedir, --init-project, or positional `init`.
+  const initRequested = parsed.init || parsed.initHomedir || parsed.initProject || parsed.command === "init";
   const migrateRequested = parsed.command === "migrate-embeddings";
+  const updateRequested = parsed.update || parsed.updateProject || parsed.updateHomedir;
 
-  if (!initRequested && !migrateRequested) {
+  if (!initRequested && !migrateRequested && !updateRequested) {
     printHelp();
     return 0;
   }
@@ -235,6 +291,109 @@ async function main(argv: string[]): Promise<number> {
     return await runMigrateEmbeddings(migrateOpts);
   }
 
+  // Update flows
+  if (updateRequested) {
+    const updateOpts: UpdateOptions = {
+      repo: parsed.repo,
+      version: parsed.version,
+      force: parsed.force,
+      dryRun: parsed.dryRun,
+    };
+    try {
+      if (parsed.update) {
+        await updateAll(updateOpts);
+      } else if (parsed.updateProject) {
+        await updateProject(updateOpts);
+      } else {
+        await updateHomedir(updateOpts);
+      }
+      return 0;
+    } catch (err) {
+      if (err instanceof NeuralgenticsError) {
+        process.stderr.write(formatError(err) + "\n");
+        return err.exitCode;
+      }
+      if (err instanceof Error) {
+        process.stderr.write(`[ERROR] ${err.message}\n`);
+        return 1;
+      }
+      process.stderr.write(`[ERROR] ${String(err)}\n`);
+      return 1;
+    }
+  }
+
+  // Two-init flows: --init-homedir or --init-project (or legacy --init)
+  if (parsed.initHomedir) {
+    const opts: InitHomedirOptions = {
+      target: parsed.target,
+      force: parsed.force,
+      dryRun: parsed.dryRun,
+      yes: parsed.yes,
+      repo: parsed.repo,
+      version: parsed.version,
+      embedded: parsed.embedded,
+      team: parsed.team,
+      cpuEmbed: parsed.cpuEmbed,
+      autoEmbed: parsed.autoEmbed,
+      gpuEmbed: parsed.gpuEmbed,
+    };
+    try {
+      return await runInitHomedir(opts);
+    } catch (err) {
+      if (err instanceof NeuralgenticsError) {
+        process.stderr.write(formatError(err) + "\n");
+        return err.exitCode;
+      }
+      if (err instanceof Error) {
+        process.stderr.write(`[ERROR] ${err.message}\n`);
+        return 1;
+      }
+      process.stderr.write(`[ERROR] ${String(err)}\n`);
+      return 1;
+    }
+  }
+
+  if (parsed.initProject || parsed.init || parsed.command === "init") {
+    const opts: InitProjectOptions = {
+      target: parsed.target,
+      force: parsed.force,
+      dryRun: parsed.dryRun,
+      yes: parsed.yes,
+      repo: parsed.repo,
+      version: parsed.version,
+      embedded: parsed.embedded,
+      team: parsed.team,
+      cpuEmbed: parsed.cpuEmbed,
+      autoEmbed: parsed.autoEmbed,
+      gpuEmbed: parsed.gpuEmbed,
+      withBackend: parsed.withBackend,
+      offline: parsed.offline,
+      quantize: parsed.quantize,
+      device: parsed.device,
+      noLazyLoad: parsed.noLazyLoad,
+      idleMin: parsed.idleMin,
+      statusPort: parsed.statusPort,
+      embedModel: parsed.embedModel,
+    };
+    try {
+      return await runInitProject(opts);
+    } catch (err) {
+      if (err instanceof NeuralgenticsError) {
+        process.stderr.write(formatError(err) + "\n");
+        return err.exitCode;
+      }
+      if (err instanceof Error) {
+        process.stderr.write(`[ERROR] ${err.message}\n`);
+        return 1;
+      }
+      process.stderr.write(`[ERROR] ${String(err)}\n`);
+      return 1;
+    }
+  }
+
+  // Legacy init flow (kept for backward compat when --init is used without
+  // --init-homedir or --init-project). This delegates to runInit which
+  // implements the original single-init behavior.
   const opts: InitOptions = {
     init: true,
     target: parsed.target,

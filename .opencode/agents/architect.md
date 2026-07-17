@@ -91,11 +91,25 @@ Use these tools for research:
 ## Trust Engine for Decisions
 
 Key decisions (architectural choices) should be saved with:
-- `sourceType: "boomerang"`
+- `sourceType: "neuralgentics"`
 - `metadata.project: "neuralgentics"`
 - `metadata.type: "architecture-decision"`
 
+After saving a decision, adjust trust:
+- If the decision is used successfully → `memini-ai-dev_adjust_trust` with `agent_used` (+0.05)
+- If the decision is confirmed by the user → `user_confirmed` (+0.10)
+- If the decision is ignored → `agent_ignored` (-0.05)
+- If the decision is corrected by the user → `user_corrected` (-0.10)
+
 ## Escalation
+
+You are the **research authority**. When in doubt, research it yourself rather than delegating down.
+
+| Situation | Escalate To | Notes |
+|-----------|-------------|-------|
+| File-finding tasks | `neuralgentics-explorer` | Explorer is file-finding ONLY (no analysis) |
+| Web research | `researcher` | Use for external data gathering |
+| Code implementation | `neuralgentics-coder` | After design is complete |
 
 You are the research authority. When in doubt, research it yourself rather than delegating down.
 

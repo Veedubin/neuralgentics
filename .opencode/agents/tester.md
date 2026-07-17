@@ -76,13 +76,13 @@ bun run typecheck
 **Python** (`memini-ai-dev/`):
 ```bash
 # Run all tests
-pytest
+uv run pytest
 
 # Run specific test file
-pytest tests/test_file.py -v
+uv run pytest tests/test_file.py -v
 
 # With coverage
-pytest --cov=src --cov-report=term-missing
+uv run pytest --cov=src --cov-report=term-missing
 ```
 
 **NEVER use `python -c` — always use `uv run` or `uvx` instead.**
@@ -95,8 +95,9 @@ bun run lint
 ## Trust Engine
 
 After test run:
-- If tests pass and code works → `memini-ai-dev_adjust_trust` with `agent_used`
+- If tests pass and code works → `memini-ai-dev_adjust_trust` with `agent_used` (+0.05)
 - If user confirms fix works → Use `user_confirmed` (+0.10)
+- If tests fail → Use `agent_ignored` (-0.05) or `user_corrected` (-0.10) if the user provides a fix
 
 ## Output Format
 

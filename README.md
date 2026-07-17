@@ -3,7 +3,7 @@
 > **Open-source agent runtime** — 12 MCP servers, 8 agent personas, 5 skills, 1 npm plugin, 3 containers, 1 stateless protocol, 0 lock-in.
 
 - **12 MCP servers** — memini-ai, markitdown, duckdb, redis, playwright, calculator, prefect, mlflow-mcp, doc2png, github-mcp, videre-mcp, searxng
-- **8 agent personas** — orchestrator, architect, coder, tester, linter, git, writer, mcp-specialist
+- **12 agent personas** — orchestrator, architect, coder, explorer, tester, reviewer, linter, git, writer, researcher, release, agent-builder
 - **5 skills** — kanban-board-manager, todo-list-updater, skill-self-audit, boomerang-agent-builder, mcp-specialist
 - **1 npm plugin** — `@veedubin/neuralgentics` (340 KB)
 - **3 containers** — postgres (1.2 GB), sidecar (180 MB), backend (26 MB)
@@ -23,7 +23,7 @@ Neuralgentics is the **agentic core** for [OpenCode](https://github.com/modelcon
 
 ## What it does
 
-Neuralgentics provides **8 agent personas**, **5 skills**, and **12 MCP servers** that turn any codebase into a **self-orchestrating workspace**.
+Neuralgentics provides **12 agent personas**, **5 skills**, and **12 MCP servers** that turn any codebase into a **self-orchestrating workspace**.
 
 | Feature | What it does |
 |---------|--------------|
@@ -35,6 +35,88 @@ Neuralgentics provides **8 agent personas**, **5 skills**, and **12 MCP servers*
 | **Tiered context** | Auto-injects L0 (~100 tokens) and L1 (~2K tokens) summaries at session start |
 | **Multi-agent routing** | Dispatches tasks to the correct agent based on the [Routing Matrix](https://github.com/veedubin/neuralgentics/blob/main/AGENTS.md#routing-matrix) |
 | **Stateless protocol** | MCP over JSON-RPC 2.0 — no state, no lock-in |
+
+## Quick Start
+
+### Install
+
+```bash
+# 1. Install global config (provider, MCP server templates, global agents)
+neuralgentics --init-homedir
+
+# 2. In your project directory, install project config
+cd my-project
+neuralgentics --init-project
+
+# 3. Start opencode
+opencode
+```
+
+### Install Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--init-homedir` | Install global config to `~/.config/opencode/` (Linux) or `~/Library/Application Support/opencode/` (Mac) |
+| `--init-project` | Install project config to `./.opencode/` |
+| `--init` | Alias for `--init-project` (backward compat) |
+| `--update` | Update ALL installs (projects + homedir) |
+| `--update-project` | Update just this project |
+| `--update-homedir` | Update just the home dir |
+| `--embedded` | Use pgembed (zero Docker, just works) — skips backend prompt |
+| `--team` | Use team PostgreSQL server — prompts for IP/port |
+| `--CPU-Embed` | 384-dim CPU only — skips embed mode prompt |
+| `--Auto-Embed` | 384-dim default + optional 1024 elevation — skips embed mode prompt |
+| `--GPU-Embed` | 1024-dim GPU only — skips embed mode prompt |
+| `--yes` | Skip all prompts (use defaults) |
+
+### Interactive Prompts
+
+If you run `neuralgentics --init-homedir` without skip flags, you'll be asked:
+1. **Backend mode**: pgembed (recommended) or team server
+2. **Embedding mode**: CPU (384-dim), Auto (384+1024), or GPU (1024-dim)
+3. **Ollama API key**: enter your key (get one at https://ollama.com)
+
+### MCP Servers
+
+The installer configures 12 MCP servers. Only `videre-mcp` is enabled by default. The rest are disabled — enable the ones you need by editing `~/.config/opencode/opencode.json`.
+
+| Server | Enabled | Install | Notes |
+|--------|---------|---------|-------|
+| videre-mcp | ✅ | `uvx videre-mcp[vision]` | Vision: OCR, image description |
+| memini-ai-dev | ✅ (project) | `uvx memini-ai-dev` | Memory: semantic search, trust scoring, knowledge graph |
+| ssh-mcp-server | ❌ | `npx -y @fangjunjie/ssh-mcp-server` | SSH: remote command exec (Tailscale recommended) |
+| searxng | ❌ | `npx -y mcp-searxng` | Web search. Requires local SearXNG at `http://localhost:8080` — see [SearXNG install docs](https://docs.searxng.org/admin/installation.html) |
+| github-mcp | ❌ | `npx -y @modelcontextprotocol/server-github` | GitHub: repos, issues, PRs. Requires `GITHUB_PERSONAL_ACCESS_TOKEN` |
+| markitdown | ❌ | `uvx markitdown-mcp` | File conversion: PDF/DOCX/HTML → Markdown |
+| playwright | ❌ | `npx -y @playwright/mcp@latest` | Browser automation |
+| duckdb | ❌ | `uvx mcp-server-motherduck` | In-memory SQL via DuckDB |
+| redis | ❌ | `npx -y @gongrzhe/server-redis-mcp` | Redis key-value (localhost:6379) |
+| calculator | ❌ | `npx -y @wrtnlabs/calculator-mcp` | Math evaluation |
+| prefect | ❌ | `uvx --from prefect-mcp prefect-mcp-server` | Prefect workflow orchestration |
+| mlflow-mcp | ❌ | `uv run --with mlflow[mcp]>=3.5.1 mlflow mcp run` | MLflow experiment tracking |
+
+### Cross-Platform
+
+- **Linux**: `~/.config/opencode/` for global config
+- **Mac**: `~/Library/Application Support/opencode/` for global config
+- **Windows**: Use WSL (treated as Linux)
+
+### Update
+
+```bash
+# Update everything (global + all projects)
+neuralgentics --update
+
+# Update just this project
+neuralgentics --update-project
+
+# Update just the home dir
+neuralgentics --update-homedir
+```
+
+Updates back up overwritten files to `opencode-bak/<name>-<timestamp>.json` before replacing them. Files changed in the same update run share a timestamp (down to milliseconds) so you can see which files were moved together.
+
+After an update, you'll see a prompt reminding you to re-apply any personalizations to the updated files. Your old versions are in `opencode-bak/`.
 
 ## Quick links
 
@@ -48,14 +130,21 @@ Neuralgentics provides **8 agent personas**, **5 skills**, and **12 MCP servers*
 
 ## Install
 
-Neuralgentics is an **OpenCode plugin** — install it in your project with:
+Neuralgentics uses a **two-init flow** — see the [Quick Start](#quick-start) section above for the recommended install process.
 
 ```bash
-# In your project directory
-npx @veedubin/neuralgentics --init
+# 1. Install global config (provider, MCP server templates, global agents)
+npx @veedubin/neuralgentics --init-homedir
+
+# 2. In your project directory, install project config
+cd my-project
+npx @veedubin/neuralgentics --init-project
+
+# 3. Start opencode
+opencode
 ```
 
-### What `--init` does
+### What `--init-project` does (alias: `--init`)
 
 1. **Downloads** the latest release tarball from GitHub
 2. **Backs up** your existing `.opencode/` directory (if any)
@@ -187,7 +276,7 @@ Neuralgentics turns any codebase into a **self-orchestrating workspace**.
 3. **Run**: `opencode`
 4. **Watch**: Agents auto-route tasks, evolve skills, and remember decisions
 
-No lock-in, no telemetry, no mandatory cloud — just **12 MCP servers**, **8 agent personas**, and **5 skills** working for you.
+No lock-in, no telemetry, no mandatory cloud — just **12 MCP servers**, **12 agent personas**, and **5 skills** working for you.
 
 ## Development setup
 
