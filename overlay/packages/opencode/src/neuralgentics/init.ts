@@ -35,7 +35,7 @@ import {
 } from "./download.js";
 import { getHomedirConfigPath, getProjectConfigPath, getBackupDir } from "./paths.js";
 import { HOMEDIR_MCP_TEMPLATES, PROJECT_MCP_TEMPLATES, type McpBlock } from "./mcp-templates.js";
-import { runAllPrompts, type PromptFlags, type PromptConfig, type BackendMode, type EmbeddingMode } from "./prompts.js";
+import { runAllPrompts, DEFAULT_PROMPT_CONFIG, type PromptFlags, type PromptConfig, type BackendMode, type EmbeddingMode } from "./prompts.js";
 import { backupFile, type BackupRecord } from "./backup.js";
 
 /**
@@ -1352,17 +1352,19 @@ export async function runInitHomedir(args: InitHomedirOptions): Promise<number> 
     autoEmbed: args.autoEmbed,
     gpuEmbed: args.gpuEmbed,
   };
-  const promptConfig = await runAllPrompts(configDir, promptFlags);
 
   if (args.dryRun) {
+    const dryConfig = { ...DEFAULT_PROMPT_CONFIG };
     process.stdout.write(`[DRY-RUN] Would write homedir config to ${configDir}\n`);
-    process.stdout.write(`[DRY-RUN] Backend: ${promptConfig.backend}\n`);
-    process.stdout.write(`[DRY-RUN] Embedding: ${promptConfig.embedding}\n`);
+    process.stdout.write(`[DRY-RUN] Backend: ${dryConfig.backend}\n`);
+    process.stdout.write(`[DRY-RUN] Embedding: ${dryConfig.embedding}\n`);
     return 0;
   }
 
-  // Create config dir
+  // Create config dir BEFORE prompts (prompts write .env to this dir)
   await fs.mkdir(configDir, { recursive: true });
+
+  const promptConfig = await runAllPrompts(configDir, promptFlags);
 
   // Write opencode.json
   const homedirConfig = buildHomedirOpencodeJson(promptConfig);
@@ -1410,17 +1412,19 @@ export async function runInitProject(args: InitProjectOptions): Promise<number> 
     autoEmbed: args.autoEmbed,
     gpuEmbed: args.gpuEmbed,
   };
-  const promptConfig = await runAllPrompts(configDir, promptFlags);
 
   if (args.dryRun) {
+    const dryConfig = { ...DEFAULT_PROMPT_CONFIG };
     process.stdout.write(`[DRY-RUN] Would write project config to ${configDir}\n`);
-    process.stdout.write(`[DRY-RUN] Backend: ${promptConfig.backend}\n`);
-    process.stdout.write(`[DRY-RUN] Embedding: ${promptConfig.embedding}\n`);
+    process.stdout.write(`[DRY-RUN] Backend: ${dryConfig.backend}\n`);
+    process.stdout.write(`[DRY-RUN] Embedding: ${dryConfig.embedding}\n`);
     return 0;
   }
 
-  // Create config dir
+  // Create config dir BEFORE prompts (prompts write .env to this dir)
   await fs.mkdir(configDir, { recursive: true });
+
+  const promptConfig = await runAllPrompts(configDir, promptFlags);
 
   // Write opencode.json
   const projectConfig = buildProjectOpencodeJson(promptConfig);
