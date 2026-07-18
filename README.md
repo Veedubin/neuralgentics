@@ -51,6 +51,16 @@ Running `npx @veedubin/neuralgentics --init-homedir` without skip flags walks yo
    - `1. Built-in database` (recommended) — No setup needed, everything runs locally.
    - `2. Team server` — Connect to a shared PostgreSQL database for team memory.
 
+## Team Server, RBAC, SSL, and Containers
+
+memini-ai-dev supports team server mode with per-project PostgreSQL users, SSL/TLS, and container runtime detection.
+
+**Default behavior**: All users have read/write/edit access to all memories (open by default). Per-project isolation is opt-in via `MEMINI_PEER_ENFORCEMENT=true`.
+
+**For full documentation** on RBAC user management, SSL configuration, and container runtime setup, see the [memini-ai-dev README](https://github.com/Veedubin/memini-ai-dev#readme).
+
+Neuralgentics inherits all of memini-ai-dev's team server capabilities. The `--team` flag during `neuralgentics --init-homedir` or `--init-project` passes through to memini-ai-dev's installer.
+
 2. **Team server setup** (only if you chose team server):
    - `1. Connect to an existing database` or `2. Connect to a new database`
    - Server IP/hostname (default: `localhost`)
