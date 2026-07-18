@@ -9,8 +9,14 @@
  * NO hardcoded paths.
  *
  * Enabled-by-default policy:
- *   - memini-ai-dev:  PROJECT only (pgembed defaults)
- *   - videre-mcp:     HOMEDIR enabled
+ *   - memini-ai-dev:  PROJECT only (pgembed defaults); also enabled in HOMEDIR.
+ *     Has image-recall RRF enabled (MEMINI_IMAGE_SEARCH_ENABLED=true) so
+ *     query_memories fans out a 3rd CLIP arm over the memories_image table.
+ *     The shared image directory is ~/.memini-ai/images — videre-mcp writes
+ *     image sidecars there, memini-ai-dev reads/searches them.
+ *   - videre-mcp:     HOMEDIR enabled (vision: OCR, image description). Writes
+ *     image sidecars to MEMINI_IMAGE_DIR (~/.memini-ai/images) so memini-ai-dev
+ *     can index and search them.
  *   - ssh-mcp-server: HOMEDIR disabled (Tailscale-only)
  *   - all others:     HOMEDIR disabled (user opts in)
  */
@@ -60,6 +66,8 @@ export const HOMEDIR_MCP_TEMPLATES: McpBlock = {
       DIALECTIC_ENABLED: "true",
       THOUGHT_CHAINS: "true",
       DB_SSLMODE: "disable",
+      MEMINI_IMAGE_SEARCH_ENABLED: "true",
+      MEMINI_IMAGE_DIR: "~/.memini-ai/images",
     },
   },
   "videre-mcp": {
@@ -67,8 +75,7 @@ export const HOMEDIR_MCP_TEMPLATES: McpBlock = {
     enabled: true,
     command: ["uvx", "videre-mcp[vision]"],
     env: {
-      MEMINI_IMAGE_SEARCH_ENABLED: "true",
-      MEMINI_IMAGE_DIR: "~/.neuralgentics/images",
+      MEMINI_IMAGE_DIR: "~/.memini-ai/images",
     },
   },
   "ssh-mcp-server": {
@@ -145,6 +152,8 @@ export const PROJECT_MCP_TEMPLATES: McpBlock = {
       DIALECTIC_ENABLED: "true",
       THOUGHT_CHAINS: "true",
       DB_SSLMODE: "disable",
+      MEMINI_IMAGE_SEARCH_ENABLED: "true",
+      MEMINI_IMAGE_DIR: "~/.memini-ai/images",
     },
   },
 };
