@@ -52,7 +52,7 @@ export const HOMEDIR_MCP_TEMPLATES: McpBlock = {
     command: ["uvx", "--from", "memini-ai-dev", "memini-ai"],
     env: {
       MEMINI_DB_URL: "pgembed",
-      MEMINI_VECTOR_BACKEND: "pgvector",
+      MEMINI_VECTOR_BACKEND: "pgembed",
       MEMINI_EMBEDDING_DIM: "384",
       TRUST_ENGINE: "true",
       MEMORY_GRAPH: "true",
@@ -138,7 +138,7 @@ export const PROJECT_MCP_TEMPLATES: McpBlock = {
     command: ["uvx", "--from", "memini-ai-dev", "memini-ai"],
     env: {
       MEMINI_DB_URL: "pgembed",
-      MEMINI_VECTOR_BACKEND: "pgvector",
+      MEMINI_VECTOR_BACKEND: "pgembed",
       MEMINI_EMBEDDING_DIM: "384",
       TRUST_ENGINE: "true",
       MEMORY_GRAPH: "true",
