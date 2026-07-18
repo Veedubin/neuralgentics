@@ -42,10 +42,10 @@ export type McpBlock = Record<string, McpServerEntry>;
 export const HOMEDIR_MCP_TEMPLATES: McpBlock = {
   "memini-ai-dev": {
     type: "local",
-    enabled: false,
+    enabled: true,
     command: ["uvx", "--from", "memini-ai-dev", "memini-ai"],
     env: {
-      MEMINI_DB_URL: "postgresql://neuralgentics:neuralgentics@localhost:6200/neuralgentics",
+      MEMINI_DB_URL: "pgembed",
       MEMINI_VECTOR_BACKEND: "pgvector",
       MEMINI_EMBEDDING_DIM: "384",
       TRUST_ENGINE: "true",

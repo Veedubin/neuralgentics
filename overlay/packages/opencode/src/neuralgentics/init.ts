@@ -1666,7 +1666,33 @@ async function runInstall(
     process.stdout.write("\n  To start opencode, run:\n");
     process.stdout.write("    opencode\n");
   } else {
-    process.stdout.write(`\nNext: neuralgentics --init-project\n`);
+    // Homedir install complete — offer to init a project in the current directory
+    process.stdout.write("\n");
+    process.stdout.write("  You can also install a project config in your current directory.\n");
+    process.stdout.write("  This gives you a base config (from homedir) plus project-specific overrides.\n");
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const doProject = await new Promise<string>((resolve) => {
+      rl.question("\n  Initialize project config in the current directory? [Y/n]: ", (answer: string) => resolve(answer));
+    });
+    rl.close();
+    if (!doProject.trim().toLowerCase().startsWith("n")) {
+      // Run project init in CWD
+      const projectArgs: InstallOptions = {
+        target: ".",
+        force: false,
+        dryRun: args.dryRun,
+        yes: args.yes,
+        version: args.version,
+        embedded: args.embedded,
+        team: args.team,
+        cpuEmbed: args.cpuEmbed,
+        autoEmbed: args.autoEmbed,
+        gpuEmbed: args.gpuEmbed,
+      };
+      return runInstall(projectArgs, "project");
+    }
+    process.stdout.write("\n  To set up a project later, run in your project directory:\n");
+    process.stdout.write("    neuralgentics --init-project\n");
   }
   return 0;
 }
