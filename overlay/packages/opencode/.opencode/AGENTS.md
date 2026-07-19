@@ -236,7 +236,7 @@ container's actual credentials — the historical wrong default
 
 ## Release Engineering Notes
 
-- **v0.12.5** is the latest tagged release (2026-07-15). Process-correction patch per AGENTS.md "Never Retag a Public Release" rule — v0.12.4 was already on npm, so a 1-character patch bump (0.12.4 → 0.12.5) was applied to unblock the failed re-publish. No code changes; see HANDOFF.md Session 48.
+- **v0.15.7** is the latest tagged release. Patch release over v0.15.6 — fixes the `sysdeps.ts` false-positive on Ubuntu 24.04 where the `libglib2.0-0` dpkg package was renamed to `libglib2.0-0t64` (t64 time_t transition). Old code checked by dpkg name, so `neuralgentics --init-homedir` prompted `apt-get install -y libglib2.0-0` on EVERY run (the .so was always present). New code probes the actual `.so` file via `ldconfig -p` + `fs.existsSync`. `aptPkgFor()` is now version-aware (probes `apt-cache show` for the right package name on the current distro). The intervening v0.12.6/v0.12.7 attempts were blocked by the stale v0.15.6 `latest` tag in the npm registry (npm refuses to set `latest` to a lower version), so this patch lands as v0.15.7 to reclaim `latest`. See HANDOFF.md Session 54.
 - **Release workflow**: Single job compiles the overlay plugin (`npx tsc`), bundles `.opencode/` config, and publishes the `@veedubin/neuralgentics` npm package. Container job builds and pushes postgres/sidecar/backend to ghcr.io.
 - **Install flow**: Users run `npx @veedubin/neuralgentics --init` to bootstrap their project. The old curl-bash installer is deprecated.
 - **Pre-release validation**: `scripts/validate-release.sh` — 8 checks (shell syntax, YAML, JSON, version consistency, file existence, TypeScript typecheck, Go vet, git status). Run before every `git tag`.
