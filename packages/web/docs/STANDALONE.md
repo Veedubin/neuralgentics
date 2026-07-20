@@ -170,3 +170,57 @@ That's the whole standalone story. If you later want to plug in
 `neuralgentics-gateway` or `neuralgentics-broker` audit data, see the
 [README](../README.md) section "Optional integration with the neuralgentics
 ecosystem" — but you never have to.
+
+---
+
+## Troubleshooting
+
+### `/auth/me` returns 500 in `--auth=off` mode
+
+The `/auth/me` endpoint calls `Depends(require_role(...))` which expects
+`request.state.user` to be set by the auth middleware. In `--auth=off` mode
+the user is `None` and the dependency raises an unhandled exception → 500.
+
+**Workaround:** use `/api/v1/health` to verify the server is up. It returns
+`{"auth_mode": "off"}` so you can detect this state.
+
+**Fix:** the auth dependency should check the mode first and return 401 with
+a clear message. Tracked in **T-INSTALL-005** (follow-up card).
+
+### Startup warning: "seeding 3 default users (admin/admin, ...)"
+
+This warning fires in **embedded mode** too, where there's no `/auth/login`
+page to actually use those users. The warning is misleading.
+
+**Workaround:** ignore the warning in embedded mode (the users are seeded
+but unreachable — that's fine, embedded mode doesn't have a login form).
+
+**Fix:** suppress the warning when `auth_mode == "off"`. Tracked in
+**T-INSTALL-005**.
+
+### The HTML dashboard loads htmx/tailwind from a CDN (no SRI)
+
+The shell's `index.html` includes:
+
+```html
+<script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+<script src="https://cdn.tailwindcss.com" defer></script>
+```
+
+These are **CDN-loaded with no Subresource Integrity hash**. If unpkg or
+Cloudflare is compromised, malicious JS could be served to your browser.
+The same risk class that **T-120** closed for Chart.js (which is now
+self-hosted with SRI).
+
+**Workaround for paranoid users:** block `unpkg.com` and `cdn.tailwindcss.com`
+in your hosts file, then self-host the two scripts.
+
+**Fix:** self-host htmx + tailwind, with SRI. Tracked in **T-INSTALL-006**.
+
+### `/auth/providers` returns 404 when no OIDC providers configured
+
+If you didn't pass any `--oidc-*` flags, the OIDC router is empty and
+`/auth/providers` returns `{"detail":"Not Found"}`. That's by design — there
+are no providers to list. To get a useful response, configure at least one
+OIDC provider (see the GitHub / Google / Generic examples above) or use
+`--auth=jwt` (username + password) instead.
