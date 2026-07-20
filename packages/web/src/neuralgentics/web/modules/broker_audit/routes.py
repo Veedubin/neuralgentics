@@ -21,6 +21,7 @@ import logging
 from collections.abc import AsyncIterator
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -28,7 +29,7 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader
 from sse_starlette.sse import EventSourceResponse
 
-from neuralgentics.web.auth.rbac import require_role
+from neuralgentics.web.auth.rbac import RbacMode, require_module_action
 from neuralgentics.web.auth.users import User
 from neuralgentics.web.modules.broker_audit.data_source import (
     BrokerAuditDataSource,
@@ -36,6 +37,8 @@ from neuralgentics.web.modules.broker_audit.data_source import (
 )
 from neuralgentics.web.modules.broker_audit.sse import BrokerAuditBroadcaster, Goodbye
 from neuralgentics.web.modules.broker_audit.stats import compute_stats
+from neuralgentics.web.modules.loader import module_route
+from neuralgentics.web.modules.registry import ModuleRegistry
 
 log = logging.getLogger("neuralgentics.web.broker_audit.routes")
 
@@ -79,12 +82,35 @@ def _parse_bool(s: str | None) -> bool | None:
 def build_router(
     data_source: BrokerAuditDataSource,
     broadcaster: BrokerAuditBroadcaster,
+    *,
+    registry: ModuleRegistry | None = None,
+    rbac_mode: RbacMode = "permissive",
 ) -> APIRouter:
-    """Construct the broker-audit APIRouter."""
+    """Construct the broker-audit APIRouter.
+
+    T-111: when ``registry`` is provided, routes use per-module RBAC via
+    :func:`require_module_action`; otherwise they fall back to the global
+    T-110 :func:`require_role` table (backwards compat).
+    """
     router = APIRouter(prefix="", tags=["broker-audit"])
     templates = TEMPLATES
+    _MODULE_NAME = "broker-audit"
+
+    def _dep(action: str, fallback: tuple[str, ...]) -> Any:
+        if registry is not None:
+            return require_module_action(
+                module_name=_MODULE_NAME,
+                action=action,
+                registry=registry,
+                fallback_roles=fallback,
+                rbac_mode=rbac_mode,
+            )
+        from neuralgentics.web.auth.rbac import require_role
+
+        return require_role(*fallback)
 
     @router.get("/modules/broker-audit", response_class=HTMLResponse)
+    @module_route("view_audit")
     async def tool_calls_table(
         request: Request,
         tool: str | None = Query(None),
@@ -94,7 +120,7 @@ def build_router(
         since: str | None = Query(None),
         until: str | None = Query(None),
         limit: int = Query(100, ge=1, le=1000),
-        user: User | None = Depends(require_role("admin", "operator", "viewer")),
+        user: User | None = Depends(_dep("view_audit", ("admin", "operator", "viewer"))),
     ) -> HTMLResponse:
         _ = user  # noqa: F841 — RBAC gate only; read endpoint
         events = await data_source.recent(
@@ -127,6 +153,7 @@ def build_router(
         )
 
     @router.get("/api/v1/broker-audit/recent")
+    @module_route("view_audit")
     async def api_recent(
         tool: str | None = Query(None),
         server: str | None = Query(None),
@@ -135,7 +162,7 @@ def build_router(
         since: str | None = Query(None),
         until: str | None = Query(None),
         limit: int = Query(100, ge=1, le=1000),
-        user: User | None = Depends(require_role("admin", "operator", "viewer")),
+        user: User | None = Depends(_dep("view_audit", ("admin", "operator", "viewer"))),
     ) -> JSONResponse:
         _ = user  # noqa: F841 — RBAC gate only; read endpoint
         events = await data_source.recent(
@@ -155,9 +182,10 @@ def build_router(
         )
 
     @router.get("/modules/broker-audit/charts", response_class=HTMLResponse)
+    @module_route("view_audit")
     async def broker_audit_charts(
         request: Request,
-        user: User | None = Depends(require_role("admin", "operator", "viewer")),
+        user: User | None = Depends(_dep("view_audit", ("admin", "operator", "viewer"))),
     ) -> HTMLResponse:
         """T-118: charts page. Aggregation happens client-side via Chart.js;
         this route only renders the canvas shell."""
@@ -169,9 +197,10 @@ def build_router(
         )
 
     @router.get("/modules/broker-audit/sse")
+    @module_route("view_audit")
     async def sse_stream(
         request: Request,
-        user: User | None = Depends(require_role("admin", "operator", "viewer")),
+        user: User | None = Depends(_dep("view_audit", ("admin", "operator", "viewer"))),
     ) -> EventSourceResponse:
         _ = user  # noqa: F841 — RBAC gate only; read endpoint
         q: asyncio.Queue[BrokerAuditEvent | Goodbye] = broadcaster.subscribe()

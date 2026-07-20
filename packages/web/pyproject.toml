@@ -67,6 +67,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 "tests/test_auth_*.py" = ["B008"]
 "tests/test_module_reload.py" = ["B008"]
 "tests/test_module_rbac.py" = ["B008"]
+"tests/test_per_module_rbac.py" = ["B008"]
 
 [tool.mypy]
 strict = true

@@ -29,9 +29,10 @@ import importlib
 import importlib.util
 import logging
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, TypeVar
 
 from neuralgentics.web.modules.registry import (
     ModuleManifest,
@@ -41,6 +42,51 @@ from neuralgentics.web.modules.registry import (
 )
 
 log = logging.getLogger("neuralgentics.web.loader")
+
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+# --------------------------------------------------------------------------------------
+# module_route — action tagger for per-module RBAC (T-111)
+# --------------------------------------------------------------------------------------
+
+
+def module_route(action: str) -> Callable[[_F], _F]:
+    """Tag a route handler with an action name for per-module RBAC (T-111).
+
+    Pure metadata decorator: it stores ``func.__module_action__ = action``
+    and returns the function unchanged. The FastAPI router is unaffected —
+    the tag is read by :func:`register_module_routes` (which can record the
+    action→route mapping) and by route builders that wire
+    :func:`~neuralgentics.web.auth.rbac.require_module_action` per-route.
+
+    Backwards compatible: a route handler without ``__module_action__``
+    falls back to the global role table from T-110 (``require_role``).
+
+    Example::
+
+        @router.get("/modules/memini-browser")
+        @module_route("search")
+        async def search_page(...): ...
+
+    Args:
+        action: Action name. Must match a key in the module's
+            ``rbac.actions`` map (or be tolerated by permissive fallback).
+
+    Raises:
+        ValueError: if ``action`` is empty.
+    """
+
+    if not action or not action.strip():
+        raise ValueError("module_route requires a non-empty action name")
+
+    def decorator(func: _F) -> _F:
+        # Stash the action on the function object. FastAPI ignores unknown
+        # attributes, and the loader / route builders can read it back.
+        func.__module_action__ = action  # type: ignore[attr-defined]
+        return func
+
+    return decorator
 
 
 def discover_modules(modules_path: Path) -> ModuleRegistry:
@@ -194,12 +240,30 @@ def register_module_routes(app: Any, registry: ModuleRegistry, config: Any) -> N
                 log.error("instantiate %s failed: %s", manifest.name, exc)
                 continue
 
+        # T-111: inject the live registry + rbac_mode so the module's
+        # build_router() can wire per-module RBAC dependencies. These are
+        # set as plain instance attributes (not pydantic fields) so they
+        # don't interfere with the pydantic model contract. Modules that
+        # don't use per-module RBAC simply ignore them.
+        instance._registry = registry
+        instance._rbac_mode = getattr(config, "rbac_mode", "permissive")
+
         # Synchronous: include the router + register hooks. Modules expose
         # build_router() (sync) + start_background() (sync) + shutdown() (async).
         router: Any = None
         try:
             # New-style: split sync router inclusion from async startup.
-            router = instance.build_router()
+            # T-111: build_router may accept optional registry + rbac_mode
+            # kwargs for per-module RBAC wiring; if it doesn't, fall back to
+            # the no-arg call (backwards compat with T-106/T-107/T-108 modules
+            # that haven't been migrated yet).
+            try:
+                router = instance.build_router(
+                    registry=registry,
+                    rbac_mode=getattr(config, "rbac_mode", "permissive"),
+                )
+            except TypeError:
+                router = instance.build_router()
             if router is not None:
                 _include_router_tagged(app, router, manifest.name)
         except AttributeError:
@@ -303,4 +367,10 @@ def _find_module_class(mod: Any) -> Any:
     return candidates[0]
 
 
-__all__ = ["ModuleState", "discover_modules", "load_module_python", "register_module_routes"]
+__all__ = [
+    "ModuleState",
+    "discover_modules",
+    "load_module_python",
+    "module_route",
+    "register_module_routes",
+]

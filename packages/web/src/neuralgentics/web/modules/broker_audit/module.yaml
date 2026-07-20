@@ -4,6 +4,11 @@ display_name: "Broker Audit"
 description: "Live view of tool calls through the broker (inbound audit)"
 author: Veedubin
 license: MIT
+rbac:
+  # T-111: per-module RBAC overrides. Same as gateway-audit — the broker
+  # audit module is read-only from the UI side.
+  actions:
+    view_audit: [viewer, operator, admin]
 routes:
   - path: /modules/broker-audit
     method: GET

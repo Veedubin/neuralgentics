@@ -4,6 +4,17 @@ display_name: "Memory Browser"
 description: "Semantic search over memories, trust scores, knowledge graph, thought chains"
 author: Veedubin
 license: MIT
+rbac:
+  # T-111: per-module RBAC overrides. These reproduce the T-110 global role
+  # table so deployments with no override remain admin-only-on-forget,
+  # operator+ on trust adjust, viewer+ on reads. A deployment can edit
+  # this block to tighten or loosen the module independently of the global
+  # role table.
+  actions:
+    search: [viewer, operator, admin]
+    view_memory: [viewer, operator, admin]
+    adjust_trust: [operator, admin]
+    forget: [admin]
 routes:
   - path: /modules/memini-browser
     method: GET

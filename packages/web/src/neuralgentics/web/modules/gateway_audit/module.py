@@ -68,14 +68,16 @@ class GatewayAuditModule(Module):
     def broadcaster(self) -> AuditBroadcaster:
         return self._broadcaster
 
-    def build_router(self) -> Any:
+    def build_router(self, **kwargs: Any) -> Any:
         """Sync: return the FastAPI router for this module.
 
-        Called at app-build time (before the shell router is included) so
-        the literal ``/modules/gateway-audit`` route wins over the shell's
-        ``/modules/{module_name}`` catch-all.
+        T-111: accepts optional ``registry=`` + ``rbac_mode=`` kwargs to
+        wire per-module RBAC; unknown kwargs are ignored for backwards
+        compat. Called at app-build time (before the shell router is
+        included) so the literal ``/modules/gateway-audit`` route wins
+        over the shell's ``/modules/{module_name}`` catch-all.
         """
-        return build_router(self._data_source, self._broadcaster)
+        return build_router(self._data_source, self._broadcaster, **kwargs)
 
     def start_background(self) -> None:
         """Sync, called from the lifespan: spawn the SSE drain task."""

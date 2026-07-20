@@ -16,19 +16,22 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader
 
-from neuralgentics.web.auth.rbac import require_role
+from neuralgentics.web.auth.rbac import RbacMode, require_module_action
 from neuralgentics.web.auth.users import User
+from neuralgentics.web.modules.loader import module_route
 from neuralgentics.web.modules.memini_browser.graph_viz import render_memory_graph_svg
 from neuralgentics.web.modules.memini_browser.memini_client import (
     VALID_TRUST_SIGNALS,
     MeminiClient,
 )
+from neuralgentics.web.modules.registry import ModuleRegistry
 
 log = logging.getLogger("neuralgentics.web.memini_browser.routes")
 
@@ -54,17 +57,48 @@ def _make_templates() -> Jinja2Templates:
 TEMPLATES = _make_templates()
 
 
-def build_router(client: MeminiClient) -> APIRouter:
-    """Construct the memini-browser APIRouter."""
+def build_router(
+    client: MeminiClient,
+    *,
+    registry: ModuleRegistry | None = None,
+    rbac_mode: RbacMode = "permissive",
+) -> APIRouter:
+    """Construct the memini-browser APIRouter.
+
+    T-111: when ``registry`` is provided, routes use per-module RBAC via
+    :func:`require_module_action` (reading the module's ``module.yaml``
+    ``rbac`` block at request time). When ``registry`` is ``None``
+    (backwards compat, e.g. ad-hoc tests), routes fall back to the global
+    T-110 :func:`require_role` table — the per-module dependency with
+    ``fallback_roles`` reproduces the T-110 role lists exactly.
+    """
     router = APIRouter(prefix="", tags=["memini-browser"])
     _templates = TEMPLATES
+    # Module name matches the manifest's ``name`` field (hyphenated).
+    _MODULE_NAME = "memini-browser"
+
+    def _dep(action: str, fallback: tuple[str, ...]) -> Any:
+        """Pick per-module RBAC when registry is wired, else global role."""
+        if registry is not None:
+            return require_module_action(
+                module_name=_MODULE_NAME,
+                action=action,
+                registry=registry,
+                fallback_roles=fallback,
+                rbac_mode=rbac_mode,
+            )
+        # Backwards compat: pure global role gate (T-110 behavior).
+        from neuralgentics.web.auth.rbac import require_role
+
+        return require_role(*fallback)
 
     @router.get("/modules/memini-browser", response_class=HTMLResponse)
+    @module_route("search")
     async def search_page(
         request: Request,
         q: str = Query("", description="Free-text search query"),
         limit: int = Query(20, ge=1, le=100),
-        user: User | None = Depends(require_role("admin", "operator", "viewer")),
+        user: User | None = Depends(_dep("search", ("admin", "operator", "viewer"))),
     ) -> HTMLResponse:
         _ = user  # noqa: F841 — RBAC gate only; read endpoint
         results = await client.search(q, limit=limit)
@@ -80,10 +114,11 @@ def build_router(client: MeminiClient) -> APIRouter:
         )
 
     @router.get("/api/v1/memini-browser/search")
+    @module_route("search")
     async def api_search(
         q: str = Query("", description="Free-text search query"),
         limit: int = Query(20, ge=1, le=100),
-        user: User | None = Depends(require_role("admin", "operator", "viewer")),
+        user: User | None = Depends(_dep("search", ("admin", "operator", "viewer"))),
     ) -> JSONResponse:
         _ = user  # noqa: F841 — RBAC gate only; read endpoint
         results = await client.search(q, limit=limit)
@@ -96,11 +131,12 @@ def build_router(client: MeminiClient) -> APIRouter:
         )
 
     @router.get("/modules/memini-browser/memory/{memory_id}", response_class=HTMLResponse)
+    @module_route("view_memory")
     async def memory_detail(
         request: Request,
         memory_id: str,
         flash: str = Query("", description="One-shot flash message"),
-        user: User | None = Depends(require_role("admin", "operator", "viewer")),
+        user: User | None = Depends(_dep("view_memory", ("admin", "operator", "viewer"))),
     ) -> HTMLResponse:
         _ = user  # noqa: F841 — RBAC gate only; read endpoint
         try:
@@ -120,11 +156,12 @@ def build_router(client: MeminiClient) -> APIRouter:
         )
 
     @router.post("/modules/memini-browser/memory/{memory_id}/trust")
+    @module_route("adjust_trust")
     async def adjust_trust(
         memory_id: str,
         signal: str = Form(...),
         reason: str = Form(""),
-        user: User | None = Depends(require_role("admin", "operator")),
+        user: User | None = Depends(_dep("adjust_trust", ("admin", "operator"))),
     ) -> RedirectResponse:
         # ``user`` is None only in --auth=off mode (embedded/dev). In
         # auth-on mode the dependency already 401/403'd before we get here.
@@ -153,10 +190,11 @@ def build_router(client: MeminiClient) -> APIRouter:
         )
 
     @router.post("/modules/memini-browser/memory/{memory_id}/forget")
+    @module_route("forget")
     async def forget_memory(
         memory_id: str,
         reason: str = Form(""),
-        user: User | None = Depends(require_role("admin")),
+        user: User | None = Depends(_dep("forget", ("admin",))),
     ) -> RedirectResponse:
         """Admin-only: delete a memory + its relationship edges (T-110).
 
@@ -165,6 +203,12 @@ def build_router(client: MeminiClient) -> APIRouter:
         RBAC dependency before this handler runs. In ``--auth=off`` mode
         the dependency returns ``None`` (anonymous) and the forget
         proceeds (the localhost bind is the security boundary there).
+
+        T-111: the ``forget`` action's fallback role list is ``("admin",)``
+        — matching the T-110 behavior — so a module with no ``rbac``
+        block keeps admin-only forget. A module that declares
+        ``rbac.actions.forget: [operator, admin]`` would also admit
+        operators (per-module override).
         """
         actor = user.username if user is not None else "anonymous"
         try:
@@ -184,10 +228,11 @@ def build_router(client: MeminiClient) -> APIRouter:
         )
 
     @router.get("/modules/memini-browser/memory/{memory_id}/graph", response_class=HTMLResponse)
+    @module_route("view_memory")
     async def memory_graph(
         request: Request,
         memory_id: str,
-        user: User | None = Depends(require_role("admin", "operator", "viewer")),
+        user: User | None = Depends(_dep("view_memory", ("admin", "operator", "viewer"))),
     ) -> HTMLResponse:
         _ = user  # noqa: F841 — RBAC gate only; read endpoint
         try:

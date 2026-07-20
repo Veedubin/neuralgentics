@@ -4,6 +4,14 @@ display_name: "Gateway Audit"
 description: "Live view of HTTP requests through the egress gateway"
 author: Veedubin
 license: MIT
+rbac:
+  # T-111: per-module RBAC overrides. The audit modules are read-only from
+  # the UI side (the gateway writes audit rows; the web module only reads
+  # them), so every logged-in role may view. A deployment that wants to
+  # restrict audit visibility to operators+ can drop ``viewer`` from the
+  # list below.
+  actions:
+    view_audit: [viewer, operator, admin]
 routes:
   - path: /modules/gateway-audit
     method: GET

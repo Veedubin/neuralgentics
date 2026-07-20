@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 
 Mode = Literal["embedded", "team-server"]
 AuthMode = Literal["off", "jwt", "oauth2"]
+RbacMode = Literal["permissive", "strict"]
 
 DEFAULT_EMBEDDED_PORT = 9876
 DEFAULT_TEAM_SERVER_PORT = 9877
@@ -63,6 +64,12 @@ class WebConfig(BaseModel):
     db_url: str | None = None
     modules_path: Path = Field(default_factory=_default_modules_path)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    # T-111: per-module RBAC strictness. ``permissive`` (default, backwards
+    # compat) falls back to the global role table when a module's
+    # ``module.yaml`` doesn't declare an action in ``rbac.actions``.
+    # ``strict`` denies the request with 403 — the manifest is the single
+    # source of truth for who-can-do-what in the module.
+    rbac_mode: RbacMode = "permissive"
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -87,6 +94,7 @@ class WebConfig(BaseModel):
         auth_mode: str | None = None,
         jwt_secret: str | None = None,
         auth_db_path: str | None = None,
+        rbac_mode: str | None = None,
     ) -> WebConfig:
         # Env var fallback so the app factory can also be used without CLI args.
         env_mode = os.environ.get("NEURALGENTICS_WEB_MODE", mode)
@@ -104,6 +112,10 @@ class WebConfig(BaseModel):
             jwt_secret = os.environ.get("WEB_JWT_SECRET")
         if auth_db_path is None:
             auth_db_path = os.environ.get("WEB_AUTH_DB_PATH")
+        if rbac_mode is None:
+            rbac_mode = os.environ.get("NEURALGENTICS_WEB_RBAC_MODE", "permissive")
+        if rbac_mode not in ("permissive", "strict"):
+            raise ValueError(f"invalid --rbac-mode {rbac_mode!r}; must be 'permissive' or 'strict'")
 
         resolved_mode: Mode = "team-server" if env_mode == "team-server" else "embedded"
 
@@ -162,4 +174,5 @@ class WebConfig(BaseModel):
             db_url=db_url,
             modules_path=mp,
             auth=auth_cfg,
+            rbac_mode=rbac_mode,  # type: ignore[arg-type]
         )

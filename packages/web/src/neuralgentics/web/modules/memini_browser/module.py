@@ -60,8 +60,11 @@ class MeminiBrowserModule(Module):
     def client(self) -> MeminiClient:
         return self._client
 
-    def build_router(self) -> Any:
-        return build_router(self._client)
+    def build_router(self, **kwargs: Any) -> Any:
+        """Build the FastAPI router. T-111: accepts optional
+        ``registry=`` + ``rbac_mode=`` kwargs to wire per-module RBAC;
+        unknown kwargs are ignored for backwards compat."""
+        return build_router(self._client, **kwargs)
 
     def start_background(self) -> None:
         log.info("memini-browser module started (backend=%s)", type(self._client).__name__)

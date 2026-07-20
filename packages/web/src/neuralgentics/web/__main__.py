@@ -59,6 +59,18 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         default=None,
         help="SQLite user-store path (default: ~/.neuralgentics/web-users.db)",
     )
+    p.add_argument(
+        "--rbac-mode",
+        choices=("permissive", "strict"),
+        default="permissive",
+        help=(
+            "Per-module RBAC strictness (T-111, default: permissive). "
+            "'permissive' falls back to the global role table when a module's "
+            "module.yaml doesn't declare an action in rbac.actions. "
+            "'strict' denies the request with 403 — the manifest is the single "
+            "source of truth."
+        ),
+    )
     p.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
     return p.parse_args(argv)
 
@@ -78,6 +90,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         auth_mode=args.auth,
         jwt_secret=args.jwt_secret,
         auth_db_path=args.auth_db_path,
+        rbac_mode=args.rbac_mode,
     )
     log.info(
         "starting neuralgentics-web %s in %s mode",

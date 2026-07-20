@@ -41,6 +41,66 @@ class ApiEndpointSpec(BaseModel):
     handler: str = "stub"
 
 
+class RbacSpec(BaseModel):
+    """Per-module RBAC overrides (T-111).
+
+    A module's ``module.yaml`` may declare an optional ``rbac`` block that
+    overrides the global role table from T-110 for that module's routes.
+
+    Two knobs:
+
+      * ``required_role`` — module-wide floor. If set, any user whose role
+        is below this floor is denied on EVERY route in the module,
+        regardless of per-action overrides. The floor is compared by the
+        :data:`~neuralgentics.web.auth.rbac.ROLE_RANK` ordering
+        (viewer < operator < admin), so ``required_role: admin`` means
+        only admins may use the module at all.
+
+      * ``actions`` — per-action role allow-list keyed by the action name
+        a route declares via :func:`~neuralgentics.web.modules.loader.module_route`.
+        If an action is absent from the map, the request falls back to the
+        global role table (permissive mode) or is denied with 403 (strict
+        mode, selected by ``--rbac-mode`` on the CLI).
+
+    Both fields are optional; a module with no ``rbac`` block keeps the
+    pure-global T-110 behavior unchanged (backwards compat).
+    """
+
+    required_role: str | None = None
+    actions: dict[str, list[str]] = Field(default_factory=dict)
+
+    @field_validator("required_role")
+    @classmethod
+    def _valid_required_role(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        # Import locally to avoid a registry→auth circular at import time
+        # (auth.users imports nothing from modules, but rbac imports users;
+        # keeping the validator lazy avoids the cycle on cold import).
+        from neuralgentics.web.auth.rbac import ROLES
+
+        if v not in ROLES:
+            raise ValueError(f"rbac.required_role {v!r} not in {ROLES}")
+        return v
+
+    @field_validator("actions")
+    @classmethod
+    def _valid_action_roles(cls, v: dict[str, list[str]]) -> dict[str, list[str]]:
+        from neuralgentics.web.auth.rbac import ROLES
+
+        for action, roles in v.items():
+            if not action:
+                raise ValueError("rbac.actions has an empty action name")
+            if not roles:
+                raise ValueError(f"rbac.actions.{action} lists no roles")
+            bad = set(roles) - set(ROLES)
+            if bad:
+                raise ValueError(
+                    f"rbac.actions.{action} has unknown role(s): {sorted(bad)}; valid: {ROLES}"
+                )
+        return v
+
+
 class ModuleManifest(BaseModel):
     """Parsed ``module.yaml`` for one module.
 
@@ -49,6 +109,10 @@ class ModuleManifest(BaseModel):
 
     ``enabled`` defaults to ``True``; manifests may explicitly disable a
     module by setting ``enabled: false`` in ``module.yaml``.
+
+    T-111: the optional ``rbac`` block holds per-module role overrides
+    (:class:`RbacSpec`). A manifest with no ``rbac`` block keeps the
+    pure-global T-110 behavior unchanged.
     """
 
     name: str
@@ -62,6 +126,7 @@ class ModuleManifest(BaseModel):
     api_endpoints: list[ApiEndpointSpec] = Field(default_factory=list)
     sse_channels: list[dict[str, Any]] = Field(default_factory=list)
     data_sources: list[dict[str, Any]] = Field(default_factory=list)
+    rbac: RbacSpec = Field(default_factory=RbacSpec)
 
     @field_validator("name")
     @classmethod
@@ -83,6 +148,10 @@ class ModuleManifest(BaseModel):
             "api_endpoints_count": len(self.api_endpoints),
             "sse_channels": list(self.sse_channels),
             "data_sources": list(self.data_sources),
+            "rbac": {
+                "required_role": self.rbac.required_role,
+                "actions": dict(self.rbac.actions),
+            },
             "stub": True,
             "coming_in": _stub_target(self.name),
         }
@@ -245,6 +314,7 @@ __all__ = [
     "ModuleManifest",
     "ModuleRegistry",
     "ModuleState",
+    "RbacSpec",
     "RouteSpec",
     "parse_manifest",
 ]

@@ -185,6 +185,10 @@ def reload_module(name: str, app: Any, registry: ModuleRegistry, config: Any) ->
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"build() failed: {exc}") from exc
 
+    # T-111: inject the live registry + rbac_mode (same as the loader).
+    instance._registry = registry
+    instance._rbac_mode = getattr(config, "rbac_mode", "permissive")
+
     # 4. Build the new router. Legacy modules (no build_router) fall back to
     #    the async register_routes path; we can't hot-reload those cleanly
     #    (they register routes via a lifespan-time coroutine), so we 400.
@@ -198,7 +202,15 @@ def reload_module(name: str, app: Any, registry: ModuleRegistry, config: Any) ->
             ),
         )
     try:
-        module_router = build_router_fn()
+        # T-111: prefer the registry-aware build_router signature; fall back
+        # to the no-arg call for modules that haven't been migrated.
+        try:
+            module_router = build_router_fn(
+                registry=registry,
+                rbac_mode=getattr(config, "rbac_mode", "permissive"),
+            )
+        except TypeError:
+            module_router = build_router_fn()
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"build_router() failed: {exc}") from exc
 
