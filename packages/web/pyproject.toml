@@ -47,6 +47,8 @@ where = ["src"]
     "py.typed",
     "shell/templates/*.html",
     "shell/static/*.css",
+    "shell/static/*.js",
+    "shell/static/*.SHA384",
     "modules/*/module.yaml",
     "modules/*/templates/*.html",
     "modules/*/static/*.css",

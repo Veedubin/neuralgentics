@@ -28,6 +28,31 @@ log = logging.getLogger("neuralgentics.web.app")
 STATIC_DIR = Path(__file__).resolve().parent / "shell" / "static"
 TEMPLATES_DIR = Path(__file__).resolve().parent / "shell" / "templates"
 
+# T-120: Chart.js is self-hosted with an SRI integrity hash so a compromised
+# CDN cannot inject malicious JS into the charts pages. If the static file is
+# missing at startup, log a loud warning — the canvases will just stay empty
+# with the client-side "Error: Chart is not defined" status line rather than
+# loading tampered code.
+CHARTJS_STATIC_PATH = STATIC_DIR / "chart.umd.min.js"
+
+
+def _check_chartjs_present() -> None:
+    """Warn (do not crash) if the self-hosted Chart.js file is missing.
+
+    T-120: closing the honest gap from T-118 (CDN with no SRI). The file is
+    shipped in the wheel via ``pyproject.toml`` package-data; if an operator
+    installs only the Python package without the static assets (e.g. a
+    broken wheel build), the charts pages degrade gracefully instead of
+    loading untrusted code.
+    """
+    if not CHARTJS_STATIC_PATH.is_file():
+        log.warning(
+            "Chart.js static file missing at %s — charts pages will show "
+            "'Error: Chart is not defined' instead of rendering. Reinstall "
+            "the neuralgentics-web package to restore the bundled asset.",
+            CHARTJS_STATIC_PATH,
+        )
+
 
 def build_app(config: WebConfig) -> FastAPI:
     """Construct the FastAPI application for the given config.
@@ -42,6 +67,9 @@ def build_app(config: WebConfig) -> FastAPI:
     """
     registry: ModuleRegistry = discover_modules(config.modules_path)
     log.info("discovered %d module(s) from %s", len(registry), config.modules_path)
+
+    # T-120: loud warning if the self-hosted Chart.js asset is missing.
+    _check_chartjs_present()
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 

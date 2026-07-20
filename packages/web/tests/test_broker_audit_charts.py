@@ -85,8 +85,10 @@ def test_charts_template_renders_two_canvases(broker_audit_file: Path) -> None:
     body = r.text
     assert '<canvas id="tool-calls-over-time"' in body
     assert '<canvas id="top-tools"' in body
-    # Chart.js CDN script tag is present.
-    assert "cdn.jsdelivr.net/npm/chart.js@4.4.0" in body
+    # T-120: Chart.js is self-hosted with an SRI integrity hash (no CDN).
+    assert "/static/chart.umd.min.js" in body
+    assert 'integrity="sha384-' in body
+    assert 'crossorigin="anonymous"' in body
     # The page references the existing recent() endpoint.
     assert "/api/v1/broker-audit/recent" in body
     # Tab nav links back to the table page.
