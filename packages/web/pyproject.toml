@@ -97,6 +97,13 @@ ignore_missing_imports = true
 module = "asyncpg"
 ignore_missing_imports = true
 
+# memini-ai is an OPTIONAL separate install (the web imports cleanly
+# without it; SDKMeminiClient.create() raises a clear RuntimeError when
+# the SDK backend is actually used without memini-ai installed).
+[[tool.mypy.overrides]]
+module = "memini_ai.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

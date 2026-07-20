@@ -36,6 +36,8 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel
 
+from neuralgentics.web._softimports import import_asyncpg
+
 log = logging.getLogger("neuralgentics.web.broker_audit")
 
 # PG NOTIFY channel the trigger emits on after every INSERT.
@@ -298,7 +300,7 @@ class PGBrokerAuditSource:
 
     async def _ensure_pool(self) -> Any:
         if self._pool is None:
-            import asyncpg
+            asyncpg = import_asyncpg()
 
             self._pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=4)
             await self.apply_schema()
@@ -313,7 +315,7 @@ class PGBrokerAuditSource:
         if self._schema_applied:
             return
         if self._pool is None:
-            import asyncpg
+            asyncpg = import_asyncpg()
 
             self._pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=4)
         async with self._pool.acquire() as conn:

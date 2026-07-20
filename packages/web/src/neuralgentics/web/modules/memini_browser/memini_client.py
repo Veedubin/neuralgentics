@@ -6,7 +6,9 @@ Three implementations of the :class:`MeminiClient` Protocol:
   fallback when no real backend is available. Seeded with 3 sample
   memories + 1 relationship if empty.
 * :class:`SDKMeminiClient` — wraps :class:`memini_ai.server.MemorySystem`
-  for embedded mode (the ``memini-ai-dev`` package is a dependency).
+  for embedded mode (``memini-ai`` is an OPTIONAL separate install; the
+  web imports cleanly without it and raises a clear error only when the
+  SDK backend is actually used).
 * :class:`PGMeminiClient` — team-server fallback that queries the
   ``memories`` PG table directly via asyncpg. Only used when the SDK
   cannot reach an MCP server.
@@ -24,6 +26,8 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from pydantic import BaseModel
+
+from neuralgentics.web._softimports import import_asyncpg
 
 log = logging.getLogger("neuralgentics.web.memini_browser")
 
@@ -316,7 +320,16 @@ class SDKMeminiClient:
     @classmethod
     async def create(cls) -> SDKMeminiClient:
         """Construct + initialize a MemorySystem from env."""
-        from memini_ai.server import create_server  # type: ignore[import-untyped]
+        try:
+            from memini_ai.server import create_server
+        except ImportError as exc:
+            raise RuntimeError(
+                "memini-ai is not installed. The memini-browser module's "
+                "embedded (SDK) backend requires memini-ai. Install it "
+                "separately (e.g. ``pip install memini-ai``) or select a "
+                "different backend via NEURALGENTICS_MEMINI_BACKEND=mock "
+                "or the team-server ``memini_backend=pg`` setting."
+            ) from exc
 
         server = create_server()
         # create_server() returns an MCPServer wrapping a MemorySystem.
@@ -483,7 +496,7 @@ class PGMeminiClient:
 
     async def _ensure_pool(self) -> Any:
         if self._pool is None:
-            import asyncpg
+            asyncpg = import_asyncpg()
 
             self._pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=4)
         return self._pool

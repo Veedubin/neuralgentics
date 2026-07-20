@@ -37,6 +37,8 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel
 
+from neuralgentics.web._softimports import import_asyncpg
+
 log = logging.getLogger("neuralgentics.web.gateway_audit")
 
 # PG NOTIFY channel the gateway emits on after every INSERT. The gateway's
@@ -256,7 +258,7 @@ class PGAuditSource:
 
     async def _ensure_pool(self) -> Any:
         if self._pool is None:
-            import asyncpg
+            asyncpg = import_asyncpg()
 
             self._pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=4)
         return self._pool
