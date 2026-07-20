@@ -41,6 +41,24 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         default=None,
         help="Override modules directory (default: built-in modules)",
     )
+    p.add_argument(
+        "--auth",
+        choices=("off", "jwt", "oauth2"),
+        default="jwt",
+        help="Team-server auth mode (default: jwt). 'off' disables auth entirely.",
+    )
+    p.add_argument(
+        "--jwt-secret",
+        type=str,
+        default=None,
+        help="JWT HS256 secret (default: $WEB_JWT_SECRET or a random per-process value)",
+    )
+    p.add_argument(
+        "--auth-db-path",
+        type=str,
+        default=None,
+        help="SQLite user-store path (default: ~/.neuralgentics/web-users.db)",
+    )
     p.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
     return p.parse_args(argv)
 
@@ -57,6 +75,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         host=args.host,
         db_url=args.db_url,
         modules_path=args.modules_path,
+        auth_mode=args.auth,
+        jwt_secret=args.jwt_secret,
+        auth_db_path=args.auth_db_path,
     )
     log.info(
         "starting neuralgentics-web %s in %s mode",

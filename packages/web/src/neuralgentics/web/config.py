@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 Mode = Literal["embedded", "team-server"]
+AuthMode = Literal["off", "jwt", "oauth2"]
 
 DEFAULT_EMBEDDED_PORT = 9876
 DEFAULT_TEAM_SERVER_PORT = 9877
@@ -22,6 +23,37 @@ def _default_modules_path() -> Path:
     return here / "modules"
 
 
+class AuthConfig(BaseModel):
+    """Auth-layer configuration (T-109).
+
+    Only consulted in team-server mode — embedded mode is always anonymous
+    + localhost-only.
+    """
+
+    auth_mode: AuthMode = "jwt"
+    """``off`` disables auth entirely (dev only, prints a warning). ``jwt``
+    requires Bearer JWT access tokens. ``oauth2`` enables the JWT path
+    *plus* the ``/auth/login`` form + refresh-token rotation."""
+
+    jwt_secret: str | None = None
+    """HS256 shared secret. If unset, a random one is generated per process
+    and a loud warning is printed to stderr."""
+
+    db_path: Path = Field(default_factory=lambda: Path.home() / ".neuralgentics" / "web-users.db")
+    """SQLite user-store path. Default ``~/.neuralgentics/web-users.db``."""
+
+    refresh_rotation: bool = True
+    """Issue a new refresh token on every refresh (revokes the old one)."""
+
+    access_ttl_seconds: int = 24 * 60 * 60
+    """Access-token lifetime (default 24h)."""
+
+    refresh_ttl_seconds: int = 7 * 24 * 60 * 60
+    """Refresh-token lifetime (default 7d)."""
+
+    model_config = {"arbitrary_types_allowed": True}
+
+
 class WebConfig(BaseModel):
     """Resolved configuration for one server invocation."""
 
@@ -30,6 +62,7 @@ class WebConfig(BaseModel):
     port: int = DEFAULT_EMBEDDED_PORT
     db_url: str | None = None
     modules_path: Path = Field(default_factory=_default_modules_path)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -51,6 +84,9 @@ class WebConfig(BaseModel):
         host: str | None,
         db_url: str | None,
         modules_path: str | None,
+        auth_mode: str | None = None,
+        jwt_secret: str | None = None,
+        auth_db_path: str | None = None,
     ) -> WebConfig:
         # Env var fallback so the app factory can also be used without CLI args.
         env_mode = os.environ.get("NEURALGENTICS_WEB_MODE", mode)
@@ -62,6 +98,12 @@ class WebConfig(BaseModel):
             db_url = os.environ.get("NEURALGENTICS_WEB_DB_URL")
         if modules_path is None:
             modules_path = os.environ.get("NEURALGENTICS_WEB_MODULES_PATH")
+        if auth_mode is None:
+            auth_mode = os.environ.get("NEURALGENTICS_WEB_AUTH", "jwt")
+        if jwt_secret is None:
+            jwt_secret = os.environ.get("WEB_JWT_SECRET")
+        if auth_db_path is None:
+            auth_db_path = os.environ.get("WEB_AUTH_DB_PATH")
 
         resolved_mode: Mode = "team-server" if env_mode == "team-server" else "embedded"
 
@@ -88,7 +130,30 @@ class WebConfig(BaseModel):
 
             logging.getLogger("neuralgentics.web.config").warning(log_msg)
 
+        if resolved_mode == "team-server" and auth_mode == "off":
+            import logging
+            import sys
+
+            logging.getLogger("neuralgentics.web.config").warning(
+                "team-server mode running with --auth=off — auth DISABLED. Use only in dev."
+            )
+            print(
+                "WARNING: neuralgentics-web team-server running with --auth=off. "
+                "Anyone with network access can read/modify data. "
+                "Dev-only.",
+                file=sys.stderr,
+            )
+
         mp = Path(modules_path) if modules_path else _default_modules_path()
+        auth_db = (
+            Path(auth_db_path) if auth_db_path else Path.home() / ".neuralgentics" / "web-users.db"
+        )
+
+        auth_cfg = AuthConfig(
+            auth_mode=auth_mode,  # type: ignore[arg-type]
+            jwt_secret=jwt_secret,
+            db_path=auth_db,
+        )
 
         return cls(
             mode=resolved_mode,
@@ -96,4 +161,5 @@ class WebConfig(BaseModel):
             port=port,
             db_url=db_url,
             modules_path=mp,
+            auth=auth_cfg,
         )

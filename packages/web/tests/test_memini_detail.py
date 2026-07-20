@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 from fastapi.testclient import TestClient
 
@@ -27,7 +28,7 @@ def _config() -> WebConfig:
     return WebConfig(mode="embedded", host="127.0.0.1", port=9876, modules_path=MODULES_DIR)
 
 
-def _get_client_memory_state(app, memory_id: str) -> dict[str, object]:
+def _get_client_memory_state(app: Any, memory_id: str) -> dict[str, object]:
     """Pull the live mock client out of the running app to inspect state."""
     # The module's MeminiClient is stored on the MeminiBrowserModule, which
     # is constructed at app-build time and held by the loader. We reach in
@@ -40,9 +41,9 @@ def _get_client_memory_state(app, memory_id: str) -> dict[str, object]:
         if module is None:
             continue
         if type(module).__name__ == "MeminiBrowserModule":
-            client = module.client  # type: ignore[attr-defined]
+            client = module.client
             assert isinstance(client, MockMeminiClient)
-            return client._memories[memory_id].model_dump()  # type: ignore[attr-defined]
+            return client._memories[memory_id].model_dump()
     raise AssertionError("MeminiBrowserModule not found in app.state.module_starters")
 
 
@@ -114,7 +115,7 @@ def test_trust_adjust_increases_score_and_audits() -> None:
         if module is None:
             continue
         if type(module).__name__ == "MeminiBrowserModule":
-            audit = module.client.trust_audit  # type: ignore[attr-defined]
+            audit = module.client.trust_audit
             mem_audits = [a for a in audit if a["memory_id"] == "mem-001"]
             assert len(mem_audits) == 2
             assert all(a["signal"] == "user_confirmed" for a in mem_audits)

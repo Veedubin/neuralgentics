@@ -34,21 +34,22 @@ Then open `http://127.0.0.1:9876/`.
 
 ### Team-server mode
 
-Listens on `0.0.0.0`, PG-backed, auth deferred to T-109. Default port
-`9877`. Pass `--db-url` to open a PostgreSQL pool at startup.
+Listens on `0.0.0.0`, PG-backed, **auth required** (JWT + OAuth2 stub, T-109).
+Default port `9877`. Pass `--db-url` to open a PostgreSQL pool at startup.
 
 ```bash
 python -m neuralgentics.web \
   --mode=team-server \
   --port=9877 \
-  --db-url=postgresql://USER:PASSWORD@localhost:5434/DBNAME
+  --db-url=postgresql://USER:PASSWORD@localhost:5434/DBNAME \
+  --auth=oauth2
 ```
 
-Health check:
+Health check (no auth required):
 
 ```bash
 curl http://localhost:9877/api/v1/health
-# {"status":"ok","mode":"team-server","db_connected":true}
+# {"status":"ok","mode":"team-server","db_connected":true,"auth_mode":"oauth2","users_seeded":3}
 ```
 
 Without `--db-url` the server still boots; `db_connected` is `false` and
@@ -58,6 +59,96 @@ extra — install with:
 ```bash
 pip install neuralgentics-web[team-server]
 ```
+
+## Auth (team-server mode only)
+
+T-109 ships three auth modes, selected via the `--auth` CLI flag or the
+`NEURALGENTICS_WEB_AUTH` env var (default: `jwt`):
+
+| Mode | Behavior |
+|------|----------|
+| `off` | No auth — dev only. Prints a loud warning. Anyone with network access can read/modify data. |
+| `jwt` | Bearer JWT access tokens required for all protected routes. Use this for API clients (curl, scripts, other services). |
+| `oauth2` | JWT path **plus** the `POST /auth/login` form, refresh-token rotation, and `GET /auth/me`. Use this for human users in a browser. |
+
+### Embedded mode
+
+Embedded mode is always anonymous + localhost-only (binds to `127.0.0.1`).
+The auth layer is not installed. This is the security default — the network
+itself is the boundary.
+
+### Default users (dev only)
+
+On first run the SQLite user store at `~/.neuralgentics/web-users.db` is
+seeded with three dev users (bcrypt-hashed). A loud warning is printed to
+stderr.
+
+| Username | Password | Role |
+|----------|----------|------|
+| `admin` | `admin` | `admin` |
+| `operator` | `operator` | `operator` |
+| `viewer` | `viewer` | `viewer` |
+
+**Change these passwords immediately in any non-dev deployment:**
+
+```bash
+python -m neuralgentics.web.auth.users set-password admin
+# (prompts for a new password)
+```
+
+### RBAC
+
+Three global roles (per-module RBAC is a future card):
+
+| Action | admin | operator | viewer |
+|--------|-------|----------|--------|
+| Read modules (GET) | yes | yes | yes |
+| Adjust trust (POST /memory/.../trust) | yes | yes | no |
+| Modify config (POST /api/v1/config) | yes | no | no |
+| Login / logout | yes | yes | yes |
+| User management (POST /auth/users) | yes | no | no |
+
+### OAuth2 login flow
+
+```bash
+# 1. Login (form-encoded):
+curl -X POST http://localhost:9877/auth/login \
+  -d "username=admin&password=admin"
+# {"access_token":"...","refresh_token":"...","token_type":"bearer","expires_in":86400}
+
+# 2. Use the access token on protected routes:
+curl http://localhost:9877/api/v1/modules \
+  -H "Authorization: Bearer <access_token>"
+
+# 3. Refresh (rotation: old refresh token is revoked):
+curl -X POST http://localhost:9877/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token":"<refresh_token>"}'
+
+# 4. Logout (revokes the refresh token; access token expires naturally):
+curl -X POST http://localhost:9877/auth/logout \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token":"<refresh_token>"}'
+```
+
+Access tokens expire in 24h; refresh tokens in 7d. Refresh-token rotation is
+ON by default — each successful refresh issues a new refresh token and
+revokes the old one.
+
+### JWT secret
+
+HS256 is the algorithm for v0.14.x (the team-server is intended for a
+trusted network). The secret is read from `$WEB_JWT_SECRET`; if unset, a
+random one is generated per process and a loud warning is printed to stderr
+(tokens invalidate on every restart).
+
+```bash
+export WEB_JWT_SECRET="$(openssl rand -hex 32)"
+```
+
+RS256 / asymmetric JWT, real OIDC (Google, GitHub, etc.), and per-module
+RBAC are deferred to future cards. This is a **stub** implementation — the
+OAuth2 form is functional but not production-grade.
 
 ## Module discovery
 

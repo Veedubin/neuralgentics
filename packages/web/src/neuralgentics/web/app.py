@@ -49,33 +49,11 @@ def build_app(config: WebConfig) -> FastAPI:
     else:
         mode_handler = EmbeddedMode(config)
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        if hasattr(mode_handler, "configure_async"):
-            await mode_handler.configure_async(app)
-        else:
-            mode_handler.configure(app)
-        # Start module background tasks (SSE drain, etc.).
-        for starter in getattr(app.state, "module_starters", []):
-            starter()
-        import asyncio
-
-        await asyncio.sleep(0)
-        yield
-        # Run module shutdowns.
-        for shutdown in app.state.module_shutdowns:
-            try:
-                await shutdown()
-            except Exception:  # noqa: BLE001
-                log.exception("module shutdown error")
-        if hasattr(mode_handler, "shutdown_async"):
-            await mode_handler.shutdown_async()
-
     app = FastAPI(
         title="neuralgentics-web",
-        version="0.14.0",
+        version="0.14.1",
         description="Modular web UI shell for neuralgentics",
-        lifespan=lifespan,
+        lifespan=None,  # set below after middleware is installed
     )
     app.state.config = config
     app.state.registry = registry
@@ -83,6 +61,17 @@ def build_app(config: WebConfig) -> FastAPI:
     app.state.mode_handler = mode_handler
     app.state.module_shutdowns = []
     app.state.module_starters = []
+
+    # Install mode-specific middleware + auth routes BEFORE module routes.
+    # AuthMiddleware is the outermost layer so request.state.user is
+    # populated for every downstream handler (module routes, RBAC deps).
+    if hasattr(mode_handler, "configure_async"):
+        # Team-server has an async configure (also opens PG pool).
+        # We need a sync install path here so the middleware is registered
+        # before the first request — the async part is for the PG pool.
+        mode_handler.configure(app)
+    else:
+        mode_handler.configure(app)
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -103,6 +92,29 @@ def build_app(config: WebConfig) -> FastAPI:
         if isinstance(extra, dict):
             base.update(extra)
         return base
+
+    # Lifespan: open the PG pool (team-server) and start module bg tasks.
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        if hasattr(mode_handler, "configure_async"):
+            # Already configured synchronously above; this opens the PG pool.
+            await mode_handler.configure_async(app)
+        for starter in getattr(app.state, "module_starters", []):
+            starter()
+        import asyncio
+
+        await asyncio.sleep(0)
+        yield
+        for shutdown in app.state.module_shutdowns:
+            try:
+                await shutdown()
+            except Exception:  # noqa: BLE001
+                log.exception("module shutdown error")
+        if hasattr(mode_handler, "shutdown_async"):
+            await mode_handler.shutdown_async()
+
+    app.router.lifespan_context = lifespan
 
     return app
 
