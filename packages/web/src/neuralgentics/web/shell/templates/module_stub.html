@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<section class="max-w-3xl mx-auto">
+  <div class="bg-white border border-slate-200 rounded-lg p-8">
+    <div class="flex items-start justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-bold">{{ module.display_name }}</h1>
+        <p class="text-sm text-slate-500 mt-1">{{ module.name }} · v{{ module.version }} · {{ module.license }}</p>
+      </div>
+      <span class="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800">stub</span>
+    </div>
+
+    <p class="text-slate-700">{{ module.description }}</p>
+
+    <div class="mt-8 p-6 bg-amber-50 border border-amber-200 rounded-md">
+      <p class="text-sm text-amber-900">
+        Module: <strong>{{ module.name }}</strong> — coming in <strong>{{ coming_in }}</strong>.
+      </p>
+      <p class="text-xs text-amber-700 mt-2">
+        This is a placeholder page installed by the T-105 scaffold. The real
+        implementation arrives in {{ coming_in }}.
+      </p>
+    </div>
+
+    <h2 class="text-sm font-semibold mt-8 mb-2 text-slate-700">Manifest routes</h2>
+    <ul class="text-xs space-y-1">
+      {% for r in module.routes %}
+      <li class="font-mono"><span class="text-blue-600">{{ r.method }}</span> {{ r.path }}{% if r.template %} → {{ r.template }}{% endif %}</li>
+      {% else %}
+      <li class="text-slate-500">No routes declared.</li>
+      {% endfor %}
+    </ul>
+
+    <h2 class="text-sm font-semibold mt-6 mb-2 text-slate-700">API endpoints</h2>
+    <ul class="text-xs space-y-1">
+      {% for ep in module.api_endpoints %}
+      <li class="font-mono"><span class="text-blue-600">{{ ep.method }}</span> {{ ep.path }} <span class="text-slate-500">({{ ep.handler }})</span></li>
+      {% else %}
+      <li class="text-slate-500">No API endpoints declared.</li>
+      {% endfor %}
+    </ul>
+
+    <p class="mt-8 text-xs text-slate-500">Author: {{ module.author }} · License: {{ module.license }}</p>
+  </div>
+  <p class="text-center mt-4"><a href="/" class="text-blue-600 underline text-sm">← back to modules</a></p>
+</section>
+{% endblock %}

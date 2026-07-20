@@ -1,0 +1,18 @@
+name: gateway-audit
+version: 0.1.0
+display_name: "Gateway Audit"
+description: "Live view of HTTP requests through the egress gateway"
+author: Veedubin
+license: MIT
+routes:
+  - path: /modules/gateway-audit
+    method: GET
+    template: module_stub.html
+    context:
+      message: "Coming in T-106"
+api_endpoints:
+  - path: /api/v1/gateway-audit/recent
+    method: GET
+    handler: stub
+sse_channels: []
+data_sources: []

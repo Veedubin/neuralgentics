@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}neuralgentics-web{% endblock %}</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <script src="https://cdn.tailwindcss.com" defer></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+  <header class="border-b border-slate-200 bg-white">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div>
+        <span class="text-xl font-semibold">neuralgentics-web</span>
+        <span class="ml-3 text-xs uppercase tracking-wider text-slate-500">{{ mode }} mode</span>
+      </div>
+      <nav class="text-sm">
+        <a href="/" class="text-slate-700 hover:text-slate-900">Modules</a>
+        <span class="mx-3 text-slate-300">·</span>
+        <a href="/api/v1/modules" class="text-slate-700 hover:text-slate-900">API</a>
+      </nav>
+    </div>
+  </header>
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="border-t border-slate-200 bg-white mt-12">
+    <div class="max-w-7xl mx-auto px-6 py-4 text-xs text-slate-500">
+      neuralgentics-web · modular UI shell · <a href="https://github.com/Veedubin" class="underline">Veedubin</a>
+    </div>
+  </footer>
+</body>
+</html>

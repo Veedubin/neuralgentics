@@ -1,0 +1,71 @@
+[project]
+name = "neuralgentics-web"
+version = "0.13.0"
+description = "Modular web UI shell for neuralgentics (Grafana-style plugin manifest system)"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.12"
+authors = [{name = "Veedubin"}]
+
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "jinja2>=3.1.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.2.0",
+    "pyyaml>=6.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+    "ruff>=0.4.0",
+    "mypy>=1.9.0",
+]
+team-server = [
+    "asyncpg>=0.29.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"neuralgentics.web" = [
+    "py.typed",
+    "shell/templates/*.html",
+    "shell/static/*.css",
+    "modules/*/module.yaml",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+mypy_path = ["src"]
+namespace_packages = true
+explicit_package_bases = true
+packages = ["neuralgentics.web"]
+
+[[tool.mypy.overrides]]
+module = "yaml"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "asyncpg"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

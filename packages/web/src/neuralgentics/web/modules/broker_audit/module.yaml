@@ -1,0 +1,18 @@
+name: broker-audit
+version: 0.1.0
+display_name: "Broker Audit"
+description: "Tool call metrics, latency histograms, and per-model usage stats"
+author: Veedubin
+license: MIT
+routes:
+  - path: /modules/broker-audit
+    method: GET
+    template: module_stub.html
+    context:
+      message: "Coming in T-107"
+api_endpoints:
+  - path: /api/v1/broker-audit/recent
+    method: GET
+    handler: stub
+sse_channels: []
+data_sources: []
