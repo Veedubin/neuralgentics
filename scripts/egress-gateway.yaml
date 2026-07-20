@@ -1,0 +1,45 @@
+# neuralgentics-gateway egress proxy — starter config
+# Installed by: scripts/install.sh --with-gateway
+#
+# This is a minimal working config. Edit it to match your deployment:
+#   - change `listen_addr` if port 9090 is already in use
+#   - add `upstream` blocks for each provider you want to route through
+#   - enable `audit` to log every outbound request
+#
+# Docs: https://github.com/Veedubin/neuralgentics-gateway
+
+# ─── Listener ────────────────────────────────────────────────────────────────
+listen_addr: "0.0.0.0:9090"      # HTTP forward proxy
+dashboard_addr: "127.0.0.1:9091" # Dashboard / metrics (loopback only)
+
+# ─── Upstreams (LLM providers) ──────────────────────────────────────────────
+# Uncomment and edit to whitelist providers. When empty, all upstreams are
+# allowed (open proxy — fine for local dev, NOT for production).
+upstreams:
+  # - name: ollama-cloud
+  #   url: https://ollama.com
+  #   allow:
+  #     models: ["*"]          # or pin to ["kimi-k2.6", "glm-5.2", ...]
+  #   rate_limit:
+  #     requests_per_minute: 600
+  #
+  # - name: openrouter
+  #   url: https://openrouter.ai/api/v1
+  #   allow:
+  #     models: ["anthropic/claude-*"]
+
+# ─── Audit logging ──────────────────────────────────────────────────────────
+audit:
+  enabled: false
+  # path: ~/.neuralgentics/audit/egress.jsonl
+  # redact_headers: ["authorization", "api-key"]
+  # redact_body: false
+
+# ─── Policy engine ───────────────────────────────────────────────────────────
+# Block requests that don't match an allow rule. When false (default), the
+# gateway logs violations but still forwards — useful for shadow-mode rollouts.
+policy:
+  enforce: false
+  deny:
+    # - kind: model
+    #   pattern: "gpt-*"        # e.g. block OpenAI models

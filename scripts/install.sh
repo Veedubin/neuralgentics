@@ -11,12 +11,18 @@
 #   curl ... | bash -s -- --home-dir              # install to ~/.neuralgentics
 #   curl ... | bash -s -- --prefix /opt/ng        # custom install root
 #   curl ... | bash -s -- --version 0.7.4         # specific version
+#   curl ... | bash -s -- --with-gateway          # also install the egress gateway (Go)
+#   curl ... | bash -s -- --gateway-only          # ONLY install the egress gateway, skip plugin
+#   curl ... | bash -s -- --gateway-version=vX.Y.Z # pin a specific gateway version
+#   curl ... | bash -s -- --uninstall-gateway     # remove the gateway binary + starter config
 #   curl ... | bash -s -- --dry-run               # preview without installing
 set -euo pipefail
 
 APP="neuralgentics"
 DEFAULT_VERSION="0.12.2"
 REPO="${NEURALGENTICS_REPO:-Veedubin/neuralgentics}"
+GATEWAY_MODULE="github.com/Veedubin/neuralgentics-gateway/cmd/egress"
+GATEWAY_CONFIG_NAME="egress-gateway.yaml"
 
 # ─── Defaults ────────────────────────────────────────────────────────────────
 
@@ -25,6 +31,10 @@ VERSION="${DEFAULT_VERSION}"
 DRY_RUN=false
 INSTALL_HOME=false
 YES=false
+WITH_GATEWAY=false
+GATEWAY_ONLY=false
+GATEWAY_VERSION=""
+UNINSTALL_GATEWAY=false
 
 # ─── Logging ─────────────────────────────────────────────────────────────────
 
@@ -127,6 +137,111 @@ prompt_enable_linger() {
     fi
 }
 
+# ─── Gateway helpers ────────────────────────────────────────────────────────
+
+# Resolve the GOPATH/bin directory (honors GOBIN if set, then `go env GOPATH`).
+gateway_bin_dir() {
+    if [[ -n "${GOBIN:-}" ]]; then
+        printf '%s' "$GOBIN"
+        return
+    fi
+    local gopath=""
+    if command -v go >/dev/null 2>&1; then
+        gopath="$(go env GOPATH 2>/dev/null || true)"
+    fi
+    if [[ -z "$gopath" ]]; then
+        gopath="${HOME}/go"
+    fi
+    printf '%s' "$gopath"
+}
+
+# Resolve the absolute path to the egress binary once installed.
+gateway_bin_path() {
+    printf '%s/bin/egress' "$(gateway_bin_dir)"
+}
+
+install_gateway() {
+    local version="${GATEWAY_VERSION:-latest}"
+    if ! command -v go >/dev/null 2>&1; then
+        err "go is required for --with-gateway / --gateway-only. Install Go 1.22+ first (https://go.dev/dl/)."
+    fi
+
+    local target_pkg="${GATEWAY_MODULE}@${version}"
+    log "Installing neuralgentics-gateway egress proxy (${target_pkg})..."
+
+    if $DRY_RUN; then
+        log "[dry-run] Would run: GO111MODULE=on go install ${target_pkg}"
+        log "[dry-run] Would copy starter config to ~/.neuralgentics/${GATEWAY_CONFIG_NAME} (if missing)"
+        log "[dry-run] Gateway binary path: $(gateway_bin_path)"
+        return 0
+    fi
+
+    GO111MODULE=on go install "$target_pkg" || err "go install failed for ${target_pkg}. Check that the version exists and your Go toolchain is healthy."
+
+    # Sanity check: the binary should exist now
+    local bin_path
+    bin_path="$(gateway_bin_path)"
+    if [[ ! -x "$bin_path" ]]; then
+        warn "go install reported success but ${bin_path} is not present."
+        warn "Check 'go env GOPATH' — your GOBIN/GOPATH may point somewhere unexpected."
+    fi
+
+    # Copy starter config if missing
+    mkdir -p "$HOME/.neuralgentics"
+    local dest_config="$HOME/.neuralgentics/${GATEWAY_CONFIG_NAME}"
+    local src_config
+    # Look for the starter config relative to this script (bundled with installer)
+    src_config="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/${GATEWAY_CONFIG_NAME}"
+    if [[ ! -f "$dest_config" ]]; then
+        if [[ -f "$src_config" ]]; then
+            cp "$src_config" "$dest_config"
+            log "Wrote starter config to ${dest_config}"
+        else
+            warn "Starter config ${src_config} not found (skipped). The gateway will run with built-in defaults."
+        fi
+    else
+        log "Existing gateway config at ${dest_config} — left untouched"
+    fi
+
+    cat <<EOF >&2
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    Gateway installed — neuralgentics-gateway egress @${version}
+
+      Binary:  ${bin_path}
+      Config:  ${dest_config}
+      Docs:    https://github.com/Veedubin/neuralgentics-gateway
+
+      Run with:
+        ${bin_path} -config ${dest_config}
+
+      (Add \$(go env GOPATH)/bin to your PATH if \`egress\` is not found.)
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EOF
+}
+
+uninstall_gateway() {
+    local bin_path
+    bin_path="$(gateway_bin_path)"
+
+    if $DRY_RUN; then
+        log "[dry-run] Would remove: ${bin_path} (binary only — config + data left intact)"
+        return 0
+    fi
+
+    if [[ -f "$bin_path" ]]; then
+        rm -f "$bin_path"
+        log "Removed gateway binary at ${bin_path}"
+    else
+        log "No gateway binary found at ${bin_path} — nothing to remove"
+    fi
+
+    # IMPORTANT: we deliberately do NOT touch ~/.neuralgentics/egress-gateway.yaml
+    # or any audit log data. The user may have customized the config or want to
+    # preserve history. Re-running --with-gateway will reuse the existing config.
+    log "Kept ~/.neuralgentics/ config and audit data (remove manually if you want them gone)."
+}
+
 # ─── Argument parsing ───────────────────────────────────────────────────────
 
 while [[ $# -gt 0 ]]; do
@@ -137,6 +252,11 @@ while [[ $# -gt 0 ]]; do
         --repo)               REPO="$2"; shift 2 ;;
         --yes|-y)             YES=true; shift ;;
         --dry-run)            DRY_RUN=true; shift ;;
+        --with-gateway)       WITH_GATEWAY=true; shift ;;
+        --gateway-only)       GATEWAY_ONLY=true; shift ;;
+        --gateway-version)    GATEWAY_VERSION="$2"; shift 2 ;;
+        --gateway-version=*)  GATEWAY_VERSION="${1#*=}"; shift ;;
+        --uninstall-gateway)  UNINSTALL_GATEWAY=true; shift ;;
         --help|-h)
             cat <<EOF
 neuralgentics installer — OpenCode plugin setup
@@ -146,13 +266,20 @@ Usage:
   curl ... | bash -s -- [flags]
 
 Flags:
-  --home-dir        Install to ~/.neuralgentics (recommended)
-  --prefix <dir>    Custom install root
-  --version <ver>   Specific version (default: $DEFAULT_VERSION)
-  --repo <org/name> Custom GitHub repo
-  --yes, -y         Skip confirmation prompts
-  --dry-run         Preview without installing
-  --help, -h        Show this help
+  --home-dir             Install to ~/.neuralgentics (recommended)
+  --prefix <dir>         Custom install root
+  --version <ver>        Specific version (default: $DEFAULT_VERSION)
+  --repo <org/name>      Custom GitHub repo
+  --yes, -y              Skip confirmation prompts
+  --dry-run              Preview without installing
+  --help, -h             Show this help
+
+Gateway (standalone egress proxy):
+  --with-gateway         Also install the neuralgentics-gateway egress proxy via 'go install'
+  --gateway-only         ONLY install the egress gateway, skip the neuralgentics plugin
+  --gateway-version=<v> Pin a specific gateway version (default: latest)
+                         Use e.g. --gateway-version=v0.1.0
+  --uninstall-gateway    Remove the gateway binary (leaves config + audit data intact)
 
 After install:
   cd your-project
@@ -197,6 +324,38 @@ fi
 
 log "Installing neuralgentics v${VERSION} to ${PREFIX}"
 
+# ─── --uninstall-gateway short-circuit ───────────────────────────────────────
+# Run BEFORE any plugin work — this flag is a one-shot removal action.
+
+if $UNINSTALL_GATEWAY; then
+    uninstall_gateway
+    # If --with-gateway was ALSO passed, re-install after uninstall.
+    if $WITH_GATEWAY; then
+        log "--uninstall-gateway + --with-gateway: reinstalling gateway..."
+        install_gateway
+    fi
+    # If neither --gateway-only nor --with-gateway is set, treat --uninstall-gateway
+    # as a standalone action and exit.
+    if ! $GATEWAY_ONLY && ! $WITH_GATEWAY; then
+        log "Uninstall complete (plugin untouched)."
+        exit 0
+    fi
+fi
+
+# ─── --gateway-only short-circuit ───────────────────────────────────────────
+# Skip the plugin tarball download entirely. Only install the gateway.
+
+if $GATEWAY_ONLY; then
+    if ! $WITH_GATEWAY && ! $UNINSTALL_GATEWAY; then
+        install_gateway
+        exit 0
+    fi
+    # If both --gateway-only and --with-gateway are set, --gateway-only wins
+    # (we still only install the gateway).
+    install_gateway
+    exit 0
+fi
+
 # ─── Download ────────────────────────────────────────────────────────────────
 
 ARCHIVE="neuralgentics-${VERSION}.tar.gz"
@@ -212,6 +371,9 @@ if $DRY_RUN; then
         install_systemd_unit
     else
         warn "[dry-run] systemd not detected — sidecar will use scripts/sidecar.sh (PID-file wrapper)"
+    fi
+    if $WITH_GATEWAY; then
+        install_gateway
     fi
     log "[dry-run] Done."
     exit 0
@@ -309,6 +471,12 @@ if has_systemd; then
     prompt_enable_linger
 else
     warn "systemd not detected — sidecar will use scripts/sidecar.sh (PID-file wrapper)"
+fi
+
+# ─── Optional gateway install ────────────────────────────────────────────────
+
+if $WITH_GATEWAY; then
+    install_gateway
 fi
 
 # ── Cleanup ─────────────────────────────────────────────────────────────────

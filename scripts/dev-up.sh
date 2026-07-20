@@ -11,6 +11,8 @@
 # Environment:
 #   NEURAL_EMBED_ADDR  — Sidecar listen address (default: unix:///tmp/neuralgentics-embed.sock)
 #   NEURALGENTICS_EMBED_DEVICE — "cpu" (default) or "cuda"
+#   WITH_GATEWAY=1     — Also verify (and offer to install) the neuralgentics-gateway
+#                       egress proxy via `go install`. Mirrors `install.sh --with-gateway`.
 #
 # Requirements:
 #   - podman (https://podman.io)
@@ -224,6 +226,46 @@ print_summary() {
     echo ""
 }
 
+# ─── Gateway verification ──────────────────────────────────────────────────────
+
+verify_gateway() {
+    # Only run if the user opted in via WITH_GATEWAY=1 (mirrors install.sh --with-gateway).
+    if [[ "${WITH_GATEWAY:-0}" != "1" ]]; then
+        return 0
+    fi
+    info "Checking for neuralgentics-gateway egress proxy..."
+    if ! command -v go >/dev/null 2>&1; then
+        warn "Go is not installed — cannot verify gateway. Install Go 1.22+ to use --with-gateway."
+        return 0
+    fi
+    local gopath_bin
+    gopath_bin="$(go env GOPATH 2>/dev/null || echo "${HOME}/go")/bin"
+    local egress_bin="${gopath_bin}/egress"
+    if [[ -x "$egress_bin" ]]; then
+        log "Gateway egress binary present at ${egress_bin}"
+        return 0
+    fi
+    warn "Gateway egress binary not found at ${egress_bin}."
+    printf "Install it now via 'go install github.com/Veedubin/neuralgentics-gateway/cmd/egress@latest'? [y/N] " >&2
+    local answer=""
+    read -r answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+        GO111MODULE=on go install "github.com/Veedubin/neuralgentics-gateway/cmd/egress@latest" \
+            || { warn "go install failed — gateway not installed"; return 0; }
+        log "Gateway installed to ${egress_bin}"
+        # Starter config (best-effort)
+        local starter="$PROJECT_ROOT/scripts/egress-gateway.yaml"
+        local dest="$HOME/.neuralgentics/egress-gateway.yaml"
+        if [[ -f "$starter" ]] && [[ ! -f "$dest" ]]; then
+            mkdir -p "$HOME/.neuralgentics"
+            cp "$starter" "$dest"
+            log "Wrote starter gateway config to ${dest}"
+        fi
+    else
+        log "Skipping gateway install. The dev stack will run without it."
+    fi
+}
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 info "Setting up Neuralgentics development environment..."
@@ -233,6 +275,7 @@ setup_database
 apply_migrations
 setup_sidecar
 verify_backend
+verify_gateway
 
 print_summary
 
