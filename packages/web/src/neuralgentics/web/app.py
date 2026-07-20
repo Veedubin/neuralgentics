@@ -62,6 +62,10 @@ def build_app(config: WebConfig) -> FastAPI:
     app.state.mode_handler = mode_handler
     app.state.module_shutdowns = []
     app.state.module_starters = []
+    # T-115.1: prior-module shutdown coroutines scheduled by reload_module
+    # when no event loop was running at reload time (rare; the common path
+    # uses the running loop directly). Drained by the lifespan.
+    app.state.pending_prior_shutdowns = []
 
     # Install mode-specific middleware + auth routes BEFORE module routes.
     # AuthMiddleware is the outermost layer so request.state.user is
@@ -117,8 +121,14 @@ def build_app(config: WebConfig) -> FastAPI:
             await mode_handler.configure_async(app)
         for starter in getattr(app.state, "module_starters", []):
             starter()
+        # T-115.1: drain any prior-module shutdowns scheduled before the
+        # lifespan loop was running (rare path — reload_module usually finds
+        # a running loop and schedules via create_task directly).
         import asyncio
 
+        for prior_shutdown in getattr(app.state, "pending_prior_shutdowns", []):
+            asyncio.create_task(prior_shutdown())
+        app.state.pending_prior_shutdowns = []
         await asyncio.sleep(0)
         yield
         for shutdown in app.state.module_shutdowns:

@@ -154,6 +154,10 @@ def register_module_routes(app: Any, registry: ModuleRegistry, config: Any) -> N
     to the registry's :class:`ModuleState` so the reload path can supersede
     them. Module loading is by file path (via :func:`load_module_python`)
     so arbitrary module directories (including test fixtures) work.
+
+    T-115.1: each route included by a module is tagged with
+    ``route.module_name = manifest.name`` so :func:`reload_module` can find
+    and remove the prior version's routes before including the new ones.
     """
     modules_path = _modules_path_from_config(config)
 
@@ -197,7 +201,7 @@ def register_module_routes(app: Any, registry: ModuleRegistry, config: Any) -> N
             # New-style: split sync router inclusion from async startup.
             router = instance.build_router()
             if router is not None:
-                app.include_router(router)
+                _include_router_tagged(app, router, manifest.name)
         except AttributeError:
             # Old-style: register_routes is async (T-105 stubs). Defer to lifespan.
             _register_legacy_async(app, instance)
@@ -219,6 +223,48 @@ def register_module_routes(app: Any, registry: ModuleRegistry, config: Any) -> N
         shutdowns.append(instance.shutdown)
         app.state.module_shutdowns = shutdowns
         log.info("registered routes for module %s", manifest.name)
+
+
+def _include_router_tagged(
+    app: Any, router: Any, module_name: str, *, insert_at: int | None = None
+) -> None:
+    """Include ``router`` into ``app`` and tag each newly-registered route
+    with ``route.module_name = module_name``.
+
+    T-115.1: tagging lets :func:`reload_module` find the prior version's
+    routes in ``app.router.routes`` and remove them before including the
+    new router — closing the route-unregistration gap (the old version stays
+    live at its original path).
+
+    ``app.include_router`` flattens the sub-router's routes into
+    ``app.router.routes``; we tag the tail of that list (the routes added
+    by this call). The tagged attribute is a plain Python attribute on the
+    route object — FastAPI ignores unknown attributes, so this is safe.
+
+    If ``insert_at`` is provided (the reload path), the new routes are
+    inserted at that index instead of appended — this preserves the
+    route-precedence order (module routers precede the shell router so
+    the module's literal ``/modules/<name>`` route wins over the shell's
+    ``/modules/{module_name}`` catch-all).
+    """
+    before = len(app.router.routes)
+    app.include_router(router)
+    after = len(app.router.routes)
+    new_routes = list(app.router.routes[before:after])
+    # Tag each new route.
+    for route in new_routes:
+        try:
+            route.module_name = module_name
+        except (AttributeError, TypeError):
+            # Some route types (Mount, Host) may reject setattr — skip.
+            continue
+    # If an insertion index was given, move the new routes there so they
+    # precede the shell router (preserving route precedence).
+    if insert_at is not None and new_routes:
+        # Strip the newly-appended routes from the tail.
+        app.router.routes[:] = app.router.routes[:before]
+        # Insert them at the requested position.
+        app.router.routes[insert_at:insert_at] = new_routes
 
 
 def _register_legacy_async(app: Any, instance: Any) -> None:

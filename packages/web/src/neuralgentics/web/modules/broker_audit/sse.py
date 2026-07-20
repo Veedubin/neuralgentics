@@ -7,6 +7,10 @@ feeds N SSE subscribers. Each subscriber gets its own
 Structurally identical to the gateway-audit broadcaster (T-106) — kept
 as a separate class so the event type is ``BrokerAuditEvent`` and the
 log tag is distinct.
+
+T-115.1: ``stop()`` pushes a :data:`Goodbye` sentinel into every
+subscriber queue before cancelling the drain task; the SSE handler
+checks for it and emits a ``goodbye`` frame before closing.
 """
 
 from __future__ import annotations
@@ -15,10 +19,20 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 from neuralgentics.web.modules.broker_audit.data_source import BrokerAuditEvent
 
 log = logging.getLogger("neuralgentics.web.broker_audit.sse")
+
+
+@dataclass(frozen=True)
+class Goodbye:
+    """Sentinel pushed to subscriber queues by :meth:`BrokerAuditBroadcaster.stop`.
+
+    The SSE handler checks ``isinstance(event, Goodbye)`` and emits a
+    ``goodbye`` event frame before breaking out of the stream.
+    """
 
 
 class BrokerAuditBroadcaster:
@@ -29,13 +43,14 @@ class BrokerAuditBroadcaster:
          ``source.subscribe()`` and pushes each event to every queue.
       2. ``subscribe()`` — returns a queue the caller can await; the
          broadcaster pushes new events into it. Backpressure-safe (bounded).
-      3. ``stop()`` — cancels the background task and drains queues.
+      3. ``stop()`` — pushes a :data:`Goodbye` sentinel to every subscriber,
+         cancels the background task, and drains queues.
     """
 
     QUEUE_MAX = 256
 
     def __init__(self) -> None:
-        self._subscribers: set[asyncio.Queue[BrokerAuditEvent]] = set()
+        self._subscribers: set[asyncio.Queue[BrokerAuditEvent | Goodbye]] = set()
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
 
@@ -69,17 +84,24 @@ class BrokerAuditBroadcaster:
         finally:
             log.info("broker-audit broadcaster stopped")
 
-    def subscribe(self) -> asyncio.Queue[BrokerAuditEvent]:
+    def subscribe(self) -> asyncio.Queue[BrokerAuditEvent | Goodbye]:
         """Register a new subscriber and return its queue."""
-        q: asyncio.Queue[BrokerAuditEvent] = asyncio.Queue(maxsize=self.QUEUE_MAX)
+        q: asyncio.Queue[BrokerAuditEvent | Goodbye] = asyncio.Queue(maxsize=self.QUEUE_MAX)
         self._subscribers.add(q)
         return q
 
-    def unsubscribe(self, q: asyncio.Queue[BrokerAuditEvent]) -> None:
+    def unsubscribe(self, q: asyncio.Queue[BrokerAuditEvent | Goodbye]) -> None:
         self._subscribers.discard(q)
 
     async def stop(self) -> None:
+        """T-115.1: push a :data:`Goodbye` sentinel to every subscriber so
+        the SSE handler can emit a goodbye frame before the stream closes,
+        then cancel the drain task and clear subscribers.
+        """
         self._stop_event.set()
+        for q in list(self._subscribers):
+            with contextlib.suppress(asyncio.QueueFull):
+                q.put_nowait(Goodbye())
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -88,4 +110,4 @@ class BrokerAuditBroadcaster:
         self._subscribers.clear()
 
 
-__all__ = ["BrokerAuditBroadcaster"]
+__all__ = ["BrokerAuditBroadcaster", "Goodbye"]

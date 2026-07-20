@@ -34,7 +34,7 @@ from neuralgentics.web.modules.broker_audit.data_source import (
     BrokerAuditDataSource,
     BrokerAuditEvent,
 )
-from neuralgentics.web.modules.broker_audit.sse import BrokerAuditBroadcaster
+from neuralgentics.web.modules.broker_audit.sse import BrokerAuditBroadcaster, Goodbye
 from neuralgentics.web.modules.broker_audit.stats import compute_stats
 
 log = logging.getLogger("neuralgentics.web.broker_audit.routes")
@@ -160,7 +160,7 @@ def build_router(
         user: User | None = Depends(require_role("admin", "operator", "viewer")),
     ) -> EventSourceResponse:
         _ = user  # noqa: F841 — RBAC gate only; read endpoint
-        q: asyncio.Queue[BrokerAuditEvent] = broadcaster.subscribe()
+        q: asyncio.Queue[BrokerAuditEvent | Goodbye] = broadcaster.subscribe()
 
         async def event_generator() -> AsyncIterator[dict[str, str]]:
             # Yield a hello comment immediately so the response headers flush
@@ -171,7 +171,13 @@ def build_router(
                     if await request.is_disconnected():
                         break
                     try:
-                        event: BrokerAuditEvent = await asyncio.wait_for(q.get(), timeout=5.0)
+                        event: BrokerAuditEvent | Goodbye = await asyncio.wait_for(
+                            q.get(), timeout=5.0
+                        )
+                        # T-115.1: Goodbye sentinel → emit goodbye frame + close.
+                        if isinstance(event, Goodbye):
+                            yield {"event": "goodbye", "data": '{"reason":"reload"}'}
+                            break
                         yield {
                             "event": "tool_call",
                             "data": event.model_dump_json(),

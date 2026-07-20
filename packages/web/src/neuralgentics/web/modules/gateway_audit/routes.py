@@ -31,7 +31,7 @@ from neuralgentics.web.modules.gateway_audit.data_source import (
     AuditDataSource,
     AuditEvent,
 )
-from neuralgentics.web.modules.gateway_audit.sse import AuditBroadcaster
+from neuralgentics.web.modules.gateway_audit.sse import AuditBroadcaster, Goodbye
 
 log = logging.getLogger("neuralgentics.web.gateway_audit.routes")
 
@@ -139,7 +139,7 @@ def build_router(
         user: User | None = Depends(require_role("admin", "operator", "viewer")),
     ) -> EventSourceResponse:
         _ = user  # noqa: F841 — RBAC gate only; read endpoint
-        q: asyncio.Queue[AuditEvent] = broadcaster.subscribe()
+        q: asyncio.Queue[AuditEvent | Goodbye] = broadcaster.subscribe()
 
         async def event_generator() -> AsyncIterator[dict[str, str]]:
             # Yield a hello comment immediately so the response headers flush
@@ -151,7 +151,11 @@ def build_router(
                     if await request.is_disconnected():
                         break
                     try:
-                        event: AuditEvent = await asyncio.wait_for(q.get(), timeout=5.0)
+                        event: AuditEvent | Goodbye = await asyncio.wait_for(q.get(), timeout=5.0)
+                        # T-115.1: Goodbye sentinel → emit goodbye frame + close.
+                        if isinstance(event, Goodbye):
+                            yield {"event": "goodbye", "data": '{"reason":"reload"}'}
+                            break
                         yield {
                             "event": "audit",
                             "data": event.model_dump_json(),
