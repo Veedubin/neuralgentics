@@ -1,7 +1,7 @@
 """Tests for the gateway-audit consumer reading the ``policy_sid`` column.
 
 T-152: T-151 added the ``policy_sid`` column to the gateway's PG schema and
-writes to it on every IAM deny. This test file verifies the *consumer* side
+writes to it on every policy deny. This test file verifies the *consumer* side
 (PGAuditSource) reads that column and surfaces it on :class:`AuditEvent`.
 
 These tests require a live PostgreSQL. They're skipped automatically if the
@@ -15,8 +15,8 @@ Convention verified here (matches the existing ``error='' -> None`` pattern
 from T-114.2):
 
 * ``policy_sid`` column is ``TEXT NOT NULL DEFAULT ''`` in the gateway
-  schema (T-151). Empty string = no IAM statement matched (legacy allowlist
-  path or no IAM evaluator installed).
+  schema (T-151). Empty string = no policy statement matched (legacy allowlist
+  path or no policy evaluator installed).
 * Consumer normalizes empty string to ``None`` on read, so callers can
   distinguish "no policy applied" from a real SID without inspecting the
   sentinel themselves.
@@ -156,7 +156,7 @@ async def _insert_row(
 
 def test_consumer_reads_policy_sid_field(pg_dsn: str) -> None:
     """Insert a row with policy_sid='deny-foo'; recent() surfaces it on the
-    AuditEvent so the dashboard can show which IAM statement fired.
+    AuditEvent so the dashboard can show which policy statement fired.
     """
 
     async def _body() -> None:
@@ -181,7 +181,7 @@ def test_consumer_reads_policy_sid_field(pg_dsn: str) -> None:
 
 
 def test_consumer_handles_empty_policy_sid(pg_dsn: str) -> None:
-    """Insert a row with policy_sid='' (legacy / no IAM match); recent()
+    """Insert a row with policy_sid='' (legacy / no policy match); recent()
     returns ``event.policy_sid is None`` — the consumer normalizes the
     empty-string sentinel to None, matching the existing ``error='' → None``
     convention from T-114.2.

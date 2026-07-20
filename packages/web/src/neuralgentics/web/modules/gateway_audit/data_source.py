@@ -77,8 +77,8 @@ class AuditEvent(BaseModel):
     # string per row (empty string when there was no error). Mirrored here
     # so the T-118 charts can surface it.
     error: str | None = None
-    # T-151 / T-152: gateway's audit_events table stores the SID of the IAM
-    # statement that matched on a deny (empty string when no IAM evaluator
+    # T-151 / T-152: gateway's audit_events table stores the SID of the policy
+    # statement that matched on a deny (empty string when no policy evaluator
     # was installed or no policy matched — the legacy allowlist path).
     # Mirrored here so the dashboard can surface which policy fired.
     policy_sid: str | None = None
@@ -300,8 +300,8 @@ class PGAuditSource:
             duration_ms = None
         error = row["error"] or None  # '' → None
         # T-152: policy_sid is NOT NULL DEFAULT '' in the gateway schema
-        # (audit/pgstore.go T-151). Empty string means no IAM statement
-        # matched (legacy allowlist path or no IAM evaluator installed).
+        # (audit/pgstore.go T-151). Empty string means no policy statement
+        # matched (legacy allowlist path or no policy evaluator installed).
         # Normalize '' → None to match the existing error='' convention.
         policy_sid = row["policy_sid"] or None  # '' → None
         return AuditEvent(
