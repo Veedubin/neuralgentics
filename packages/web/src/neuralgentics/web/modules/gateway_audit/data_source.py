@@ -71,6 +71,10 @@ class AuditEvent(BaseModel):
     bytes_sent: int | None = None
     bytes_received: int | None = None
     duration_ms: int | None = None
+    # T-114.1: gateway's audit_events table now stores an upstream error
+    # string per row (empty string when there was no error). Mirrored here
+    # so the T-118 charts can surface it.
+    error: str | None = None
 
     model_config = {"extra": "ignore"}
 
@@ -262,6 +266,20 @@ class PGAuditSource:
         ts = row["ts"]
         if isinstance(ts, str):
             ts = datetime.fromisoformat(ts)
+        # T-114.2: read all 10 gateway columns (id, ts, method, host, uri,
+        # decision, reason, client_ip, status, duration_ms, error). The
+        # gateway schema (audit/pgstore.go) declares status/duration_ms as
+        # NOT NULL DEFAULT 0 and error as NOT NULL DEFAULT ''. We translate
+        # the 0/'' sentinels to None so the consumer can distinguish "no
+        # upstream status received" from "real 200/404/etc." — that matches
+        # the JSONL path's behaviour where those fields are simply absent.
+        status = row["status"]
+        if status == 0:
+            status = None
+        duration_ms = row["duration_ms"]
+        if duration_ms == 0:
+            duration_ms = None
+        error = row["error"] or None  # '' → None
         return AuditEvent(
             timestamp=ts,
             method=row["method"],
@@ -270,6 +288,9 @@ class PGAuditSource:
             decision=row["decision"],
             reason=row["reason"] or "",
             client_ip=row["client_ip"] or "",
+            status=status,
+            duration_ms=duration_ms,
+            error=error,
         )
 
     async def recent(
@@ -283,19 +304,26 @@ class PGAuditSource:
     ) -> list[AuditEvent]:
         """Query ``audit_events`` with server-side filters, newest first.
 
-        ``status`` is ignored on the PG path (the gateway's ``audit_events``
-        table has no ``status`` column); it's only honored by
-        :class:`JSONLAuditSource` and documented in the API.
+        T-114.2: ``status`` is now a server-side filter (the gateway
+        populates the column since T-114.1). To preserve the JSONL path's
+        semantic of "status=None means 'any'", we map a None ``status``
+        argument to "no filter"; an explicit ``status=0`` maps to a
+        literal ``status=0`` filter (the gateway's sentinel for "no
+        upstream status received").
         """
-        del status  # noqa: F841 — documented, but not in the gateway schema.
         pool = await self._ensure_pool()
-        # $1 = LIMIT, $2..$N = WHERE clauses (built in order: domain, since, until).
+        # $1 = LIMIT, $2..$N = WHERE clauses (built in order: domain,
+        # status, since, until).
         where: list[str] = []
         params: list[Any] = []
         idx = 2  # $1 is reserved for LIMIT
         if domain is not None:
             where.append(f"host LIKE ${idx}")
             params.append(f"%{domain}%")
+            idx += 1
+        if status is not None:
+            where.append(f"status = ${idx}")
+            params.append(status)
             idx += 1
         if since is not None:
             where.append(f"ts >= ${idx}")
@@ -307,7 +335,8 @@ class PGAuditSource:
             idx += 1
         where_sql = (" WHERE " + " AND ".join(where)) if where else ""
         sql = (
-            "SELECT ts, method, host, uri, decision, reason, client_ip "
+            "SELECT ts, method, host, uri, decision, reason, client_ip, "
+            "status, duration_ms, error "
             f"FROM {PG_TABLE}{where_sql} ORDER BY ts DESC LIMIT $1"
         )
         async with pool.acquire() as conn:
@@ -349,7 +378,8 @@ class PGAuditSource:
     async def _fetch_and_enqueue(self, row_id: int) -> None:
         pool = await self._ensure_pool()
         sql = (
-            f"SELECT ts, method, host, uri, decision, reason, client_ip "
+            "SELECT ts, method, host, uri, decision, reason, client_ip, "
+            "status, duration_ms, error "
             f"FROM {PG_TABLE} WHERE id = $1"
         )
         async with pool.acquire() as conn:
