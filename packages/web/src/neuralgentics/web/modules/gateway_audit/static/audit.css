@@ -1,0 +1,8 @@
+/* gateway-audit module — minimal CSS on top of the shell + Tailwind.
+   Most styling is via Tailwind utility classes in the templates; this file
+   only adds a couple of tweaks that don't translate cleanly to utilities. */
+
+#audit-tbody tr:nth-child(even) { background: #f8fafc; }
+#audit-tbody tr:hover { background: #eff6ff; }
+#audit-tbody td { white-space: nowrap; }
+#audit-tbody td:nth-child(4) { white-space: normal; }

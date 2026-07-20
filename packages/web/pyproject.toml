@@ -1,6 +1,6 @@
 [project]
 name = "neuralgentics-web"
-version = "0.13.0"
+version = "0.14.0"
 description = "Modular web UI shell for neuralgentics (Grafana-style plugin manifest system)"
 readme = "README.md"
 license = {text = "MIT"}
@@ -14,6 +14,7 @@ dependencies = [
     "pydantic>=2.6.0",
     "pydantic-settings>=2.2.0",
     "pyyaml>=6.0.1",
+    "sse-starlette>=1.8.0",
 ]
 
 [project.optional-dependencies]
@@ -41,6 +42,8 @@ where = ["src"]
     "shell/templates/*.html",
     "shell/static/*.css",
     "modules/*/module.yaml",
+    "modules/*/templates/*.html",
+    "modules/*/static/*.css",
 ]
 
 [tool.ruff]

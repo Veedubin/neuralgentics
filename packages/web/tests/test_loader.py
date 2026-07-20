@@ -33,9 +33,17 @@ def test_parse_manifest_round_trip() -> None:
     p = MODULES_DIR / "gateway_audit" / "module.yaml"
     m = parse_manifest(p)
     assert m.name == "gateway-audit"
-    assert m.version == "0.1.0"
+    # gateway-audit is the first real module (T-106); bumped to 0.14.0.
+    assert m.version == "0.14.0"
     assert m.display_name == "Gateway Audit"
-    assert len(m.routes) == 1
+    # Real module declares two routes (page + SSE) and one API endpoint.
+    assert len(m.routes) == 2
     assert m.routes[0].path == "/modules/gateway-audit"
     assert m.routes[0].method == "GET"
-    assert m.api_endpoints[0].handler == "stub"
+    assert m.routes[1].path == "/modules/gateway-audit/sse"
+    assert m.api_endpoints[0].handler == "recent"
+    # The other two stubs still use the old shape.
+    broker_p = MODULES_DIR / "broker_audit" / "module.yaml"
+    bm = parse_manifest(broker_p)
+    assert bm.version == "0.1.0"
+    assert len(bm.routes) == 1
