@@ -39,6 +39,12 @@ team-server = [
 requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project.scripts]
+# T-132: standalone console entry point. ``pip install neuralgentics-web``
+# now provides a ``neuralgentics-web`` command. ``python -m neuralgentics.web``
+# remains supported for backward compatibility.
+neuralgentics-web = "neuralgentics.web.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

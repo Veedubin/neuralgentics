@@ -16,9 +16,20 @@ from neuralgentics.web.config import WebConfig
 log = logging.getLogger("neuralgentics.web")
 
 
-def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+def build_parser(prog: str = "python -m neuralgentics.web") -> argparse.ArgumentParser:
+    """Construct the argparse parser used by both entry points.
+
+    Exposed as a public function so the ``neuralgentics-web`` console
+    script (T-132) can reuse the exact same flag set and then layer its
+    own ``--version`` on top — keeping a single source of truth for the
+    CLI surface.
+    """
+    return _build_parser(prog)
+
+
+def _build_parser(prog: str) -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="python -m neuralgentics.web",
+        prog=prog,
         description="neuralgentics-web — modular web UI shell",
     )
     p.add_argument(
@@ -176,7 +187,11 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         ),
     )
     p.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
-    return p.parse_args(argv)
+    return p
+
+
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    return _build_parser("python -m neuralgentics.web").parse_args(argv)
 
 
 def _parse_generic_oidc(
@@ -221,6 +236,15 @@ def _parse_generic_oidc(
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
+    return _run_from_args(args)
+
+
+def _run_from_args(args: argparse.Namespace) -> int:
+    """Execute the app from a parsed Namespace.
+
+    Split out of :func:`main` so the console-script entry point can
+    reuse it after adding its own ``--version`` flag (T-132).
+    """
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
