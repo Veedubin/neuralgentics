@@ -17,6 +17,10 @@ dependencies = [
     "sse-starlette>=1.8.0",
     "pyjwt>=2.8.0",
     "bcrypt>=4.1.0",
+    # T-112: OIDC provider HTTP calls (GitHub/Google token exchange + userinfo).
+    "httpx>=0.27.0",
+    # T-112: Form parsing for /auth/login username+password (FastAPI Form()).
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

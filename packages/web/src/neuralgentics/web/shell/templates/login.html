@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login · neuralgentics-web</title>
+  <script src="https://cdn.tailwindcss.com" defer></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen flex items-center justify-center">
+  <div class="w-full max-w-md bg-white border border-slate-200 rounded-lg shadow-sm p-8">
+    <h1 class="text-2xl font-bold mb-1">neuralgentics-web</h1>
+    <p class="text-sm text-slate-500 mb-6">Sign in to continue</p>
+
+    {% if providers %}
+    <div class="space-y-3 mb-6">
+      {% for p in providers %}
+      <a href="/auth/login/{{ p.name }}"
+         class="block w-full text-center py-2.5 px-4 rounded-md border border-slate-300 hover:bg-slate-50 transition-colors text-sm font-medium">
+        {% if p.name == "github" %}
+          Login with GitHub
+        {% elif p.name == "google" %}
+          Login with Google
+        {% else %}
+          Login with {{ p.name }}
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+
+    <div class="relative my-6">
+      <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
+      <div class="relative flex justify-center"><span class="bg-white px-2 text-xs text-slate-400">or</span></div>
+    </div>
+    {% endif %}
+
+    <form action="/auth/login" method="post" class="space-y-4">
+      <div>
+        <label for="username" class="block text-sm font-medium text-slate-700 mb-1">Username</label>
+        <input id="username" name="username" type="text" required
+               class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+      </div>
+      <div>
+        <label for="password" class="block text-sm font-medium text-slate-700 mb-1">Password</label>
+        <input id="password" name="password" type="password" required
+               class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+      </div>
+      <button type="submit"
+              class="w-full bg-slate-900 text-white rounded-md py-2.5 px-4 text-sm font-medium hover:bg-slate-800 transition-colors">
+        Sign in
+      </button>
+    </form>
+
+    {% if not providers %}
+    <p class="text-xs text-slate-400 mt-6 text-center">
+      Local login only. Ask an admin to configure OIDC for social login.
+    </p>
+    {% endif %}
+  </div>
+</body>
+</html>

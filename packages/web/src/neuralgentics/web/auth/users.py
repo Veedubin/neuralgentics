@@ -20,6 +20,7 @@ which was removed in bcrypt 5.0).
 from __future__ import annotations
 
 import logging
+import secrets
 import sqlite3
 import sys
 import threading
@@ -114,13 +115,36 @@ class UserStore:
                     token           TEXT PRIMARY KEY,
                     username        TEXT NOT NULL,
                     issued_at       INTEGER NOT NULL,
-                    expires_at      INTEGER NOT NULL,
+                    expires_at       INTEGER NOT NULL,
                     revoked         INTEGER NOT NULL DEFAULT 0,
                     FOREIGN KEY (username) REFERENCES users(username)
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_refresh_username
                     ON refresh_tokens(username);
+
+                -- T-112: OIDC provider links. A user may have links to
+                -- multiple providers (e.g. github + google). The pair
+                -- (provider, provider_user_id) is unique so the same IdP
+                -- account can't be linked to two local users.
+                CREATE TABLE IF NOT EXISTS user_oauth_links (
+                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username            TEXT NOT NULL,
+                    provider            TEXT NOT NULL,
+                    provider_user_id    TEXT NOT NULL,
+                    access_token        TEXT,
+                    refresh_token       TEXT,
+                    expires_at          INTEGER,
+                    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY (username) REFERENCES users(username),
+                    UNIQUE (provider, provider_user_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_oauth_username
+                    ON user_oauth_links(username);
+                CREATE INDEX IF NOT EXISTS idx_oauth_provider
+                    ON user_oauth_links(provider, provider_user_id);
                 """
             )
             conn.commit()
@@ -187,6 +211,169 @@ class UserStore:
         return [
             User(username=r["username"], role=r["role"], password_hash=r["password_hash"])
             for r in rows
+        ]
+
+    # ----- OIDC provisioning (T-112) -------------------------------------
+
+    def get_by_oauth(self, provider: str, provider_user_id: str) -> User | None:
+        """Return the local user linked to ``(provider, provider_user_id)``.
+
+        Returns None if no link exists. Used by the OIDC callback to find
+        an existing user on a repeat login.
+        """
+        with self._lock, self._conn() as conn:
+            row = conn.execute(
+                "SELECT u.username, u.password_hash, u.role "
+                "FROM user_oauth_links l JOIN users u ON l.username = u.username "
+                "WHERE l.provider = ? AND l.provider_user_id = ?",
+                (provider, provider_user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return User(username=row["username"], role=row["role"], password_hash=row["password_hash"])
+
+    def get_by_email(self, email: str) -> User | None:
+        """Return the local user whose username matches ``email``.
+
+        OIDC users created from an email have ``username = email`` (when
+        the provider gives an email and no preferred username). This lets
+        a subsequent GitHub login find the same account created by an
+        earlier Google login (matched by shared email).
+        """
+        with self._lock, self._conn() as conn:
+            row = conn.execute(
+                "SELECT username, password_hash, role FROM users WHERE username = ?",
+                (email,),
+            ).fetchone()
+        if row is None:
+            return None
+        return User(username=row["username"], role=row["role"], password_hash=row["password_hash"])
+
+    def get_or_create_oidc_user(
+        self,
+        *,
+        provider: str,
+        provider_user_id: str,
+        email: str | None,
+        username_hint: str | None,
+        default_role: str = "viewer",
+    ) -> User:
+        """Find or create the local user for an OIDC login.
+
+        Resolution order:
+          1. Existing link ``(provider, provider_user_id)`` → return that user.
+          2. Existing user with ``username == email`` (cross-provider match).
+          3. Create a new user with role ``default_role``.
+
+        The new user's username is derived as:
+          * ``email`` if the provider gave one (enables cross-provider match),
+          * else ``<provider>:<provider_user_id>`` (no email to match on).
+
+        A random unusable password hash is set (OIDC users never log in
+        via password). The provider link row is created or updated.
+        """
+        # (1) Existing link.
+        existing = self.get_by_oauth(provider, provider_user_id)
+        if existing is not None:
+            return existing
+        # (2) Cross-provider email match.
+        if email is not None:
+            by_email = self.get_by_email(email)
+            if by_email is not None:
+                # Link this provider to the existing user.
+                self._upsert_oauth_link(
+                    username=by_email.username,
+                    provider=provider,
+                    provider_user_id=provider_user_id,
+                    access_token=None,
+                    refresh_token=None,
+                    expires_at=None,
+                )
+                return by_email
+        # (3) Create new user.
+        new_username = email if email is not None else f"{provider}:{provider_user_id}"
+        # Avoid colliding with an existing username (rare but possible
+        # if a local user was created with the same email by an admin).
+        if self.get_by_username(new_username) is not None:
+            new_username = f"{provider}:{provider_user_id}"
+        with self._lock, self._conn() as conn:
+            # Random password hash — OIDC users can't log in via password.
+            # bcrypt of 32 random bytes; never returned to anyone.
+            random_pw = secrets.token_urlsafe(32)
+            conn.execute(
+                "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+                (new_username, _hash_password(random_pw), default_role),
+            )
+            conn.execute(
+                "INSERT INTO user_oauth_links (username, provider, provider_user_id) "
+                "VALUES (?, ?, ?)",
+                (new_username, provider, provider_user_id),
+            )
+            conn.commit()
+        user = self.get_by_username(new_username)
+        assert user is not None  # just inserted
+        return user
+
+    def update_oauth_tokens(
+        self,
+        *,
+        provider: str,
+        provider_user_id: str,
+        access_token: str | None,
+        refresh_token: str | None = None,
+        expires_at: int | None = None,
+    ) -> bool:
+        """Update the stored access/refresh tokens for an existing link.
+
+        Returns False if no link exists (caller should have created one
+        via :meth:`get_or_create_oidc_user` first).
+        """
+        with self._lock, self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE user_oauth_links SET access_token = ?, refresh_token = ?, "
+                "expires_at = ?, updated_at = datetime('now') "
+                "WHERE provider = ? AND provider_user_id = ?",
+                (access_token, refresh_token, expires_at, provider, provider_user_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    def _upsert_oauth_link(
+        self,
+        *,
+        username: str,
+        provider: str,
+        provider_user_id: str,
+        access_token: str | None,
+        refresh_token: str | None,
+        expires_at: int | None,
+    ) -> None:
+        """Insert a link row, or update it if (provider, provider_user_id) exists."""
+        with self._lock, self._conn() as conn:
+            conn.execute(
+                "INSERT INTO user_oauth_links "
+                "(username, provider, provider_user_id, access_token, refresh_token, expires_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(provider, provider_user_id) DO UPDATE SET "
+                "username = excluded.username, "
+                "access_token = COALESCE(excluded.access_token, user_oauth_links.access_token), "
+                "refresh_token = COALESCE(excluded.refresh_token, user_oauth_links.refresh_token), "
+                "expires_at = COALESCE(excluded.expires_at, user_oauth_links.expires_at), "
+                "updated_at = datetime('now')",
+                (username, provider, provider_user_id, access_token, refresh_token, expires_at),
+            )
+            conn.commit()
+
+    def list_oauth_links(self, username: str) -> list[dict[str, object]]:
+        """Return all provider links for ``username`` (for /auth/me)."""
+        with self._lock, self._conn() as conn:
+            rows = conn.execute(
+                "SELECT provider, provider_user_id, created_at FROM user_oauth_links "
+                "WHERE username = ? ORDER BY provider",
+                (username,),
+            ).fetchall()
+        return [
+            {"provider": r["provider"], "provider_user_id": r["provider_user_id"]} for r in rows
         ]
 
     # ----- refresh tokens -------------------------------------------------

@@ -1,19 +1,27 @@
-"""FastAPI router for ``/auth/*`` routes (T-109).
+"""FastAPI router for ``/auth/*`` routes (T-109, OIDC added T-112).
 
 Exposes:
-  * ``POST /auth/login``    — username + password form → ``TokenSet``
-  * ``POST /auth/refresh``  — refresh_token → new ``TokenSet`` (rotation)
-  * ``POST /auth/logout``   — revoke a refresh_token (idempotent, 204)
-  * ``GET  /auth/me``       — current user (requires access token)
+  * ``GET  /auth/login``        — HTML login page (local form + OIDC buttons)
+  * ``POST /auth/login``        — username + password form → ``TokenSet``
+  * ``POST /auth/login/json``   — JSON body variant of login
+  * ``POST /auth/refresh``      — refresh_token → new ``TokenSet`` (rotation)
+  * ``POST /auth/logout``       — revoke a refresh_token (idempotent, 204)
+  * ``GET  /auth/me``           — current user (requires access token)
+
+OIDC routes (``/auth/login/{provider}``, ``/auth/callback/{provider}``,
+``/auth/providers``) are added by :mod:`neuralgentics.web.auth.oidc_routes`
+when at least one provider is configured.
 """
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
 
 from neuralgentics.web.auth.jwt import get_or_create_secret
 from neuralgentics.web.auth.oauth2_stub import AuthError, login, logout, refresh
@@ -22,15 +30,37 @@ from neuralgentics.web.auth.users import User, UserStore
 
 log = logging.getLogger("neuralgentics.web.auth.routes")
 
+TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "shell" / "templates"
+_templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
-def build_auth_router(user_store: UserStore, secret: str | None = None) -> APIRouter:
+
+def build_auth_router(
+    user_store: UserStore,
+    secret: str | None = None,
+    *,
+    oidc_providers: list[dict[str, str]] | None = None,
+) -> APIRouter:
     """Construct the ``/auth/*`` APIRouter.
 
     ``secret`` lets tests inject a fixed JWT secret; production reads
     ``$WEB_JWT_SECRET`` via :func:`~neuralgentics.web.auth.jwt.get_or_create_secret`.
+
+    ``oidc_providers`` is the list of configured OIDC providers (each
+    ``{"name": ..., "authorization_url": ...}``) for the login page UI.
+    Empty/None = OIDC disabled, login page shows local form only.
     """
     router = APIRouter(prefix="/auth", tags=["auth"])
     _secret = secret if secret is not None else get_or_create_secret()
+    providers = oidc_providers or []
+
+    @router.get("/login", response_class=HTMLResponse)
+    async def login_page(request: Request) -> HTMLResponse:
+        """HTML login page with local form + OIDC buttons (if configured)."""
+        return _templates.TemplateResponse(
+            request,
+            "login.html",
+            {"providers": providers, "title": "Login"},
+        )
 
     @router.post("/login")
     async def login_route(

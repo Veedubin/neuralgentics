@@ -71,8 +71,107 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
             "source of truth."
         ),
     )
+    # --- T-112: OIDC provider flags ---
+    p.add_argument(
+        "--oidc-github-client-id",
+        type=str,
+        default=None,
+        help="GitHub OAuth2 client ID. Both ID + secret required to enable GitHub.",
+    )
+    p.add_argument(
+        "--oidc-github-client-secret",
+        type=str,
+        default=None,
+        help="GitHub OAuth2 client secret.",
+    )
+    p.add_argument(
+        "--oidc-google-client-id",
+        type=str,
+        default=None,
+        help="Google OIDC client ID. Both ID + secret required to enable Google.",
+    )
+    p.add_argument(
+        "--oidc-google-client-secret",
+        type=str,
+        default=None,
+        help="Google OIDC client secret.",
+    )
+    p.add_argument(
+        "--oidc-redirect-base",
+        type=str,
+        default=None,
+        help="Base URL for OIDC callbacks (e.g. https://neuralgentics.example.com).",
+    )
+    p.add_argument(
+        "--oidc-default-role",
+        choices=("admin", "operator", "viewer"),
+        default="viewer",
+        help="Role assigned to new OIDC users on first login (default: viewer).",
+    )
+    p.add_argument(
+        "--oidc-generic-discovery-url",
+        type=str,
+        action="append",
+        default=[],
+        metavar="NAME=URL",
+        help=(
+            "Generic OIDC provider discovery URL. Format: "
+            "--oidc-generic-discovery-url=okta=https://idp.example/.well-known/"
+            "openid-configuration. "
+            "Repeatable for multiple providers. Also requires "
+            "--oidc-generic-client-id=<NAME> and --oidc-generic-client-secret=<NAME>."
+        ),
+    )
+    p.add_argument(
+        "--oidc-generic-client-id",
+        type=str,
+        action="append",
+        default=[],
+        metavar="NAME=ID",
+        help="Client ID for a generic OIDC provider (paired by NAME with the discovery URL).",
+    )
+    p.add_argument(
+        "--oidc-generic-client-secret",
+        type=str,
+        action="append",
+        default=[],
+        metavar="NAME=SECRET",
+        help="Client secret for a generic OIDC provider (paired by NAME).",
+    )
     p.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
     return p.parse_args(argv)
+
+
+def _parse_generic_oidc(
+    discovery_pairs: list[str],
+    id_pairs: list[str],
+    secret_pairs: list[str],
+) -> dict[str, dict[str, str]]:
+    """Parse ``NAME=VALUE`` OIDC generic-provider flags into a dict.
+
+    Returns ``{name: {discovery_url, client_id, client_secret}}``. A
+    provider is included only if all three are present.
+    """
+
+    def _to_map(pairs: list[str]) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for pair in pairs:
+            if "=" not in pair:
+                continue
+            k, v = pair.split("=", 1)
+            out[k.strip()] = v.strip()
+        return out
+
+    discovery = _to_map(discovery_pairs)
+    ids = _to_map(id_pairs)
+    secrets_map = _to_map(secret_pairs)
+    result: dict[str, dict[str, str]] = {}
+    for name, du in discovery.items():
+        cid = ids.get(name)
+        csec = secrets_map.get(name)
+        if du and cid and csec:
+            result[name] = {"discovery_url": du, "client_id": cid, "client_secret": csec}
+    return result
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -91,6 +190,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         jwt_secret=args.jwt_secret,
         auth_db_path=args.auth_db_path,
         rbac_mode=args.rbac_mode,
+        oidc_github_client_id=args.oidc_github_client_id,
+        oidc_github_client_secret=args.oidc_github_client_secret,
+        oidc_google_client_id=args.oidc_google_client_id,
+        oidc_google_client_secret=args.oidc_google_client_secret,
+        oidc_redirect_base=args.oidc_redirect_base,
+        oidc_default_role=args.oidc_default_role,
+        oidc_generic_providers=_parse_generic_oidc(
+            args.oidc_generic_discovery_url,
+            args.oidc_generic_client_id,
+            args.oidc_generic_client_secret,
+        ),
     )
     log.info(
         "starting neuralgentics-web %s in %s mode",

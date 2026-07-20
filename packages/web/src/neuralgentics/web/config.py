@@ -25,7 +25,7 @@ def _default_modules_path() -> Path:
 
 
 class AuthConfig(BaseModel):
-    """Auth-layer configuration (T-109).
+    """Auth-layer configuration (T-109, OIDC T-112).
 
     Only consulted in team-server mode — embedded mode is always anonymous
     + localhost-only.
@@ -34,7 +34,7 @@ class AuthConfig(BaseModel):
     auth_mode: AuthMode = "jwt"
     """``off`` disables auth entirely (dev only, prints a warning). ``jwt``
     requires Bearer JWT access tokens. ``oauth2`` enables the JWT path
-    *plus* the ``/auth/login`` form + refresh-token rotation."""
+    *plus* the ``/auth/login`` form + refresh-token rotation + OIDC."""
 
     jwt_secret: str | None = None
     """HS256 shared secret. If unset, a random one is generated per process
@@ -51,6 +51,23 @@ class AuthConfig(BaseModel):
 
     refresh_ttl_seconds: int = 7 * 24 * 60 * 60
     """Refresh-token lifetime (default 7d)."""
+
+    # --- T-112: OIDC provider configuration ---
+    oidc_github_client_id: str | None = None
+    oidc_github_client_secret: str | None = None
+    oidc_google_client_id: str | None = None
+    oidc_google_client_secret: str | None = None
+    oidc_redirect_base: str | None = None
+    """Base URL for OIDC callbacks (e.g. ``https://neuralgentics.example.com``).
+    The callback URL is ``{redirect_base}/auth/callback/{provider}``."""
+
+    oidc_default_role: str = "viewer"
+    """Role assigned to new OIDC users on first login (default: viewer)."""
+
+    oidc_generic_providers: dict[str, dict[str, str]] = Field(default_factory=dict)
+    """Generic OIDC providers: ``name`` → ``{discovery_url, client_id,
+    client_secret}``. Populated from ``--oidc-generic-<name>-discovery-url``
+    CLI flags."""
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -95,6 +112,13 @@ class WebConfig(BaseModel):
         jwt_secret: str | None = None,
         auth_db_path: str | None = None,
         rbac_mode: str | None = None,
+        oidc_github_client_id: str | None = None,
+        oidc_github_client_secret: str | None = None,
+        oidc_google_client_id: str | None = None,
+        oidc_google_client_secret: str | None = None,
+        oidc_redirect_base: str | None = None,
+        oidc_default_role: str | None = None,
+        oidc_generic_providers: dict[str, dict[str, str]] | None = None,
     ) -> WebConfig:
         # Env var fallback so the app factory can also be used without CLI args.
         env_mode = os.environ.get("NEURALGENTICS_WEB_MODE", mode)
@@ -165,6 +189,13 @@ class WebConfig(BaseModel):
             auth_mode=auth_mode,  # type: ignore[arg-type]
             jwt_secret=jwt_secret,
             db_path=auth_db,
+            oidc_github_client_id=oidc_github_client_id,
+            oidc_github_client_secret=oidc_github_client_secret,
+            oidc_google_client_id=oidc_google_client_id,
+            oidc_google_client_secret=oidc_google_client_secret,
+            oidc_redirect_base=oidc_redirect_base,
+            oidc_default_role=oidc_default_role or "viewer",
+            oidc_generic_providers=oidc_generic_providers or {},
         )
 
         return cls(

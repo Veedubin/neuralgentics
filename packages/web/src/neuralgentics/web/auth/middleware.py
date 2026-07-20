@@ -1,4 +1,5 @@
-"""FastAPI middleware that extracts + validates a Bearer JWT (T-109).
+"""FastAPI middleware that extracts + validates a Bearer JWT (T-109,
+OIDC cookie support T-112).
 
 Three modes (matching the ``--auth`` CLI flag):
 
@@ -7,10 +8,17 @@ Three modes (matching the ``--auth`` CLI flag):
   * ``jwt``    — requires ``Authorization: Bearer <access-jwt>``. Used by
                   API clients (curl, scripts, other services).
   * ``oauth2`` — same as ``jwt`` for protected routes, but the OAuth2
-                  login form (``/auth/login``) is also enabled.
+                  login form (``/auth/login``) is also enabled. T-112 also
+                  enables OIDC provider login + callback routes.
+
+Token sources (T-112): the middleware accepts either
+  * ``Authorization: Bearer <jwt>`` header (API clients), OR
+  * ``ng_auth`` cookie (browser sessions after OIDC login).
+The header wins if both are present.
 
 Auth-public paths (always allowed without a token):
-  * ``/auth/login``, ``/auth/refresh``, ``/auth/logout``
+  * ``/auth/login``, ``/auth/login/{provider}``, ``/auth/callback/{provider}``,
+    ``/auth/providers``, ``/auth/refresh``, ``/auth/logout``
   * ``/api/v1/health``
   * ``/``  and ``/static/*`` (the shell is rendered even without auth so
     the user can see the login form — but every API call is still gated)
@@ -38,9 +46,12 @@ log = logging.getLogger("neuralgentics.web.auth.middleware")
 AuthMode = Literal["off", "jwt", "oauth2"]
 
 # Paths that are always reachable without a token. Kept prefix-based so
-# ``/static/anything`` is whitelisted.
+# ``/static/anything`` is whitelisted. T-112 adds the OIDC callback/login
+# paths so the IdP redirect + the authorize redirect don't require a token.
 PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
     "/auth/login",
+    "/auth/callback",
+    "/auth/providers",
     "/auth/refresh",
     "/auth/logout",
     "/api/v1/health",
@@ -53,6 +64,9 @@ PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
 # The shell index itself — anonymous access so the login form can render.
 # (Everything substantive under /api/v1/* and /modules/* is still gated.)
 PUBLIC_EXACT_PATHS: frozenset[str] = frozenset({"/"})
+
+# Cookie name that carries the JWT after OIDC login (T-112).
+AUTH_COOKIE_NAME = "ng_auth"
 
 
 def _is_public(path: str) -> bool:
@@ -68,8 +82,22 @@ def _unauthorized(detail: str, *, www_authenticate: bool = True) -> JSONResponse
     return JSONResponse({"error": detail}, status_code=401, headers=headers)
 
 
+def _extract_token(request: Request) -> str | None:
+    """Pull the JWT from the Authorization header or the ``ng_auth`` cookie.
+
+    Header wins if both are present (API clients should use the header).
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header.removeprefix("Bearer ").strip()
+    cookie = request.cookies.get(AUTH_COOKIE_NAME)
+    if cookie:
+        return cookie
+    return None
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Attach ``request.state.user`` based on a Bearer JWT.
+    """Attach ``request.state.user`` based on a Bearer JWT or auth cookie.
 
     Constructed once at app build time and shared across requests.
     """
@@ -102,11 +130,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             public_response: Response = await call_next(request)
             return public_response
 
-        auth_header = request.headers.get("Authorization", "")
-        if not auth_header.startswith("Bearer "):
+        token = _extract_token(request)
+        if not token:
             return _unauthorized("missing_token")
 
-        token = auth_header.removeprefix("Bearer ").strip()
         try:
             payload = decode_access_token(token, secret=self.secret)
         except jwt.ExpiredSignatureError:
@@ -127,4 +154,4 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return authed_response
 
 
-__all__ = ["AuthMiddleware", "AuthMode"]
+__all__ = ["AuthMiddleware", "AuthMode", "AUTH_COOKIE_NAME"]
