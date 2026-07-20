@@ -167,6 +167,23 @@ class UserStore:
                     "UPDATE users SET source = 'oidc' WHERE username IN "
                     "(SELECT DISTINCT username FROM user_oauth_links)"
                 )
+            # T-122: add the ``revoked_at`` column to user_oauth_links.
+            # Existing DBs (created by T-112 / T-121) don't have it; the
+            # ALTER is idempotent. NULL = active; a timestamp = the link
+            # was marked revoked (refresh failed / user revoked access on
+            # the IdP side) and the user must re-login before the access
+            # token is trusted again.
+            link_cols = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(user_oauth_links)").fetchall()
+            }
+            if "revoked_at" not in link_cols:
+                conn.execute("ALTER TABLE user_oauth_links ADD COLUMN revoked_at TEXT")
+            # Index for the background refresher's "find expiring rows" query.
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_oauth_expires_at "
+                "ON user_oauth_links(expires_at) WHERE revoked_at IS NULL"
+            )
             conn.commit()
 
     def _maybe_seed_defaults(self) -> None:
@@ -384,11 +401,23 @@ class UserStore:
 
         Returns False if no link exists (caller should have created one
         via :meth:`get_or_create_oidc_user` first).
+
+        T-122: also clears ``revoked_at`` (a successful callback is a
+        re-login, which re-activates a previously-revoked link) and
+        preserves any existing ``refresh_token`` when the caller passes
+        ``refresh_token=None`` (GitHub callbacks have no refresh token,
+        but a prior refresh-token grant may have stored one — though in
+        practice GitHub never issues one, so this branch is mostly
+        defensive).
         """
         with self._lock, self._conn() as conn:
             cur = conn.execute(
-                "UPDATE user_oauth_links SET access_token = ?, refresh_token = ?, "
-                "expires_at = ?, updated_at = datetime('now') "
+                "UPDATE user_oauth_links SET "
+                "access_token = ?, "
+                "refresh_token = COALESCE(?, refresh_token), "
+                "expires_at = ?, "
+                "revoked_at = NULL, "
+                "updated_at = datetime('now') "
                 "WHERE provider = ? AND provider_user_id = ?",
                 (access_token, refresh_token, expires_at, provider, provider_user_id),
             )
@@ -432,6 +461,103 @@ class UserStore:
         return [
             {"provider": r["provider"], "provider_user_id": r["provider_user_id"]} for r in rows
         ]
+
+    # ----- T-122: refresh-token rotation support --------------------------
+
+    def list_expiring_oauth_links(self, horizon_seconds: int) -> list[dict[str, object]]:
+        """Return active links whose access token expires within ``horizon_seconds``.
+
+        Rows with ``revoked_at IS NOT NULL`` are skipped (the user must
+        re-login; refreshing would just fail again). Rows with no
+        ``expires_at`` (GitHub OAuth Apps, or older rows written before
+        T-122 fixed the storage) are also skipped — there's nothing to
+        refresh against for GitHub, and for the others the background
+        loop can't tell when they expire.
+
+        Each returned dict has the columns the refresher needs:
+        ``username``, ``provider``, ``provider_user_id``, ``access_token``,
+        ``refresh_token``, ``expires_at``.
+        """
+        import time
+
+        cutoff = int(time.time()) + int(horizon_seconds)
+        with self._lock, self._conn() as conn:
+            rows = conn.execute(
+                "SELECT username, provider, provider_user_id, access_token, "
+                "refresh_token, expires_at "
+                "FROM user_oauth_links "
+                "WHERE revoked_at IS NULL AND expires_at IS NOT NULL "
+                "AND expires_at <= ? AND refresh_token IS NOT NULL",
+                (cutoff,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_oauth_link(self, *, username: str, provider: str) -> dict[str, object] | None:
+        """Return the active link row for ``(username, provider)`` or None.
+
+        Used by :func:`get_valid_access_token` (force-refresh-on-401) to
+        look up the stored access token + refresh token + expiry for a
+        known user/provider pair. Revoked links are reported as None so
+        the caller treats them as "must re-login".
+        """
+        with self._lock, self._conn() as conn:
+            row = conn.execute(
+                "SELECT username, provider, provider_user_id, access_token, "
+                "refresh_token, expires_at, revoked_at "
+                "FROM user_oauth_links WHERE username = ? AND provider = ?",
+                (username, provider),
+            ).fetchone()
+        if row is None:
+            return None
+        if row["revoked_at"] is not None:
+            return None
+        return dict(row)
+
+    def mark_oauth_link_revoked(self, *, provider: str, provider_user_id: str) -> bool:
+        """Mark a link revoked (refresh failed / user revoked access on IdP).
+
+        Sets ``revoked_at = datetime('now')`` so the background loop
+        skips it and ``get_oauth_link`` reports it as gone. The user
+        must re-login (which clears ``revoked_at`` via the upsert on
+        callback) before their access token is trusted again.
+        """
+        with self._lock, self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE user_oauth_links SET revoked_at = datetime('now'), "
+                "updated_at = datetime('now') "
+                "WHERE provider = ? AND provider_user_id = ? AND revoked_at IS NULL",
+                (provider, provider_user_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    def refresh_update_oauth_link(
+        self,
+        *,
+        provider: str,
+        provider_user_id: str,
+        access_token: str,
+        refresh_token: str | None,
+        expires_at: int,
+    ) -> bool:
+        """Update a link with a refreshed access token + new expiry (T-122).
+
+        ``refresh_token`` is the value to persist — if the IdP rotated
+        it, pass the new one; if not, pass the existing one (the caller
+        reads it from :meth:`list_expiring_oauth_links` /
+        :meth:`get_oauth_link` and re-sends it). ``expires_at`` is an
+        absolute unix timestamp (caller converts ``expires_in`` →
+        ``now + expires_in`` before calling).
+        """
+        with self._lock, self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE user_oauth_links SET access_token = ?, refresh_token = ?, "
+                "expires_at = ?, revoked_at = NULL, updated_at = datetime('now') "
+                "WHERE provider = ? AND provider_user_id = ?",
+                (access_token, refresh_token, int(expires_at), provider, provider_user_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
 
     # ----- refresh tokens -------------------------------------------------
 

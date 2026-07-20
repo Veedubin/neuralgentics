@@ -21,6 +21,7 @@ localhost-only.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
 
@@ -43,6 +44,12 @@ class TeamServerMode:
     def __init__(self, config: WebConfig) -> None:
         self.config = config
         self._pg_pool: Any = None
+        # T-122: the asyncio task running the OIDC refresh loop. Created
+        # in configure_async (lifespan startup) and cancelled in
+        # shutdown_async (lifespan shutdown). None when OIDC is disabled
+        # (start_refresh_loop is a no-op and returns immediately, so no
+        # task is created) or before the lifespan has run.
+        self._refresh_task: Any = None
         # Build the user store once at app construction — the schema is
         # tiny and the default-user seeding must run before any request.
         self.user_store = UserStore(config.auth.db_path)
@@ -122,7 +129,28 @@ class TeamServerMode:
         The auth middleware + /auth router are installed synchronously at
         app-build time by :meth:`configure`; this async hook only opens
         the PG pool (and is safe to call when there's no DSN — it no-ops).
+
+        T-122: also starts the OIDC refresh-token background loop when
+        OIDC is enabled. The loop runs forever (5-min ticks) and is
+        cancelled in :meth:`shutdown_async`.
         """
+        # T-122: start the refresh loop. start_refresh_loop is a no-op
+        # (returns immediately) when OIDC is disabled, so we don't even
+        # need to gate on oidc_config.enabled here — but we do gate so
+        # the log line is accurate.
+        if self.oidc_config.enabled:
+            import asyncio
+
+            from neuralgentics.web.auth.refresh import start_refresh_loop
+
+            self._refresh_task = asyncio.create_task(
+                start_refresh_loop(
+                    store=self.user_store,
+                    oidc_config=self.oidc_config,
+                )
+            )
+            log.info("team-server: OIDC refresh loop started")
+
         if not self.config.db_url:
             log.warning("team-server mode started without --db-url — PG features disabled")
             return
@@ -137,6 +165,14 @@ class TeamServerMode:
         log.info("team-server PG pool opened against %s", _redact_dsn(self.config.db_url))
 
     async def shutdown_async(self) -> None:
+        # T-122: cancel the refresh loop first so it doesn't try to use
+        # the user store / provider clients while we're tearing down.
+        if self._refresh_task is not None:
+            self._refresh_task.cancel()
+            with contextlib.suppress(Exception):  # noqa: BLE001 — CancelledError + any tick error
+                await self._refresh_task
+            self._refresh_task = None
+            log.info("team-server: OIDC refresh loop stopped")
         if self._pg_pool is not None:
             await self._pg_pool.close()
             self._pg_pool = None

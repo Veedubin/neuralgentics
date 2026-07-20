@@ -224,13 +224,25 @@ def build_oidc_router(
             default_role=oidc_config.default_role,
         )
         # Persist the fresh access token (best-effort; failure isn't fatal).
+        # T-122: ``expires_at`` is stored as an ABSOLUTE unix timestamp
+        # (now + expires_in seconds) so the background refresher can
+        # compare against ``time.time()`` without re-deriving the issue
+        # time. GitHub OAuth Apps return no expires_in (tokens are
+        # valid until revoked) — we store NULL and the refresher skips
+        # the row (no expiry to schedule against). Google/Generic
+        # return ~3600s.
         try:
+            import time
+
+            expires_at_abs: int | None = None
+            if token_resp.expires_in is not None:
+                expires_at_abs = int(time.time()) + int(token_resp.expires_in)
             user_store.update_oauth_tokens(
                 provider=provider,
                 provider_user_id=info.provider_user_id,
                 access_token=token_resp.access_token,
                 refresh_token=token_resp.refresh_token,
-                expires_at=token_resp.expires_in,
+                expires_at=expires_at_abs,
             )
         except Exception:  # noqa: BLE001
             log.warning("failed to persist oidc tokens for %s/%s", provider, info.provider_user_id)

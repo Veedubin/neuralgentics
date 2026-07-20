@@ -66,6 +66,23 @@ class TokenResponse:
 
 
 @dataclass(frozen=True)
+class RefreshResponse:
+    """Normalized refresh-token grant response (T-122).
+
+    ``access_token`` is the new bearer token. ``expires_in`` is the
+    lifetime in seconds (as returned by the IdP); callers convert it to
+    an absolute unix expiry when persisting. ``refresh_token`` is the
+    new refresh token if the IdP rotates it (RFC 6749 §6 recommends
+    rotation; Google does, Okta can), else ``None`` and the caller
+    keeps the old one.
+    """
+
+    access_token: str
+    expires_in: int
+    refresh_token: str | None = None
+
+
+@dataclass(frozen=True)
 class UserInfo:
     """Normalized user info from the IdP's userinfo endpoint.
 
@@ -118,6 +135,22 @@ class OIDCProvider(Protocol):
 
     async def fetch_userinfo(self, access_token: str) -> UserInfo:
         """Fetch the user info using the access token."""
+        ...
+
+    async def refresh_token(self, refresh_token: str) -> RefreshResponse:
+        """Exchange a stored refresh token for a new access token (T-122).
+
+        Implementations return a :class:`RefreshResponse` with the new
+        access token + lifetime (seconds). If the IdP rotates the
+        refresh token, the new one is returned in
+        :attr:`RefreshResponse.refresh_token`; otherwise it's ``None``
+        and the caller keeps using the old one.
+
+        Raises :class:`OIDCError` if the IdP rejects the refresh grant
+        (revoked, expired, etc.) — the caller (background refresher /
+        force-refresh-on-401 path) treats any exception as "mark the
+        link revoked and force re-login".
+        """
         ...
 
 
@@ -183,6 +216,33 @@ class GitHubProvider:
         if "error" in raw:
             raise OIDCError(f"github token error: {raw.get('error_description', raw.get('error'))}")
         return TokenResponse.from_raw(raw)
+
+    async def refresh_token(self, refresh_token: str) -> RefreshResponse:
+        """GitHub does NOT support refresh-token grants for OAuth Apps.
+
+        GitHub OAuth Apps issue access tokens that are valid until the
+        user revokes them or revokes the app — there's no expiry and no
+        refresh token. GitHub Apps (a different product) DO issue
+        refresh tokens (8-hour access tokens + refresh), but our
+        :class:`GitHubProvider` is for OAuth Apps (the
+        ``/login/oauth/access_token`` endpoint).
+
+        So for OAuth Apps the T-112 callback typically stores
+        ``refresh_token=None`` and the background refresher skips this
+        link (no refresh token to exchange). If a caller does invoke
+        ``refresh_token()`` here (e.g. the force-refresh-on-401 path),
+        we raise :class:`OIDCError` with a clear message rather than
+        silently pretending to refresh.
+
+        Operators who need refresh tokens should switch to a GitHub App
+        (separate client_id/secret, different token endpoint) or use
+        the Generic OIDC provider against an IdP that supports RFC 6749
+        §6 (Google, Okta, Auth0, Keycloak all do).
+        """
+        raise OIDCError(
+            "github OAuth Apps do not support refresh-token grants "
+            "(use a GitHub App or a different provider for refresh support)"
+        )
 
     async def fetch_userinfo(self, access_token: str) -> UserInfo:
         """GET /user + /user/emails (+ /user/orgs + /user/teams for T-121).
@@ -367,6 +427,53 @@ class GoogleProvider:
             raise OIDCError(f"google token error: {raw.get('error_description', raw.get('error'))}")
         return TokenResponse.from_raw(raw)
 
+    async def refresh_token(self, refresh_token: str) -> RefreshResponse:
+        """POST ``grant_type=refresh_token`` to Google's token endpoint.
+
+        Google follows RFC 6749 §6 — refresh tokens are long-lived
+        (until revoked) and access tokens expire in ~1h. The response
+        always includes a new ``access_token`` + ``expires_in``; the
+        refresh token is NOT rotated by default (the same one keeps
+        working), so we return ``refresh_token=None`` and the caller
+        keeps using the stored one.
+        """
+        await self._ensure_discovered()
+        client = await self._client()
+        try:
+            resp = await client.post(
+                self.token_url,
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "refresh_token": refresh_token,
+                    "grant_type": "refresh_token",
+                },
+            )
+            # Don't raise_for_status here — a 400 with {"error": "invalid_grant"}
+            # is the canonical "user revoked access" signal that the caller
+            # needs to translate into a revoked link, not an OIDCError-from-
+            # httpx that loses the error body.
+            raw = resp.json()
+        finally:
+            if self.http_client is None:
+                await client.aclose()
+        if "error" in raw:
+            raise OIDCError(
+                f"google refresh error: {raw.get('error_description', raw.get('error'))}"
+            )
+        # Google always returns expires_in; guard anyway.
+        exp = raw.get("expires_in")
+        if not isinstance(exp, int):
+            exp = 3600
+        return RefreshResponse(
+            access_token=str(raw["access_token"]),
+            expires_in=exp,
+            # Google doesn't rotate the refresh token.
+            refresh_token=raw.get("refresh_token")
+            if isinstance(raw.get("refresh_token"), str)
+            else None,
+        )
+
     async def fetch_userinfo(self, access_token: str) -> UserInfo:
         await self._ensure_discovered()
         client = await self._client()
@@ -499,6 +606,49 @@ class GenericOIDCProvider:
                 f"{self.name} token error: {raw.get('error_description', raw.get('error'))}"
             )
         return TokenResponse.from_raw(raw)
+
+    async def refresh_token(self, refresh_token: str) -> RefreshResponse:
+        """POST ``grant_type=refresh_token`` to the discovered token endpoint.
+
+        Same shape as Google's refresh. Generic OIDC IdPs (Okta, Auth0,
+        Keycloak, Azure AD) all follow RFC 6749 §6. We don't assume the
+        IdP rotates the refresh token — if it does, the new one is in
+        the response and we return it; if not, we return ``None`` and
+        the caller keeps the old one.
+        """
+        await self._ensure_discovered()
+        client = await self._client()
+        try:
+            resp = await client.post(
+                self.token_url,
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "refresh_token": refresh_token,
+                    "grant_type": "refresh_token",
+                },
+            )
+            raw = resp.json()
+        finally:
+            if self.http_client is None:
+                await client.aclose()
+        if "error" in raw:
+            raise OIDCError(
+                f"{self.name} refresh error: {raw.get('error_description', raw.get('error'))}"
+            )
+        exp = raw.get("expires_in")
+        if not isinstance(exp, int):
+            # RFC 6749 §4.2.2 says expires_in SHOULD be present; if absent,
+            # assume 1h (Google's default) so the background loop still
+            # schedules a refresh.
+            exp = 3600
+        return RefreshResponse(
+            access_token=str(raw["access_token"]),
+            expires_in=exp,
+            refresh_token=raw.get("refresh_token")
+            if isinstance(raw.get("refresh_token"), str)
+            else None,
+        )
 
     async def fetch_userinfo(self, access_token: str) -> UserInfo:
         await self._ensure_discovered()
@@ -670,6 +820,7 @@ __all__ = [
     "STATE_COOKIE_TEMPLATE",
     "STATE_COOKIE_TTL_SECONDS",
     "TokenResponse",
+    "RefreshResponse",
     "UserInfo",
     "OIDCProvider",
     "GitHubProvider",
