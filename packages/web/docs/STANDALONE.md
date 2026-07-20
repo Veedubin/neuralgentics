@@ -7,6 +7,16 @@ single-sign-on. You do **not** need `neuralgentics-gateway`,
 
 ## 1. Install
 
+**Prerequisite:** Python 3.12 or newer. Most Linux distros ship an older
+Python — install via your package manager or [pyenv](https://github.com/pyenv/pyenv).
+
+```bash
+# Verify Python version
+python3 --version  # should print 3.12 or higher
+```
+
+**Install the package:**
+
 ```bash
 pip install neuralgentics-web
 ```
@@ -24,7 +34,21 @@ across restarts or multi-user auth):
 pip install neuralgentics-web[team-server]
 ```
 
-Boot the shell in embedded mode (localhost only, no auth, no DB):
+**If you don't have Python 3.12+:**
+
+```bash
+# Ubuntu/Debian — deadsnakes PPA for older releases
+sudo apt install -y software-properties-common
+sudo add-apt-repository -y ppa:deadsnakes/ppa
+sudo apt install -y python3.12 python3.12-venv
+
+# Or use pyenv (works on macOS too)
+curl https://pyenv.run | bash
+pyenv install 3.12
+pyenv global 3.12
+```
+
+**Boot the shell in embedded mode** (localhost only, no auth, no DB):
 
 ```bash
 neuralgentics-web --mode=embedded --port=9876
@@ -34,6 +58,15 @@ Open `http://localhost:9876/` in a browser. You should see the three
 shipped modules in the grid. None of them require any external product to
 render the grid — they will only show live data when their backing service
 is reachable.
+
+### Troubleshooting the install
+
+- **`pip: command not found`** — install with `sudo apt install -y python3-pip` (Debian/Ubuntu) or `brew install python` (macOS).
+- **`error: Microsoft Visual C++ 14.0 or greater is required`** (Windows) — install [Build Tools for Visual Studio](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio) or use the pre-built wheels (the package ships wheels for Linux, macOS, and Windows).
+- **`Permission denied` on `pip install`** — use a virtual environment: `python3 -m venv .venv && source .venv/bin/activate && pip install neuralgentics-web`. Never `sudo pip install`.
+- **`neuralgentics-web: command not found`** after install — your `pip` installs to `~/.local/bin` (PEP 668) or `%APPDATA%\Python\Scripts` (Windows). Add that to PATH:
+  - Linux/macOS: `echo 'export PATH=$PATH:$HOME/.local/bin' >> ~/.bashrc && source ~/.bashrc`
+  - Windows: search "Environment Variables" in Settings, add `%APPDATA%\Python\Scripts` to PATH.
 
 ## 2. Write a custom module
 
