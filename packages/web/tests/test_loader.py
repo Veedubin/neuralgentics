@@ -42,8 +42,19 @@ def test_parse_manifest_round_trip() -> None:
     assert m.routes[0].method == "GET"
     assert m.routes[1].path == "/modules/gateway-audit/sse"
     assert m.api_endpoints[0].handler == "recent"
-    # The other two stubs still use the old shape.
+    # broker-audit is the second real module (T-107); bumped to 0.14.0
+    # with two routes (page + SSE) and one API endpoint.
     broker_p = MODULES_DIR / "broker_audit" / "module.yaml"
     bm = parse_manifest(broker_p)
-    assert bm.version == "0.1.0"
-    assert len(bm.routes) == 1
+    assert bm.name == "broker-audit"
+    assert bm.version == "0.14.0"
+    assert bm.display_name == "Broker Audit"
+    assert len(bm.routes) == 2
+    assert bm.routes[0].path == "/modules/broker-audit"
+    assert bm.routes[1].path == "/modules/broker-audit/sse"
+    assert bm.api_endpoints[0].handler == "recent"
+    # memini-browser is still a T-105 stub.
+    memini_p = MODULES_DIR / "memini_browser" / "module.yaml"
+    mm = parse_manifest(memini_p)
+    assert mm.version == "0.1.0"
+    assert len(mm.routes) == 1

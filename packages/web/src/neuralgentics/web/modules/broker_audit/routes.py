@@ -1,0 +1,179 @@
+"""FastAPI routes for the broker-audit module (T-107).
+
+Three endpoints:
+  * ``GET /modules/broker-audit``           — HTML page: stats panel + live
+    tool-calls table.
+  * ``GET /modules/broker-audit/sse``       — SSE stream of new tool-call
+    events.
+  * ``GET /api/v1/broker-audit/recent``     — JSON list with server-side
+    filters (tool, server, role, success, since, until).
+
+The HTML page uses htmx + the htmx-sse extension (loaded via CDN) for
+live updates. If the SSE connection drops, htmx falls back to 5s
+polling via ``hx-trigger="every 5s"`` on the table body.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from collections.abc import AsyncIterator
+from datetime import datetime
+from pathlib import Path
+
+from fastapi import APIRouter, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader
+from sse_starlette.sse import EventSourceResponse
+
+from neuralgentics.web.modules.broker_audit.data_source import (
+    BrokerAuditDataSource,
+    BrokerAuditEvent,
+)
+from neuralgentics.web.modules.broker_audit.sse import BrokerAuditBroadcaster
+from neuralgentics.web.modules.broker_audit.stats import compute_stats
+
+log = logging.getLogger("neuralgentics.web.broker_audit.routes")
+
+MODULE_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+SHELL_TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "shell" / "templates"
+
+
+def _make_templates() -> Jinja2Templates:
+    """Jinja2 templates that resolve the module's templates first, then the
+    shell's (so ``{% extends "base.html" %}`` works)."""
+    env = Environment(
+        loader=ChoiceLoader(
+            [
+                FileSystemLoader(str(MODULE_TEMPLATES_DIR)),
+                FileSystemLoader(str(SHELL_TEMPLATES_DIR)),
+            ]
+        ),
+        autoescape=True,
+    )
+    return Jinja2Templates(env=env)
+
+
+# Build once at import — cheap.
+TEMPLATES = _make_templates()
+
+
+def _parse_iso(s: str | None) -> datetime | None:
+    if s is None or s == "":
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    return datetime.fromisoformat(s)
+
+
+def _parse_bool(s: str | None) -> bool | None:
+    if s is None or s == "":
+        return None
+    return s.lower() in {"true", "1", "yes", "on"}
+
+
+def build_router(
+    data_source: BrokerAuditDataSource,
+    broadcaster: BrokerAuditBroadcaster,
+) -> APIRouter:
+    """Construct the broker-audit APIRouter."""
+    router = APIRouter(prefix="", tags=["broker-audit"])
+    templates = TEMPLATES
+
+    @router.get("/modules/broker-audit", response_class=HTMLResponse)
+    async def tool_calls_table(
+        request: Request,
+        tool: str | None = Query(None),
+        server: str | None = Query(None),
+        role: str | None = Query(None),
+        success: str | None = Query(None),
+        since: str | None = Query(None),
+        until: str | None = Query(None),
+        limit: int = Query(100, ge=1, le=1000),
+    ) -> HTMLResponse:
+        events = await data_source.recent(
+            limit=limit,
+            tool=tool,
+            server=server,
+            role=role,
+            success=_parse_bool(success),
+            since=_parse_iso(since),
+            until=_parse_iso(until),
+        )
+        stats = compute_stats(events)
+        return templates.TemplateResponse(
+            request,
+            "tool_calls_table.html",
+            {
+                "events": events,
+                "stats": stats,
+                "filters": {
+                    "tool": tool or "",
+                    "server": server or "",
+                    "role": role or "",
+                    "success": success or "",
+                    "since": since or "",
+                    "until": until or "",
+                    "limit": limit,
+                },
+                "title": "Broker Audit",
+            },
+        )
+
+    @router.get("/api/v1/broker-audit/recent")
+    async def api_recent(
+        tool: str | None = Query(None),
+        server: str | None = Query(None),
+        role: str | None = Query(None),
+        success: str | None = Query(None),
+        since: str | None = Query(None),
+        until: str | None = Query(None),
+        limit: int = Query(100, ge=1, le=1000),
+    ) -> JSONResponse:
+        events = await data_source.recent(
+            limit=limit,
+            tool=tool,
+            server=server,
+            role=role,
+            success=_parse_bool(success),
+            since=_parse_iso(since),
+            until=_parse_iso(until),
+        )
+        return JSONResponse(
+            {
+                "events": [json.loads(e.model_dump_json()) for e in events],
+                "count": len(events),
+            }
+        )
+
+    @router.get("/modules/broker-audit/sse")
+    async def sse_stream(request: Request) -> EventSourceResponse:
+        q: asyncio.Queue[BrokerAuditEvent] = broadcaster.subscribe()
+
+        async def event_generator() -> AsyncIterator[dict[str, str]]:
+            # Yield a hello comment immediately so the response headers flush
+            # (some ASGI transports buffer until the first chunk).
+            yield {"event": "hello", "data": '{"connected":true}'}
+            try:
+                while True:
+                    if await request.is_disconnected():
+                        break
+                    try:
+                        event: BrokerAuditEvent = await asyncio.wait_for(q.get(), timeout=5.0)
+                        yield {
+                            "event": "tool_call",
+                            "data": event.model_dump_json(),
+                        }
+                    except TimeoutError:
+                        yield {"comment": "heartbeat"}
+            finally:
+                broadcaster.unsubscribe(q)
+
+        return EventSourceResponse(event_generator())
+
+    return router
+
+
+__all__ = ["build_router"]

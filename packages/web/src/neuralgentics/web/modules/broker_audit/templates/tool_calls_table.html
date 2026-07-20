@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · neuralgentics-web{% endblock %}
+{% block content %}
+<section class="space-y-6 broker-audit">
+  <div class="flex items-start justify-between">
+    <div>
+      <h1 class="text-2xl font-bold">{{ title }}</h1>
+      <p class="text-sm text-slate-600 mt-1">
+        Live view of tool calls through the broker ·
+        <span id="event-count">{{ events|length }}</span> event{{ '' if events|length == 1 else 's' }}
+      </p>
+    </div>
+    <a href="/api/v1/broker-audit/recent" class="text-xs text-blue-600 underline">/api/v1/broker-audit/recent</a>
+  </div>
+
+  <!-- Stats panel -->
+  {% include "stats_panel.html" %}
+
+  <!-- htmx-sse extension for live updates -->
+  <div hx-ext="sse" sse-connect="/modules/broker-audit/sse">
+    <!-- Filter form -->
+    <form method="get" action="/modules/broker-audit" class="bg-white border border-slate-200 rounded-lg p-4 grid grid-cols-2 md:grid-cols-7 gap-3 text-sm">
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">Tool</label>
+        <input type="text" name="tool" value="{{ filters.tool }}"
+               class="w-full border border-slate-300 rounded px-2 py-1"
+               placeholder="read_file">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">Server</label>
+        <input type="text" name="server" value="{{ filters.server }}"
+               class="w-full border border-slate-300 rounded px-2 py-1"
+               placeholder="filesystem">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">Agent role</label>
+        <input type="text" name="role" value="{{ filters.role }}"
+               class="w-full border border-slate-300 rounded px-2 py-1"
+               placeholder="coder">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">Success</label>
+        <select name="success" class="w-full border border-slate-300 rounded px-2 py-1">
+          <option value="" {% if filters.success == "" %}selected{% endif %}>any</option>
+          <option value="true" {% if filters.success == "true" %}selected{% endif %}>success</option>
+          <option value="false" {% if filters.success == "false" %}selected{% endif %}>failure</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">Since (UTC)</label>
+        <input type="text" name="since" value="{{ filters.since }}"
+               class="w-full border border-slate-300 rounded px-2 py-1"
+               placeholder="2026-07-19T00:00:00Z">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">Until (UTC)</label>
+        <input type="text" name="until" value="{{ filters.until }}"
+               class="w-full border border-slate-300 rounded px-2 py-1"
+               placeholder="2026-07-19T23:59:59Z">
+      </div>
+      <div class="flex items-end">
+        <button type="submit"
+                class="bg-blue-600 text-white text-sm px-4 py-1 rounded hover:bg-blue-700">Filter</button>
+      </div>
+    </form>
+
+    <!-- Tool-calls table. Polling fallback every 5s if SSE drops. -->
+    <div class="bg-white border border-slate-200 rounded-lg overflow-hidden mt-4"
+         hx-get="/modules/broker-audit?tool={{ filters.tool }}&server={{ filters.server }}&role={{ filters.role }}&success={{ filters.success }}&since={{ filters.since }}&until={{ filters.until }}"
+         hx-trigger="every 5s"
+         hx-target="#broker-audit-tbody"
+         hx-swap="innerHTML">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-100 text-slate-700 text-xs uppercase">
+          <tr>
+            <th class="text-left px-3 py-2">Time</th>
+            <th class="text-left px-3 py-2">Role</th>
+            <th class="text-left px-3 py-2">Server</th>
+            <th class="text-left px-3 py-2">Tool</th>
+            <th class="text-left px-3 py-2">Success</th>
+            <th class="text-left px-3 py-2">Duration</th>
+            <th class="text-left px-3 py-2">Bytes</th>
+            <th class="text-left px-3 py-2">Error</th>
+          </tr>
+        </thead>
+        <tbody id="broker-audit-tbody"
+               sse-swap="tool_call"
+               hx-swap="beforeend">
+          {% for e in events %}
+          <tr class="border-t border-slate-100">
+            <td class="px-3 py-2 font-mono text-xs">{{ e.ts.astimezone().strftime("%Y-%m-%d %H:%M:%S") }}</td>
+            <td class="px-3 py-2 font-mono text-xs">{{ e.agent_role }}</td>
+            <td class="px-3 py-2 font-mono text-xs">{{ e.server }}</td>
+            <td class="px-3 py-2 font-mono">{{ e.tool }}</td>
+            <td class="px-3 py-2">
+              {% if e.success %}
+              <span class="text-xs px-2 py-0.5 rounded bg-green-100 text-green-800">✓</span>
+              {% else %}
+              <span class="text-xs px-2 py-0.5 rounded bg-red-100 text-red-800">✗</span>
+              {% endif %}
+            </td>
+            <td class="px-3 py-2 font-mono text-xs">{{ e.duration_ms }}ms</td>
+            <td class="px-3 py-2 font-mono text-xs">{{ e.result_size if e.result_size is not none else "—" }}</td>
+            <td class="px-3 py-2 text-xs text-slate-600 truncate max-w-xs" title="{{ e.error }}">{{ e.error }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="px-3 py-8 text-center text-slate-400">No tool calls yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-xs text-slate-500 mt-2">
+      SSE stream at <code class="font-mono">/modules/broker-audit/sse</code> ·
+      polling fallback every 5s if the stream drops.
+    </p>
+  </div>
+</section>
+{% endblock %}

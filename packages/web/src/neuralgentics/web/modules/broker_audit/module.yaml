@@ -1,18 +1,26 @@
 name: broker-audit
-version: 0.1.0
+version: 0.14.0
 display_name: "Broker Audit"
-description: "Tool call metrics, latency histograms, and per-model usage stats"
+description: "Live view of tool calls through the broker (inbound audit)"
 author: Veedubin
 license: MIT
 routes:
   - path: /modules/broker-audit
     method: GET
-    template: module_stub.html
-    context:
-      message: "Coming in T-107"
+    template: tool_calls_table.html
+  - path: /modules/broker-audit/sse
+    method: GET
+    handler: sse
 api_endpoints:
   - path: /api/v1/broker-audit/recent
     method: GET
-    handler: stub
-sse_channels: []
-data_sources: []
+    handler: recent
+sse_channels:
+  - name: broker_audit_new
+    path: /modules/broker-audit/sse
+data_sources:
+  - type: jsonl
+    mode: embedded
+  - type: postgres
+    mode: team-server
+    table: broker_audit_log

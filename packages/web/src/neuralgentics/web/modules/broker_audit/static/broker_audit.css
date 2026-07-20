@@ -1,0 +1,24 @@
+/* broker-audit module styles (T-107). Minimal — the page inherits the
+   shell's Tailwind utility classes. This file only adds a few small
+   touches that are awkward to express inline. */
+
+.broker-audit-stats {
+  /* Slightly tighter spacing on small screens. */
+  gap: 0.5rem;
+}
+
+.broker-audit-stats > div {
+  /* Stable height so the grid doesn't jump when stats update. */
+  min-height: 5.5rem;
+}
+
+.broker-audit table {
+  table-layout: fixed;
+}
+
+.broker-audit table th,
+.broker-audit table td {
+  /* Prevent the error column from blowing out the layout. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
