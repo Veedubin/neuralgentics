@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · charts · neuralgentics-web{% endblock %}
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+{% endblock %}
+{% block content %}
+<section class="space-y-6">
+  <div class="flex items-start justify-between">
+    <div>
+      <h1 class="text-2xl font-bold">{{ title }} · Charts</h1>
+      <p class="text-sm text-slate-600 mt-1">
+        Visualizations of the last 24h of broker tool calls ·
+        aggregated client-side from <code class="font-mono">/api/v1/broker-audit/recent</code>
+      </p>
+    </div>
+    <nav class="text-sm flex gap-3">
+      <a href="/modules/broker-audit" class="text-blue-600 underline">Table</a>
+      <span class="text-slate-300">·</span>
+      <a href="/modules/broker-audit/charts" class="text-slate-900 font-semibold">Charts</a>
+    </nav>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="bg-white border border-slate-200 rounded-lg p-4">
+      <h2 class="text-sm font-semibold text-slate-700 mb-2">Tool calls over time (last 24h, 5-min buckets)</h2>
+      <canvas id="tool-calls-over-time" role="img" aria-label="Tool calls over time stacked bar chart"></canvas>
+    </div>
+    <div class="bg-white border border-slate-200 rounded-lg p-4">
+      <h2 class="text-sm font-semibold text-slate-700 mb-2">Top 10 tools (by call count)</h2>
+      <canvas id="top-tools" role="img" aria-label="Top tools horizontal bar chart"></canvas>
+    </div>
+  </div>
+
+  <p class="text-xs text-slate-500">
+    <span id="chart-status">Loading…</span> ·
+    Chart.js v4.4.0 loaded from CDN.
+  </p>
+</section>
+
+<script>
+  // Aggregation + rendering. Runs after Chart.js loads (defer).
+  (function () {
+    const BUCKET_MS = 5 * 60 * 1000; // 5 minutes
+    const WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+    function isoAgo(ms) {
+      return new Date(Date.now() - ms).toISOString();
+    }
+
+    function bucketStart(ts, origin) {
+      const offset = ts - origin;
+      const idx = Math.floor(offset / BUCKET_MS);
+      return new Date(origin + idx * BUCKET_MS);
+    }
+
+    async function fetchEvents() {
+      const since = isoAgo(WINDOW_MS);
+      const url = `/api/v1/broker-audit/recent?since=${encodeURIComponent(since)}&limit=1000`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`API ${resp.status}`);
+      const data = await resp.json();
+      return data.events || [];
+    }
+
+    function buildTimeBuckets(events, origin) {
+      const buckets = new Map(); // key -> {success, error}
+      const nowBucket = bucketStart(Date.now(), origin);
+      for (let i = 0; i < 288; i++) {
+        const b = new Date(origin + i * BUCKET_MS);
+        if (b > nowBucket) break;
+        const key = b.toISOString();
+        buckets.set(key, { success: 0, error: 0 });
+      }
+      for (const e of events) {
+        const ts = new Date(e.ts).getTime();
+        if (Number.isNaN(ts)) continue;
+        const key = bucketStart(ts, origin).toISOString();
+        const b = buckets.get(key) || { success: 0, error: 0 };
+        if (e.success) b.success += 1; else b.error += 1;
+        buckets.set(key, b);
+      }
+      const labels = [...buckets.keys()];
+      return {
+        labels: labels.map((k) => k.slice(11, 16)),
+        success: labels.map((k) => buckets.get(k).success),
+        error: labels.map((k) => buckets.get(k).error),
+      };
+    }
+
+    function buildTopTools(events, n) {
+      const counts = new Map();
+      for (const e of events) {
+        const tool = e.tool || "(unknown)";
+        counts.set(tool, (counts.get(tool) || 0) + 1);
+      }
+      const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, n);
+      const colors = sorted.map(([tool]) => {
+        const toolEvents = events.filter((e) => e.tool === tool);
+        const allError = toolEvents.length > 0 && toolEvents.every((e) => !e.success);
+        return allError ? "#dc2626" : "#16a34a";
+      });
+      return {
+        labels: sorted.map((s) => s[0]),
+        values: sorted.map((s) => s[1]),
+        colors,
+      };
+    }
+
+    function renderCharts(events) {
+      const alignedOrigin = Math.floor((Date.now() - WINDOW_MS) / BUCKET_MS) * BUCKET_MS;
+      const time = buildTimeBuckets(events, alignedOrigin);
+      new Chart(document.getElementById("tool-calls-over-time"), {
+        type: "bar",
+        data: {
+          labels: time.labels,
+          datasets: [
+            { label: "Success", data: time.success, backgroundColor: "#16a34a" },
+            { label: "Error", data: time.error, backgroundColor: "#dc2626" },
+          ],
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true, ticks: { maxTicksLimit: 12 } }, y: { stacked: true } }, plugins: { legend: { position: "bottom" } } },
+      });
+
+      const tools = buildTopTools(events, 10);
+      new Chart(document.getElementById("top-tools"), {
+        type: "bar",
+        data: { labels: tools.labels, datasets: [{ label: "Tool calls", data: tools.values, backgroundColor: tools.colors }] },
+        options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
+      });
+    }
+
+    async function main() {
+      const statusEl = document.getElementById("chart-status");
+      try {
+        const events = await fetchEvents();
+        renderCharts(events);
+        statusEl.textContent = `Rendered ${events.length} event${events.length === 1 ? "" : "s"} from the last 24h.`;
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+      }
+    }
+
+    if (typeof Chart === "undefined") {
+      document.addEventListener("DOMContentLoaded", main);
+    } else {
+      main();
+    }
+  })();
+</script>
+{% endblock %}

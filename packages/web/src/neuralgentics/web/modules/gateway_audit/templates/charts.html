@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · charts · neuralgentics-web{% endblock %}
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+{% endblock %}
+{% block content %}
+<section class="space-y-6">
+  <div class="flex items-start justify-between">
+    <div>
+      <h1 class="text-2xl font-bold">{{ title }} · Charts</h1>
+      <p class="text-sm text-slate-600 mt-1">
+        Visualizations of the last 24h of gateway audit events ·
+        aggregated client-side from <code class="font-mono">/api/v1/gateway-audit/recent</code>
+      </p>
+    </div>
+    <nav class="text-sm flex gap-3">
+      <a href="/modules/gateway-audit" class="text-blue-600 underline">Table</a>
+      <span class="text-slate-300">·</span>
+      <a href="/modules/gateway-audit/charts" class="text-slate-900 font-semibold">Charts</a>
+    </nav>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="bg-white border border-slate-200 rounded-lg p-4">
+      <h2 class="text-sm font-semibold text-slate-700 mb-2">Requests over time (last 24h, 5-min buckets)</h2>
+      <canvas id="requests-over-time" role="img" aria-label="Requests over time line chart"></canvas>
+    </div>
+    <div class="bg-white border border-slate-200 rounded-lg p-4">
+      <h2 class="text-sm font-semibold text-slate-700 mb-2">Top 10 domains (by request count)</h2>
+      <canvas id="top-domains" role="img" aria-label="Top domains horizontal bar chart"></canvas>
+    </div>
+    <div class="bg-white border border-slate-200 rounded-lg p-4 lg:col-span-2">
+      <h2 class="text-sm font-semibold text-slate-700 mb-2">Status code distribution</h2>
+      <canvas id="status-distribution" role="img" aria-label="Status code distribution doughnut chart"></canvas>
+    </div>
+  </div>
+
+  <p class="text-xs text-slate-500">
+    <span id="chart-status">Loading…</span> ·
+    Chart.js v4.4.0 loaded from CDN.
+  </p>
+</section>
+
+<script>
+  // Aggregation + rendering. Runs after Chart.js loads (defer).
+  (function () {
+    const BUCKET_MS = 5 * 60 * 1000; // 5 minutes
+    const WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+    function isoAgo(ms) {
+      return new Date(Date.now() - ms).toISOString();
+    }
+
+    function bucketStart(ts, origin) {
+      const offset = ts - origin;
+      const idx = Math.floor(offset / BUCKET_MS);
+      return new Date(origin + idx * BUCKET_MS);
+    }
+
+    async function fetchEvents() {
+      const since = isoAgo(WINDOW_MS);
+      const url = `/api/v1/gateway-audit/recent?since=${encodeURIComponent(since)}&limit=1000`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`API ${resp.status}`);
+      const data = await resp.json();
+      return data.events || [];
+    }
+
+    function buildTimeBuckets(events, origin) {
+      const buckets = new Map(); // bucketStart -> {total, denied}
+      // Pre-fill 288 5-min buckets so the x-axis is continuous.
+      const nowBucket = bucketStart(Date.now(), origin);
+      for (let i = 0; i < 288; i++) {
+        const b = new Date(origin + i * BUCKET_MS);
+        if (b > nowBucket) break;
+        const key = b.toISOString();
+        buckets.set(key, { total: 0, denied: 0 });
+      }
+      for (const e of events) {
+        const ts = new Date(e.timestamp).getTime();
+        if (Number.isNaN(ts)) continue;
+        const key = bucketStart(ts, origin).toISOString();
+        const b = buckets.get(key) || { total: 0, denied: 0 };
+        b.total += 1;
+        if (e.decision === "denied") b.denied += 1;
+        buckets.set(key, b);
+      }
+      const labels = [...buckets.keys()];
+      const totals = labels.map((k) => buckets.get(k).total);
+      const denied = labels.map((k) => buckets.get(k).denied);
+      return { labels, totals, denied };
+    }
+
+    function buildTopDomains(events, n) {
+      const counts = new Map();
+      for (const e of events) {
+        const host = e.host || "(unknown)";
+        counts.set(host, (counts.get(host) || 0) + 1);
+      }
+      const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, n);
+      // Color by the most common decision per host. For simplicity: green if
+      // any event is allowed; red if all denied. We compute that here.
+      const colors = sorted.map(([host]) => {
+        const hostEvents = events.filter((e) => e.host === host);
+        const allDenied = hostEvents.length > 0 && hostEvents.every((e) => e.decision === "denied");
+        return allDenied ? "#dc2626" : "#16a34a";
+      });
+      return {
+        labels: sorted.map((s) => s[0]),
+        values: sorted.map((s) => s[1]),
+        colors,
+      };
+    }
+
+    function buildStatusBuckets(events) {
+      const groups = { "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0, unknown: 0 };
+      for (const e of events) {
+        const s = e.status;
+        if (s === null || s === undefined) { groups.unknown += 1; continue; }
+        if (s >= 200 && s < 300) groups["2xx"] += 1;
+        else if (s >= 300 && s < 400) groups["3xx"] += 1;
+        else if (s >= 400 && s < 500) groups["4xx"] += 1;
+        else if (s >= 500) groups["5xx"] += 1;
+        else groups.unknown += 1;
+      }
+      return groups;
+    }
+
+    function renderCharts(events) {
+      const origin = Date.now() - WINDOW_MS;
+      // Round origin down to a 5-min boundary.
+      const alignedOrigin = Math.floor(origin / BUCKET_MS) * BUCKET_MS;
+
+      const time = buildTimeBuckets(events, alignedOrigin);
+      new Chart(document.getElementById("requests-over-time"), {
+        type: "line",
+        data: {
+          labels: time.labels.map((k) => k.slice(11, 16)),
+          datasets: [
+            { label: "Total requests", data: time.totals, borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,0.1)", fill: true, tension: 0.2, pointRadius: 0 },
+            { label: "Denied requests", data: time.denied, borderColor: "#dc2626", backgroundColor: "rgba(220,38,38,0.1)", fill: true, tension: 0.2, pointRadius: 0 },
+          ],
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { maxTicksLimit: 12 } } }, plugins: { legend: { position: "bottom" } } },
+      });
+
+      const domains = buildTopDomains(events, 10);
+      new Chart(document.getElementById("top-domains"), {
+        type: "bar",
+        data: { labels: domains.labels, datasets: [{ label: "Requests", data: domains.values, backgroundColor: domains.colors }] },
+        options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
+      });
+
+      const status = buildStatusBuckets(events);
+      new Chart(document.getElementById("status-distribution"), {
+        type: "doughnut",
+        data: {
+          labels: Object.keys(status),
+          datasets: [{ data: Object.values(status), backgroundColor: ["#16a34a", "#0ea5e9", "#f59e0b", "#dc2626", "#94a3b8"] }],
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "right" } } },
+      });
+    }
+
+    async function main() {
+      const statusEl = document.getElementById("chart-status");
+      try {
+        const events = await fetchEvents();
+        renderCharts(events);
+        statusEl.textContent = `Rendered ${events.length} event${events.length === 1 ? "" : "s"} from the last 24h.`;
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+      }
+    }
+
+    if (typeof Chart === "undefined") {
+      // Chart.js (defer) may still be loading; wait for DOMContentLoaded.
+      document.addEventListener("DOMContentLoaded", main);
+    } else {
+      main();
+    }
+  })();
+</script>
+{% endblock %}

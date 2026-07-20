@@ -133,6 +133,20 @@ def build_router(
             }
         )
 
+    @router.get("/modules/gateway-audit/charts", response_class=HTMLResponse)
+    async def audit_charts(
+        request: Request,
+        user: User | None = Depends(require_role("admin", "operator", "viewer")),
+    ) -> HTMLResponse:
+        """T-118: charts page. Aggregation happens client-side via Chart.js;
+        this route only renders the canvas shell."""
+        _ = user  # noqa: F841 — RBAC gate only; read endpoint
+        return templates.TemplateResponse(
+            request,
+            "charts.html",
+            {"title": "Gateway Audit"},
+        )
+
     @router.get("/modules/gateway-audit/sse")
     async def sse_stream(
         request: Request,

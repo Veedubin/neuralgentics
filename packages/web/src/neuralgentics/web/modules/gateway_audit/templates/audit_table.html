@@ -13,6 +13,12 @@
     <a href="/api/v1/gateway-audit/recent" class="text-xs text-blue-600 underline">/api/v1/gateway-audit/recent</a>
   </div>
 
+  <nav class="text-sm flex gap-3">
+    <a href="/modules/gateway-audit" class="text-slate-900 font-semibold">Table</a>
+    <span class="text-slate-300">·</span>
+    <a href="/modules/gateway-audit/charts" class="text-blue-600 underline">Charts</a>
+  </nav>
+
   <!-- htmx-sse extension for live updates -->
   <div hx-ext="sse" sse-connect="/modules/gateway-audit/sse">
     <!-- Filter form -->
