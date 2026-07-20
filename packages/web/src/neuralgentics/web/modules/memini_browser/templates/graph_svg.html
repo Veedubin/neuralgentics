@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Graph · {{ root_id }} · neuralgentics-web{% endblock %}
+{% block content %}
+<section class="space-y-6 memini-browser">
+  <div class="flex items-start justify-between">
+    <div>
+      <h1 class="text-2xl font-bold">Knowledge graph</h1>
+      <p class="text-sm text-slate-600 mt-1 font-mono">root: {{ root_id }}</p>
+    </div>
+    <a href="/modules/memini-browser/memory/{{ root_id }}" class="text-sm text-blue-600 underline">← back to memory</a>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    {{ svg|safe }}
+    <p class="text-xs text-slate-500 mt-3">
+      {{ entity_count }} entit{{ '' if entity_count == 1 else 'ies' }} ·
+      {{ relationship_count }} edge{{ '' if relationship_count == 1 else 's' }} ·
+      circular layout (depth 1, v0.14.0).
+    </p>
+  </div>
+</section>
+{% endblock %}

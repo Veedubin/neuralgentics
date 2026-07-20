@@ -1,0 +1,14 @@
+/* memini-browser module styles (v0.14.0).
+   Minimal — most styling uses Tailwind utility classes inline. This file
+   only adds a couple of small touches for the result-table hover + the SVG
+   graph box. */
+.memini-browser .memini-graph {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+.memini-browser table tbody tr:hover td {
+  background: #f8fafc;
+}

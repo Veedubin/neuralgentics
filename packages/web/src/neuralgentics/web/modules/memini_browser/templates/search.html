@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · neuralgentics-web{% endblock %}
+{% block content %}
+<section class="space-y-6 memini-browser">
+  <div class="flex items-start justify-between">
+    <div>
+      <h1 class="text-2xl font-bold">{{ title }}</h1>
+      <p class="text-sm text-slate-600 mt-1">
+        Semantic search over memini-ai memories ·
+        <span id="result-count">{{ results|length }}</span> result{{ '' if results|length == 1 else 's' }}
+      </p>
+    </div>
+    <a href="/api/v1/memini-browser/search?q={{ q }}" class="text-xs text-blue-600 underline">/api/v1/memini-browser/search</a>
+  </div>
+
+  <!-- Search form -->
+  <form method="get" action="/modules/memini-browser"
+        class="bg-white border border-slate-200 rounded-lg p-4 flex gap-3 text-sm">
+    <input type="text" name="q" value="{{ q }}" autofocus
+           class="flex-1 border border-slate-300 rounded px-3 py-2"
+           placeholder="Search memories (e.g. authentication, postgres, rate-limit)">
+    <select name="limit" class="border border-slate-300 rounded px-2 py-2">
+      {% for n in [5, 10, 20, 50] %}
+      <option value="{{ n }}" {% if limit == n %}selected{% endif %}>{{ n }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Search</button>
+  </form>
+
+  <!-- Results -->
+  <div id="search-results" class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    {% include "result.html" %}
+  </div>
+
+  <p class="text-xs text-slate-500 mt-2">
+    Click a result to see the full memory detail page (metadata, trust
+    score, relationships, decay status).
+  </p>
+</section>
+{% endblock %}

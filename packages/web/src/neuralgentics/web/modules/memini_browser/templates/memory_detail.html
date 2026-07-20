@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · neuralgentics-web{% endblock %}
+{% block content %}
+<section class="space-y-6 memini-browser">
+  <div class="flex items-start justify-between">
+    <div>
+      <h1 class="text-2xl font-bold">Memory detail</h1>
+      <p class="text-sm text-slate-600 mt-1 font-mono">{{ memory.id }}</p>
+    </div>
+    <a href="/modules/memini-browser" class="text-sm text-blue-600 underline">← back to search</a>
+  </div>
+
+  {% if flash %}
+  <div class="border rounded-lg p-3 text-sm bg-green-50 border-green-200 text-green-800">
+    {{ flash }}
+  </div>
+  {% endif %}
+
+  <!-- Trust badge -->
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="text-xs text-slate-600 uppercase">Trust score</span>
+      {% set trust = memory.trust_score %}
+      {% if trust < 0.3 %}
+        {% set badge = "bg-red-100 text-red-800" %}
+      {% elif trust <= 0.7 %}
+        {% set badge = "bg-amber-100 text-amber-800" %}
+      {% else %}
+        {% set badge = "bg-green-100 text-green-800" %}
+      {% endif %}
+      <span class="text-lg font-bold px-3 py-1 rounded {{ badge }}">{{ "%.3f"|format(trust) }}</span>
+      <span class="text-xs text-slate-500">{{ trust_audit_count }} adjustment{{ '' if trust_audit_count == 1 else 's' }} recorded</span>
+    </div>
+
+    <!-- Trust adjust form -->
+    <form method="post" action="/modules/memini-browser/memory/{{ memory.id }}/trust"
+          class="flex gap-2 text-sm items-center mt-3">
+      <label class="text-xs text-slate-600">Signal</label>
+      <select name="signal" class="border border-slate-300 rounded px-2 py-1">
+        <option value="user_confirmed">user_confirmed (+0.10)</option>
+        <option value="user_corrected">user_corrected (−0.10)</option>
+        <option value="agent_used">agent_used (+0.05)</option>
+        <option value="agent_ignored">agent_ignored (−0.05)</option>
+      </select>
+      <input type="text" name="reason" placeholder="reason (optional)"
+             class="flex-1 border border-slate-300 rounded px-2 py-1">
+      <button type="submit" class="bg-slate-700 text-white px-3 py-1 rounded hover:bg-slate-800">Adjust</button>
+    </form>
+  </div>
+
+  <!-- Full content -->
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-xs text-slate-600 uppercase mb-2">Content</div>
+    <div class="text-sm whitespace-pre-wrap">{{ memory.content }}</div>
+  </div>
+
+  <!-- Metadata -->
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-xs text-slate-600 uppercase mb-2">Metadata</div>
+    <table class="w-full text-sm">
+      <tbody>
+        <tr><td class="text-slate-500 pr-3 py-1 w-32">source_type</td><td class="font-mono">{{ memory.source_type }}</td></tr>
+        <tr><td class="text-slate-500 pr-3 py-1">source_path</td><td class="font-mono">{{ memory.source_path or "—" }}</td></tr>
+        <tr><td class="text-slate-500 pr-3 py-1">created_at</td><td class="font-mono">{{ memory.created_at.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z") }}</td></tr>
+        <tr><td class="text-slate-500 pr-3 py-1">decay_rate</td><td class="font-mono">{{ decay_rate if decay_rate is not none else "—" }}</td></tr>
+        {% for k, v in memory.metadata.items() %}
+        <tr><td class="text-slate-500 pr-3 py-1">{{ k }}</td><td class="font-mono">{{ v }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Relationships -->
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-xs text-slate-600 uppercase">Relationships</div>
+      <a href="/modules/memini-browser/memory/{{ memory.id }}/graph"
+         class="text-xs text-blue-600 underline">view graph →</a>
+    </div>
+    {% if memory.relationships %}
+    <ul class="text-sm space-y-1">
+      {% for r in memory.relationships %}
+      <li class="flex items-center gap-2">
+        <span class="font-mono text-xs text-slate-500">{{ r.source_id }}</span>
+        <span class="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">{{ r.relationship_type }}</span>
+        <span class="font-mono text-xs text-slate-500">→ {{ r.target_id }}</span>
+        <span class="text-xs text-slate-400">(conf {{ "%.2f"|format(r.confidence) }})</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-sm text-slate-400">No relationships recorded.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

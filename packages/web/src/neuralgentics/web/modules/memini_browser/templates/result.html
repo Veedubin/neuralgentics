@@ -1,0 +1,41 @@
+{# Partial: the search results list. Rendered server-side; htmx swaps
+   this in on the #search-results target when the form submits. #}
+<table class="w-full text-sm">
+  <thead class="bg-slate-100 text-slate-700 text-xs uppercase">
+    <tr>
+      <th class="text-left px-3 py-2">Preview</th>
+      <th class="text-left px-3 py-2">Trust</th>
+      <th class="text-left px-3 py-2">Source</th>
+      <th class="text-left px-3 py-2">Created</th>
+      <th class="text-left px-3 py-2">Rels</th>
+      <th class="text-left px-3 py-2">Score</th>
+    </tr>
+  </thead>
+  <tbody id="memini-results-tbody">
+    {% for r in results %}
+    <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+        onclick="window.location='/modules/memini-browser/memory/{{ r.id }}'">
+      <td class="px-3 py-2">{{ r.content_preview }}</td>
+      <td class="px-3 py-2">
+        {% set trust = r.trust_score %}
+        {% if trust < 0.3 %}
+          {% set badge = "bg-red-100 text-red-800" %}
+        {% elif trust <= 0.7 %}
+          {% set badge = "bg-amber-100 text-amber-800" %}
+        {% else %}
+          {% set badge = "bg-green-100 text-green-800" %}
+        {% endif %}
+        <span class="text-xs px-2 py-0.5 rounded {{ badge }}">{{ "%.2f"|format(trust) }}</span>
+      </td>
+      <td class="px-3 py-2 font-mono text-xs">{{ r.source_type }}</td>
+      <td class="px-3 py-2 font-mono text-xs">{{ r.created_at.astimezone().strftime("%Y-%m-%d %H:%M") }}</td>
+      <td class="px-3 py-2 text-xs">{{ r.relationship_count }}</td>
+      <td class="px-3 py-2 font-mono text-xs text-slate-500">{{ "%.2f"|format(r.score) }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="px-3 py-8 text-center text-slate-400">
+      {% if q %}No matches for "{{ q }}".{% else %}Enter a query above.{% endif %}
+    </td></tr>
+    {% endfor %}
+  </tbody>
+</table>

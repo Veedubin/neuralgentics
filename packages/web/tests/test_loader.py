@@ -53,8 +53,19 @@ def test_parse_manifest_round_trip() -> None:
     assert bm.routes[0].path == "/modules/broker-audit"
     assert bm.routes[1].path == "/modules/broker-audit/sse"
     assert bm.api_endpoints[0].handler == "recent"
-    # memini-browser is still a T-105 stub.
+    # memini-browser is the third real module (T-108); bumped to 0.14.0
+    # with four routes (search page, memory detail, graph, trust POST)
+    # and one JSON search endpoint.
     memini_p = MODULES_DIR / "memini_browser" / "module.yaml"
     mm = parse_manifest(memini_p)
-    assert mm.version == "0.1.0"
-    assert len(mm.routes) == 1
+    assert mm.name == "memini-browser"
+    assert mm.version == "0.14.0"
+    assert mm.display_name == "Memory Browser"
+    assert len(mm.routes) == 4
+    assert mm.routes[0].path == "/modules/memini-browser"
+    assert mm.routes[0].method == "GET"
+    assert mm.routes[1].path == "/modules/memini-browser/memory/{memory_id}"
+    assert mm.routes[2].path == "/modules/memini-browser/memory/{memory_id}/graph"
+    assert mm.routes[3].path == "/modules/memini-browser/memory/{memory_id}/trust"
+    assert mm.routes[3].method == "POST"
+    assert mm.api_endpoints[0].handler == "search"

@@ -1,5 +1,5 @@
 name: memini-browser
-version: 0.1.0
+version: 0.14.0
 display_name: "Memory Browser"
 description: "Semantic search over memories, trust scores, knowledge graph, thought chains"
 author: Veedubin
@@ -7,12 +7,26 @@ license: MIT
 routes:
   - path: /modules/memini-browser
     method: GET
-    template: module_stub.html
-    context:
-      message: "Coming in T-108"
+    template: search.html
+  - path: /modules/memini-browser/memory/{memory_id}
+    method: GET
+    template: memory_detail.html
+  - path: /modules/memini-browser/memory/{memory_id}/graph
+    method: GET
+    template: graph_svg.html
+  - path: /modules/memini-browser/memory/{memory_id}/trust
+    method: POST
+    handler: adjust_trust
 api_endpoints:
   - path: /api/v1/memini-browser/search
     method: GET
-    handler: stub
+    handler: search
 sse_channels: []
-data_sources: []
+data_sources:
+  - type: memini-ai-sdk
+    mode: embedded
+  - type: postgres
+    mode: team-server
+    table: memories
+  - type: mock
+    mode: embedded
