@@ -77,6 +77,11 @@ class AuditEvent(BaseModel):
     # string per row (empty string when there was no error). Mirrored here
     # so the T-118 charts can surface it.
     error: str | None = None
+    # T-151 / T-152: gateway's audit_events table stores the SID of the IAM
+    # statement that matched on a deny (empty string when no IAM evaluator
+    # was installed or no policy matched — the legacy allowlist path).
+    # Mirrored here so the dashboard can surface which policy fired.
+    policy_sid: str | None = None
 
     model_config = {"extra": "ignore"}
 
@@ -109,6 +114,7 @@ class AuditDataSource(Protocol):
         status: int | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
+        policy_sid: str | None = None,
     ) -> list[AuditEvent]: ...
 
     def subscribe(self) -> AsyncIterator[AuditEvent]: ...
@@ -121,6 +127,7 @@ def _passes_filter(
     status: int | None,
     since: datetime | None,
     until: datetime | None,
+    policy_sid: str | None = None,
 ) -> bool:
     """Client-side filter predicate used by JSONLAuditSource."""
     if domain is not None and domain not in e.host:
@@ -133,7 +140,9 @@ def _passes_filter(
         return False
     if since is not None and e.timestamp < since:
         return False
-    return not (until is not None and e.timestamp > until)
+    if until is not None and e.timestamp > until:
+        return False
+    return policy_sid is None or e.policy_sid == policy_sid
 
 
 class JSONLAuditSource:
@@ -212,13 +221,21 @@ class JSONLAuditSource:
         status: int | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
+        policy_sid: str | None = None,
     ) -> list[AuditEvent]:
         """Return the last ``limit`` events matching the filters, newest first."""
         self._load_existing()
         filtered = [
             e
             for e in self._events
-            if _passes_filter(e, domain=domain, status=status, since=since, until=until)
+            if _passes_filter(
+                e,
+                domain=domain,
+                status=status,
+                since=since,
+                until=until,
+                policy_sid=policy_sid,
+            )
         ]
         return list(reversed(filtered[-limit:]))
 
@@ -282,6 +299,11 @@ class PGAuditSource:
         if duration_ms == 0:
             duration_ms = None
         error = row["error"] or None  # '' → None
+        # T-152: policy_sid is NOT NULL DEFAULT '' in the gateway schema
+        # (audit/pgstore.go T-151). Empty string means no IAM statement
+        # matched (legacy allowlist path or no IAM evaluator installed).
+        # Normalize '' → None to match the existing error='' convention.
+        policy_sid = row["policy_sid"] or None  # '' → None
         return AuditEvent(
             timestamp=ts,
             method=row["method"],
@@ -293,6 +315,7 @@ class PGAuditSource:
             status=status,
             duration_ms=duration_ms,
             error=error,
+            policy_sid=policy_sid,
         )
 
     async def recent(
@@ -303,6 +326,7 @@ class PGAuditSource:
         status: int | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
+        policy_sid: str | None = None,
     ) -> list[AuditEvent]:
         """Query ``audit_events`` with server-side filters, newest first.
 
@@ -312,10 +336,15 @@ class PGAuditSource:
         argument to "no filter"; an explicit ``status=0`` maps to a
         literal ``status=0`` filter (the gateway's sentinel for "no
         upstream status received").
+
+        T-152: ``policy_sid`` is also a server-side filter. Like ``status``,
+        ``None`` means "no filter"; a non-empty string is an exact match
+        against the ``policy_sid`` column (the gateway stores SIDs as
+        opaque strings, so LIKE would be wrong).
         """
         pool = await self._ensure_pool()
         # $1 = LIMIT, $2..$N = WHERE clauses (built in order: domain,
-        # status, since, until).
+        # status, since, until, policy_sid).
         where: list[str] = []
         params: list[Any] = []
         idx = 2  # $1 is reserved for LIMIT
@@ -335,10 +364,14 @@ class PGAuditSource:
             where.append(f"ts <= ${idx}")
             params.append(until)
             idx += 1
+        if policy_sid is not None:
+            where.append(f"policy_sid = ${idx}")
+            params.append(policy_sid)
+            idx += 1
         where_sql = (" WHERE " + " AND ".join(where)) if where else ""
         sql = (
             "SELECT ts, method, host, uri, decision, reason, client_ip, "
-            "status, duration_ms, error "
+            "status, duration_ms, error, policy_sid "
             f"FROM {PG_TABLE}{where_sql} ORDER BY ts DESC LIMIT $1"
         )
         async with pool.acquire() as conn:
@@ -381,7 +414,7 @@ class PGAuditSource:
         pool = await self._ensure_pool()
         sql = (
             "SELECT ts, method, host, uri, decision, reason, client_ip, "
-            "status, duration_ms, error "
+            "status, duration_ms, error, policy_sid "
             f"FROM {PG_TABLE} WHERE id = $1"
         )
         async with pool.acquire() as conn:
