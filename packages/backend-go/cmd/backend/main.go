@@ -33,10 +33,10 @@ import (
 
 	orchestrator "neuralgentics-orchestrator/src/neuralgentics/orchestrator"
 
-	"neuralgentics-broker/src/neuralgentics/broker"
-	"neuralgentics-broker/src/neuralgentics/broker/catalog"
-	"neuralgentics-broker/src/neuralgentics/broker/profile"
-	"neuralgentics-broker/src/neuralgentics/broker/types"
+	"github.com/Veedubin/neuralgentics-broker/src/neuralgentics/broker"
+	"github.com/Veedubin/neuralgentics-broker/src/neuralgentics/broker/catalog"
+	"github.com/Veedubin/neuralgentics-broker/src/neuralgentics/broker/profile"
+	"github.com/Veedubin/neuralgentics-broker/src/neuralgentics/broker/types"
 )
 
 // version is set at build time via -ldflags="-X main.version=...".

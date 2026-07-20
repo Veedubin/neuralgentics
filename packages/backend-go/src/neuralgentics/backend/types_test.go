@@ -6,8 +6,8 @@ import (
 
 	orchestrator "neuralgentics-orchestrator/src/neuralgentics/orchestrator"
 
-	"neuralgentics-broker/src/neuralgentics/broker/intent"
-	"neuralgentics-broker/src/neuralgentics/broker/types"
+	"github.com/Veedubin/neuralgentics-broker/src/neuralgentics/broker/intent"
+	"github.com/Veedubin/neuralgentics-broker/src/neuralgentics/broker/types"
 )
 
 // ─── JSONTask.ToTask ──────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ package backend
 import (
 	orchestrator "neuralgentics-orchestrator/src/neuralgentics/orchestrator"
 
-	"neuralgentics-broker/src/neuralgentics/broker/intent"
+	"github.com/Veedubin/neuralgentics-broker/src/neuralgentics/broker/intent"
 )
 
 // JSONTask is the JSON-friendly representation of orchestrator.Task.
