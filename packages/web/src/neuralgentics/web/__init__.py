@@ -1,10 +1,7 @@
-"""neuralgentics-web — modular web UI shell for neuralgentics.
+"""neuralgentics-web — modular FastAPI web UI shell with a plugin manifest system.
 
-Two modes:
-  * embedded  — localhost-only, no auth, reads local files.
-  * team-server — JWT+OAuth2 auth, PostgreSQL-backed, federated.
-
-Entry point: ``python -m neuralgentics.web``.
+Standalone product. Optionally integrates with the neuralgentics ecosystem
+(neuralgentics-gateway, neuralgentics-broker) but works fine without them.
 """
 
 __version__ = "0.15.0"

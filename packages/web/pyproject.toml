@@ -1,7 +1,7 @@
 [project]
 name = "neuralgentics-web"
 version = "0.15.0"
-description = "Modular web UI shell for neuralgentics (Grafana-style plugin manifest system)"
+description = "Modular FastAPI web UI shell with a Grafana-style plugin manifest system. Standalone — no other dependencies required."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.12"
