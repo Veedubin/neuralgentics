@@ -72,12 +72,25 @@ class UserInfo:
     ``provider_user_id`` is always set (GitHub numeric id, Google sub).
     ``email`` may be None if the user hid it (private). ``display_name``
     is best-effort for the login page greeting.
+
+    ``groups`` (T-121) holds the provider-specific group membership
+    list used by role-mapping. Each entry is a string the operator can
+    match against in ``--oidc-role-mapping``:
+
+      * GitHub: ``"myorg"`` (org membership) and ``"myorg/admins"``
+        (team slug, ``org/team``).
+      * Google: group email from the OIDC ``groups`` claim (e.g.
+        ``"admin@example.com"``) — populated only if the Google
+        Workspace was configured to emit the claim.
+      * Generic: each entry of the configured claim (default ``groups``)
+        as a string.
     """
 
     provider_user_id: str
     username: str | None
     email: str | None
     display_name: str | None
+    groups: list[str] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
 
@@ -116,7 +129,9 @@ GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_URL = "https://api.github.com/user"
 GITHUB_EMAILS_URL = "https://api.github.com/user/emails"
-GITHUB_SCOPES: tuple[str, ...] = ("read:user", "user:email")
+GITHUB_ORGS_URL = "https://api.github.com/user/orgs"
+GITHUB_TEAMS_URL = "https://api.github.com/user/teams"
+GITHUB_SCOPES: tuple[str, ...] = ("read:user", "user:email", "read:org")
 
 
 @dataclass
@@ -170,8 +185,16 @@ class GitHubProvider:
         return TokenResponse.from_raw(raw)
 
     async def fetch_userinfo(self, access_token: str) -> UserInfo:
-        """GET /user + /user/emails. GitHub hides email unless /emails is
-        fetched separately."""
+        """GET /user + /user/emails (+ /user/orgs + /user/teams for T-121).
+
+        GitHub hides email unless /emails is fetched separately. T-121
+        also fetches org membership (``/user/orgs``) and team membership
+        (``/user/teams``) so role-mapping can match ``myorg`` or
+        ``myorg/admins``. Group-fetch failures are logged and the user
+        is still provisioned with an empty ``groups`` list — operators
+        who want role-mapping must grant the ``read:org`` scope, but we
+        don't hard-fail a login if they didn't.
+        """
         client = await self._client()
         try:
             headers = {
@@ -202,6 +225,48 @@ class GitHubProvider:
                                 break
             except httpx.HTTPError as exc:
                 log.warning("github /user/emails failed: %s — proceeding without email", exc)
+            # T-121: fetch org + team membership for role-mapping. Best-effort:
+            # a missing scope or a transient error degrades to an empty
+            # groups list (the user still gets the default role).
+            groups: list[str] = []
+            try:
+                orgs_resp = await client.get(GITHUB_ORGS_URL, headers=headers)
+                if orgs_resp.status_code == 200:
+                    orgs_list = orgs_resp.json()
+                    if isinstance(orgs_list, list):
+                        for o in orgs_list:
+                            if isinstance(o, dict) and isinstance(o.get("login"), str):
+                                groups.append(o["login"])
+                else:
+                    log.warning(
+                        "github /user/orgs returned %d — role-mapping groups will be empty",
+                        orgs_resp.status_code,
+                    )
+            except httpx.HTTPError as exc:
+                log.warning("github /user/orgs failed: %s — proceeding without org groups", exc)
+            try:
+                teams_resp = await client.get(GITHUB_TEAMS_URL, headers=headers)
+                if teams_resp.status_code == 200:
+                    teams_list = teams_resp.json()
+                    if isinstance(teams_list, list):
+                        for t in teams_list:
+                            if not isinstance(t, dict):
+                                continue
+                            org = t.get("organization")
+                            slug = t.get("slug")
+                            if (
+                                isinstance(org, dict)
+                                and isinstance(org.get("login"), str)
+                                and isinstance(slug, str)
+                            ):
+                                groups.append(f"{org['login']}/{slug}")
+                else:
+                    log.warning(
+                        "github /user/teams returned %d — team-level role-mapping disabled",
+                        teams_resp.status_code,
+                    )
+            except httpx.HTTPError as exc:
+                log.warning("github /user/teams failed: %s — proceeding without team groups", exc)
         finally:
             if self.http_client is None:
                 await client.aclose()
@@ -215,6 +280,7 @@ class GitHubProvider:
             username=login,
             email=email,
             display_name=name or login,
+            groups=groups,
             raw=user_raw,
         )
 
@@ -324,11 +390,19 @@ class GoogleProvider:
             if isinstance(raw.get("preferred_username"), str)
             else None
         )
+        # T-121: Google Workspace emits a ``groups`` claim in the
+        # userinfo response when the OAuth client is configured to
+        # request it. The value is a list of group email strings
+        # (e.g. ``["admin@example.com", "devs@example.com"]``). We
+        # extract them as-is; operators match against the email in
+        # ``--oidc-role-mapping=google:admin@example.com=admin``.
+        groups = _extract_groups_claim(raw)
         return UserInfo(
             provider_user_id=str(sub),
             username=login,
             email=email,
             display_name=name or login or email,
+            groups=groups,
             raw=raw,
         )
 
@@ -344,6 +418,12 @@ class GenericOIDCProvider:
 
     Used for Okta, Auth0, Keycloak, Azure AD, etc. The provider name is
     set from the CLI flag (``--oidc-generic-<name>-discovery-url=...``).
+
+    ``groups_claim`` (T-121) selects which userinfo claim holds the
+    group membership list. Defaults to ``"groups"``. The claim may be
+    either a list of strings or a list of objects with a ``name`` key
+    (Okta / Keycloak both shapes exist in the wild); objects are
+    flattened to their ``name`` value.
     """
 
     name: str
@@ -352,6 +432,7 @@ class GenericOIDCProvider:
     client_secret: str
     redirect_base: str
     http_client: httpx.AsyncClient | None = None
+    groups_claim: str = "groups"
 
     authorization_url: str = ""
     token_url: str = ""
@@ -442,17 +523,146 @@ class GenericOIDCProvider:
             if isinstance(raw.get("preferred_username"), str)
             else None
         )
+        # T-121: extract the configured claim (default ``groups``).
+        groups = _extract_groups_claim(raw, claim=self.groups_claim)
         return UserInfo(
             provider_user_id=str(sub),
             username=login,
             email=email,
             display_name=name or login or email,
+            groups=groups,
             raw=raw,
         )
 
 
+def _extract_groups_claim(raw: dict[str, Any], claim: str = "groups") -> list[str]:
+    """Flatten a userinfo ``groups`` claim into a list of strings.
+
+    Accepts either a list of strings (Google, Keycloak) or a list of
+    objects with a ``name`` key (Okta). Non-conforming entries are
+    silently skipped — operators are expected to configure the claim
+    name correctly; we don't crash a login over a malformed claim.
+    """
+    val = raw.get(claim)
+    if not isinstance(val, list):
+        return []
+    out: list[str] = []
+    for entry in val:
+        if isinstance(entry, str):
+            out.append(entry)
+        elif isinstance(entry, dict):
+            name = entry.get("name")
+            if isinstance(name, str):
+                out.append(name)
+    return out
+
+
 class OIDCError(Exception):
     """Raised on OIDC protocol failures (bad token, missing userinfo, etc.)."""
+
+
+# ---------------------------------------------------------------------------
+# T-121: group → role mapping
+# ---------------------------------------------------------------------------
+
+# Role privilege ordering (lowest → highest). Used to pick the "highest
+# wins" role when a user matches multiple mapping rules. Operators can
+# only assign roles from this set — anything else is rejected at config
+# build time (RoleMapping.parse).
+ROLE_PRIVILEGE: dict[str, int] = {"viewer": 0, "operator": 1, "admin": 2}
+
+
+@dataclass(frozen=True)
+class RoleMapping:
+    """One ``--oidc-role-mapping`` rule.
+
+    ``provider`` is the OIDC provider name (``github``, ``google``,
+    custom). ``group_pattern`` is the provider-specific group identifier
+    (GitHub org slug ``myorg``, GitHub team slug ``myorg/admins``,
+    Google group email ``admin@example.com``, or any string the generic
+    provider emits in its configured claim). ``role`` is the role to
+    apply when the user is a member of that group.
+    """
+
+    provider: str
+    group_pattern: str
+    role: str
+
+    @staticmethod
+    def parse(spec: str) -> RoleMapping:
+        """Parse a single ``PROVIDER:GROUP_PATTERN=ROLE`` rule.
+
+        Raises ``ValueError`` on malformed input or an unknown role.
+        """
+        if "=" not in spec:
+            raise ValueError(f"role-mapping must be PROVIDER:GROUP_PATTERN=ROLE, got: {spec!r}")
+        lhs, role = spec.rsplit("=", 1)
+        role = role.strip()
+        if role not in ROLE_PRIVILEGE:
+            raise ValueError(
+                f"role-mapping role must be one of {sorted(ROLE_PRIVILEGE)}, got: {role!r}"
+            )
+        if ":" not in lhs:
+            raise ValueError(f"role-mapping must be PROVIDER:GROUP_PATTERN=ROLE, got: {spec!r}")
+        provider, group_pattern = lhs.split(":", 1)
+        provider = provider.strip()
+        group_pattern = group_pattern.strip()
+        if not provider or not group_pattern:
+            raise ValueError(
+                f"role-mapping provider and group_pattern must be non-empty, got: {spec!r}"
+            )
+        return RoleMapping(provider=provider, group_pattern=group_pattern, role=role)
+
+
+def parse_role_mappings(rules: list[str]) -> list[RoleMapping]:
+    """Parse a list of ``--oidc-role-mapping`` flag values.
+
+    Each flag value may itself contain comma-separated rules, so
+    ``["github:myorg=operator", "github:myorg/admins=admin,google:admins@admin"]``
+    is accepted. Invalid rules raise ``ValueError`` (fail-fast at
+    startup — operators should not discover a misconfigured mapping at
+    login time).
+    """
+    out: list[RoleMapping] = []
+    for rule in rules:
+        for piece in rule.split(","):
+            piece = piece.strip()
+            if not piece:
+                continue
+            out.append(RoleMapping.parse(piece))
+    return out
+
+
+def extract_role_from_groups(
+    provider: str,
+    groups: list[str],
+    mappings: list[RoleMapping],
+    default_role: str,
+) -> str:
+    """Pick the role for an OIDC user based on their group membership.
+
+    Iterates all mappings for ``provider`` whose ``group_pattern`` is in
+    ``groups``; among the matching roles, the most privileged one wins
+    (``admin`` > ``operator`` > ``viewer``). If no mapping matches, the
+    ``default_role`` is returned.
+
+    The ``default_role`` is NOT validated against :data:`ROLE_PRIVILEGE`
+    here — the caller (the OIDC config / CLI) is responsible for
+    validating it. This lets an operator set ``--oidc-default-role=
+    viewer`` and have the function return ``"viewer"`` for unmatched
+    users without re-validating on every call.
+    """
+    best_role: str | None = None
+    best_rank = -1
+    for m in mappings:
+        if m.provider != provider:
+            continue
+        if m.group_pattern in groups:
+            rank = ROLE_PRIVILEGE.get(m.role, -1)
+            if rank > best_rank:
+                best_rank = rank
+                best_role = m.role
+    return best_role if best_role is not None else default_role
 
 
 __all__ = [
@@ -466,4 +676,5 @@ __all__ = [
     "GoogleProvider",
     "GenericOIDCProvider",
     "OIDCError",
+    "extract_role_from_groups",
 ]

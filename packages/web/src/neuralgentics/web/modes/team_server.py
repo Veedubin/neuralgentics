@@ -60,6 +60,7 @@ class TeamServerMode:
             generic_providers=config.auth.oidc_generic_providers,
             redirect_base=config.auth.oidc_redirect_base or "",
             default_role=config.auth.oidc_default_role,
+            role_mappings=config.auth.oidc_role_mappings,
         )
 
     def configure(self, app: Any) -> None:

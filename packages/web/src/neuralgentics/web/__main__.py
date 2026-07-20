@@ -138,6 +138,43 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         metavar="NAME=SECRET",
         help="Client secret for a generic OIDC provider (paired by NAME).",
     )
+    # --- T-121: group→role mapping flags ---
+    p.add_argument(
+        "--oidc-role-mapping",
+        type=str,
+        action="append",
+        default=[],
+        metavar="PROVIDER:GROUP_PATTERN=ROLE",
+        help=(
+            "Map an OIDC group to a role. Format: "
+            "PROVIDER:GROUP_PATTERN=ROLE. Repeatable; comma-separated "
+            "lists accepted. Examples: "
+            "--oidc-role-mapping=github:myorg=operator "
+            "(anyone in GitHub org 'myorg' gets 'operator'), "
+            "--oidc-role-mapping=github:myorg/admins=admin "
+            "(GitHub team 'admins' in org 'myorg' gets 'admin'), "
+            "--oidc-role-mapping=google:admin@example.com=admin "
+            "(Google group email gets 'admin'). The highest-privilege "
+            "matching rule wins (admin > operator > viewer); users "
+            "matching no rule get --oidc-default-role. Only affects "
+            "users created by OIDC (users.source='oidc') — local users "
+            "(including the seeded admin/admin) are never changed."
+        ),
+    )
+    p.add_argument(
+        "--oidc-generic-groups-claim",
+        type=str,
+        action="append",
+        default=[],
+        metavar="NAME=CLAIM",
+        help=(
+            "Override the userinfo claim that holds the group list for a "
+            "generic OIDC provider (default: 'groups'). Format: "
+            "--oidc-generic-groups-claim=okta=groups. The claim value may "
+            "be a list of strings (Google, Keycloak) or a list of objects "
+            "with a 'name' key (Okta)."
+        ),
+    )
     p.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
     return p.parse_args(argv)
 
@@ -146,11 +183,14 @@ def _parse_generic_oidc(
     discovery_pairs: list[str],
     id_pairs: list[str],
     secret_pairs: list[str],
+    groups_claim_pairs: list[str] | None = None,
 ) -> dict[str, dict[str, str]]:
     """Parse ``NAME=VALUE`` OIDC generic-provider flags into a dict.
 
-    Returns ``{name: {discovery_url, client_id, client_secret}}``. A
-    provider is included only if all three are present.
+    Returns ``{name: {discovery_url, client_id, client_secret,
+    groups_claim}}``. ``groups_claim`` is omitted when not provided
+    (the provider defaults to ``"groups"``). A provider is included
+    only if discovery_url + client_id + client_secret are all present.
     """
 
     def _to_map(pairs: list[str]) -> dict[str, str]:
@@ -165,12 +205,17 @@ def _parse_generic_oidc(
     discovery = _to_map(discovery_pairs)
     ids = _to_map(id_pairs)
     secrets_map = _to_map(secret_pairs)
+    claims = _to_map(groups_claim_pairs) if groups_claim_pairs else {}
     result: dict[str, dict[str, str]] = {}
     for name, du in discovery.items():
         cid = ids.get(name)
         csec = secrets_map.get(name)
         if du and cid and csec:
-            result[name] = {"discovery_url": du, "client_id": cid, "client_secret": csec}
+            entry: dict[str, str] = {"discovery_url": du, "client_id": cid, "client_secret": csec}
+            gc = claims.get(name)
+            if gc:
+                entry["groups_claim"] = gc
+            result[name] = entry
     return result
 
 
@@ -200,7 +245,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.oidc_generic_discovery_url,
             args.oidc_generic_client_id,
             args.oidc_generic_client_secret,
+            args.oidc_generic_groups_claim,
         ),
+        oidc_role_mappings=args.oidc_role_mapping,
     )
     log.info(
         "starting neuralgentics-web %s in %s mode",

@@ -66,8 +66,14 @@ class AuthConfig(BaseModel):
 
     oidc_generic_providers: dict[str, dict[str, str]] = Field(default_factory=dict)
     """Generic OIDC providers: ``name`` → ``{discovery_url, client_id,
-    client_secret}``. Populated from ``--oidc-generic-<name>-discovery-url``
-    CLI flags."""
+    client_secret, groups_claim}``. Populated from
+    ``--oidc-generic-<name>-discovery-url`` CLI flags."""
+
+    oidc_role_mappings: list[str] = Field(default_factory=list)
+    """T-121: raw ``--oidc-role-mapping`` flag values. Each entry is a
+    ``PROVIDER:GROUP_PATTERN=ROLE`` rule (or comma-separated list of
+    rules). Parsed into :class:`RoleMapping` objects by
+    :meth:`OIDCConfig.from_cli`."""
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -119,6 +125,7 @@ class WebConfig(BaseModel):
         oidc_redirect_base: str | None = None,
         oidc_default_role: str | None = None,
         oidc_generic_providers: dict[str, dict[str, str]] | None = None,
+        oidc_role_mappings: list[str] | None = None,
     ) -> WebConfig:
         # Env var fallback so the app factory can also be used without CLI args.
         env_mode = os.environ.get("NEURALGENTICS_WEB_MODE", mode)
@@ -196,6 +203,7 @@ class WebConfig(BaseModel):
             oidc_redirect_base=oidc_redirect_base,
             oidc_default_role=oidc_default_role or "viewer",
             oidc_generic_providers=oidc_generic_providers or {},
+            oidc_role_mappings=oidc_role_mappings or [],
         )
 
         return cls(

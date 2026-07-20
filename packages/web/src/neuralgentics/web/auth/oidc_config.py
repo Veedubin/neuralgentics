@@ -1,4 +1,4 @@
-"""OIDC configuration (T-112).
+"""OIDC configuration (T-112, T-121 group→role mapping).
 
 Holds the configured providers + redirect base URL + default role for
 new OIDC users. Built from CLI flags in :mod:`neuralgentics.web.config`
@@ -8,6 +8,15 @@ When no providers are configured, OIDC is disabled and the team-server
 falls back to the T-109 local-login-only behavior (the stub's behavior
 becomes "OIDC disabled, local login only" — exactly what the card asks
 for).
+
+T-121 adds:
+
+  * :attr:`OIDCConfig.role_mappings` — list of :class:`RoleMapping`
+    parsed from ``--oidc-role-mapping`` flags. Empty list = no mapping
+    (every OIDC user gets :attr:`OIDCConfig.default_role`).
+  * ``groups_claim`` per generic provider — which userinfo claim holds
+    the group membership list (default ``groups``). Set via
+    ``--oidc-generic-<name>-groups-claim``.
 """
 
 from __future__ import annotations
@@ -19,6 +28,8 @@ from neuralgentics.web.auth.oidc import (
     GitHubProvider,
     GoogleProvider,
     OIDCProvider,
+    RoleMapping,
+    parse_role_mappings,
 )
 
 
@@ -35,6 +46,11 @@ class OIDCConfig:
 
     providers: dict[str, OIDCProvider] = field(default_factory=dict)
     """Configured providers keyed by name (``github``, ``google``, custom)."""
+
+    role_mappings: list[RoleMapping] = field(default_factory=list)
+    """T-121: group→role mapping rules. Empty list = no mapping; every
+    OIDC user gets :attr:`default_role`. Parsed from
+    ``--oidc-role-mapping`` flags via :func:`parse_role_mappings`."""
 
     @property
     def enabled(self) -> bool:
@@ -58,12 +74,19 @@ class OIDCConfig:
         generic_providers: dict[str, dict[str, str]] | None,
         redirect_base: str,
         default_role: str = "viewer",
+        role_mappings: list[str] | None = None,
     ) -> OIDCConfig:
         """Build from CLI flag values.
 
         ``generic_providers`` maps ``name`` → ``{discovery_url, client_id,
-        client_secret}``. A provider is enabled only if both client_id and
+        client_secret, groups_claim}`` (``groups_claim`` optional, defaults
+        to ``"groups"``). A provider is enabled only if both client_id and
         client_secret are non-empty (per the card's requirement).
+
+        ``role_mappings`` is the raw list of ``--oidc-role-mapping`` flag
+        values (each may be comma-separated). Parsed via
+        :func:`parse_role_mappings`; invalid rules raise ``ValueError``
+        at startup.
         """
         providers: dict[str, OIDCProvider] = {}
         if github_client_id and github_client_secret:
@@ -83,17 +106,21 @@ class OIDCConfig:
                 cid = cfg.get("client_id")
                 csec = cfg.get("client_secret")
                 if du and cid and csec:
+                    groups_claim = cfg.get("groups_claim") or "groups"
                     providers[name] = GenericOIDCProvider(
                         name=name,
                         discovery_url=du,
                         client_id=cid,
                         client_secret=csec,
                         redirect_base=redirect_base,
+                        groups_claim=groups_claim,
                     )
+        parsed_mappings = parse_role_mappings(role_mappings) if role_mappings else []
         return cls(
             redirect_base=redirect_base,
             default_role=default_role,
             providers=providers,
+            role_mappings=parsed_mappings,
         )
 
 

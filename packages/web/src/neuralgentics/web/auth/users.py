@@ -65,9 +65,14 @@ class User:
     username: str
     role: str
     password_hash: str
+    source: str = "local"
+    """``local`` for users created by the T-109 default seeding or an
+    admin's password-set CLI; ``oidc`` for users created/provisioned by
+    an OIDC login. T-121 role-mapping only adjusts ``source='oidc'``
+    users — the local ``admin/admin`` can't be demoted by an IdP."""
 
     def __repr__(self) -> str:  # pragma: no cover — cosmetic
-        return f"User(username={self.username!r}, role={self.role!r})"
+        return f"User(username={self.username!r}, role={self.role!r}, source={self.source!r})"
 
 
 def _default_db_path() -> Path:
@@ -147,6 +152,21 @@ class UserStore:
                     ON user_oauth_links(provider, provider_user_id);
                 """
             )
+            # T-121: add the ``source`` column to the users table. Existing
+            # DBs (created by T-109 / T-112) don't have it; the ALTER is
+            # idempotent because we check PRAGMA table_info first. Local
+            # users (including the seeded defaults) keep 'local'; OIDC
+            # users created by T-112 had no source recorded and are
+            # backfilled to 'oidc' (they were created by OIDC login, so
+            # role-mapping applies to them — see T-121 admin-override rule).
+            cols = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+            if "source" not in cols:
+                conn.execute("ALTER TABLE users ADD COLUMN source TEXT NOT NULL DEFAULT 'local'")
+                # Backfill: any user with an OAuth link is an OIDC user.
+                conn.execute(
+                    "UPDATE users SET source = 'oidc' WHERE username IN "
+                    "(SELECT DISTINCT username FROM user_oauth_links)"
+                )
             conn.commit()
 
     def _maybe_seed_defaults(self) -> None:
@@ -175,12 +195,17 @@ class UserStore:
     def get_by_username(self, username: str) -> User | None:
         with self._lock, self._conn() as conn:
             row = conn.execute(
-                "SELECT username, password_hash, role FROM users WHERE username = ?",
+                "SELECT username, password_hash, role, source FROM users WHERE username = ?",
                 (username,),
             ).fetchone()
         if row is None:
             return None
-        return User(username=row["username"], role=row["role"], password_hash=row["password_hash"])
+        return User(
+            username=row["username"],
+            role=row["role"],
+            password_hash=row["password_hash"],
+            source=row["source"] if "source" in row.keys() else "local",  # noqa: SIM118
+        )
 
     def verify(self, username: str, password: str) -> User | None:
         user = self.get_by_username(username)
@@ -203,13 +228,34 @@ class UserStore:
             conn.commit()
             return cur.rowcount > 0
 
+    def set_role(self, username: str, new_role: str) -> bool:
+        """Update a user's role. Used by T-121 role-mapping on OIDC login.
+
+        Returns False if no such user. The role string is NOT validated
+        here — the caller (the OIDC callback) passes a value already
+        validated against :data:`ROLE_PRIVILEGE` or the operator's
+        ``--oidc-default-role`` choice.
+        """
+        with self._lock, self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE users SET role = ?, updated_at = datetime('now') WHERE username = ?",
+                (new_role, username),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
     def list_users(self) -> list[User]:
         with self._lock, self._conn() as conn:
             rows = conn.execute(
-                "SELECT username, password_hash, role FROM users ORDER BY username"
+                "SELECT username, password_hash, role, source FROM users ORDER BY username"
             ).fetchall()
         return [
-            User(username=r["username"], role=r["role"], password_hash=r["password_hash"])
+            User(
+                username=r["username"],
+                role=r["role"],
+                password_hash=r["password_hash"],
+                source=r["source"] if "source" in r.keys() else "local",  # noqa: SIM118
+            )
             for r in rows
         ]
 
@@ -223,14 +269,19 @@ class UserStore:
         """
         with self._lock, self._conn() as conn:
             row = conn.execute(
-                "SELECT u.username, u.password_hash, u.role "
+                "SELECT u.username, u.password_hash, u.role, u.source "
                 "FROM user_oauth_links l JOIN users u ON l.username = u.username "
                 "WHERE l.provider = ? AND l.provider_user_id = ?",
                 (provider, provider_user_id),
             ).fetchone()
         if row is None:
             return None
-        return User(username=row["username"], role=row["role"], password_hash=row["password_hash"])
+        return User(
+            username=row["username"],
+            role=row["role"],
+            password_hash=row["password_hash"],
+            source=row["source"] if "source" in row.keys() else "local",  # noqa: SIM118
+        )
 
     def get_by_email(self, email: str) -> User | None:
         """Return the local user whose username matches ``email``.
@@ -242,12 +293,17 @@ class UserStore:
         """
         with self._lock, self._conn() as conn:
             row = conn.execute(
-                "SELECT username, password_hash, role FROM users WHERE username = ?",
+                "SELECT username, password_hash, role, source FROM users WHERE username = ?",
                 (email,),
             ).fetchone()
         if row is None:
             return None
-        return User(username=row["username"], role=row["role"], password_hash=row["password_hash"])
+        return User(
+            username=row["username"],
+            role=row["role"],
+            password_hash=row["password_hash"],
+            source=row["source"] if "source" in row.keys() else "local",  # noqa: SIM118
+        )
 
     def get_or_create_oidc_user(
         self,
@@ -301,7 +357,8 @@ class UserStore:
             # bcrypt of 32 random bytes; never returned to anyone.
             random_pw = secrets.token_urlsafe(32)
             conn.execute(
-                "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+                "INSERT INTO users (username, password_hash, role, source) "
+                "VALUES (?, ?, ?, 'oidc')",
                 (new_username, _hash_password(random_pw), default_role),
             )
             conn.execute(

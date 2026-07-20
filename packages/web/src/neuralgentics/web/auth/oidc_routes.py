@@ -38,6 +38,7 @@ from neuralgentics.web.auth.oidc import (
     OIDCError,
     TokenResponse,
     UserInfo,
+    extract_role_from_groups,
 )
 from neuralgentics.web.auth.oidc_config import OIDCConfig
 from neuralgentics.web.auth.users import UserStore
@@ -234,8 +235,51 @@ def build_oidc_router(
         except Exception:  # noqa: BLE001
             log.warning("failed to persist oidc tokens for %s/%s", provider, info.provider_user_id)
 
-        # --- Issue our own JWT. ---
-        jwt_token = issue_access_token(user.username, user.role, secret=secret)
+        # --- T-121: apply group→role mapping (OIDC users only). ---
+        # Local users (including the seeded admin/admin) are NEVER
+        # touched by role-mapping — an IdP can't demote the local admin.
+        # For OIDC users, the most privileged matching mapping wins
+        # (admin > operator > viewer); no match falls back to the
+        # configured default_role. The role is re-evaluated on every
+        # login, so a user removed from a group is downgraded on next
+        # login.
+        effective_role = user.role
+        if user.source == "oidc" and oidc_config.role_mappings:
+            mapped = extract_role_from_groups(
+                provider=provider,
+                groups=info.groups,
+                mappings=oidc_config.role_mappings,
+                default_role=oidc_config.default_role,
+            )
+            if mapped != user.role:
+                if user_store.set_role(user.username, mapped):
+                    log.info(
+                        "oidc role-mapping updated %s: %s → %s (provider=%s, groups=%s)",
+                        user.username,
+                        user.role,
+                        mapped,
+                        provider,
+                        info.groups,
+                    )
+                    effective_role = mapped
+                else:
+                    log.warning(
+                        "oidc role-mapping set_role failed for %s — keeping old role %s",
+                        user.username,
+                        user.role,
+                    )
+            # NOTE (T-121.1 follow-up): we deliberately do NOT downgrade an
+            # existing OIDC user to default_role just because groups came
+            # back empty (the IdP might have been unavailable for the
+            # /user/orgs call, or the operator revoked the read:org scope).
+            # Mapping only upgrades/changes the role when an explicit rule
+            # matches; the "downgrade on group removal" behavior is a
+            # separate card.
+
+        # --- Issue our own JWT. (T-121: use effective_role so the token
+        # reflects the just-applied mapping without requiring a second
+        # login round-trip.) ---
+        jwt_token = issue_access_token(user.username, effective_role, secret=secret)
 
         # --- Redirect to / with the JWT in a cookie. ---
         response = RedirectResponse(url="/", status_code=302)
