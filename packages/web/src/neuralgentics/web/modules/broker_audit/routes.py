@@ -22,12 +22,14 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader
 from sse_starlette.sse import EventSourceResponse
 
+from neuralgentics.web.auth.rbac import require_role
+from neuralgentics.web.auth.users import User
 from neuralgentics.web.modules.broker_audit.data_source import (
     BrokerAuditDataSource,
     BrokerAuditEvent,
@@ -92,7 +94,9 @@ def build_router(
         since: str | None = Query(None),
         until: str | None = Query(None),
         limit: int = Query(100, ge=1, le=1000),
+        user: User | None = Depends(require_role("admin", "operator", "viewer")),
     ) -> HTMLResponse:
+        _ = user  # noqa: F841 — RBAC gate only; read endpoint
         events = await data_source.recent(
             limit=limit,
             tool=tool,
@@ -131,7 +135,9 @@ def build_router(
         since: str | None = Query(None),
         until: str | None = Query(None),
         limit: int = Query(100, ge=1, le=1000),
+        user: User | None = Depends(require_role("admin", "operator", "viewer")),
     ) -> JSONResponse:
+        _ = user  # noqa: F841 — RBAC gate only; read endpoint
         events = await data_source.recent(
             limit=limit,
             tool=tool,
@@ -149,7 +155,11 @@ def build_router(
         )
 
     @router.get("/modules/broker-audit/sse")
-    async def sse_stream(request: Request) -> EventSourceResponse:
+    async def sse_stream(
+        request: Request,
+        user: User | None = Depends(require_role("admin", "operator", "viewer")),
+    ) -> EventSourceResponse:
+        _ = user  # noqa: F841 — RBAC gate only; read endpoint
         q: asyncio.Queue[BrokerAuditEvent] = broadcaster.subscribe()
 
         async def event_generator() -> AsyncIterator[dict[str, str]]:

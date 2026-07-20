@@ -147,7 +147,13 @@ def _config(modules_dir: Path, *, mode: str = "embedded", db_path: Path | None =
 
 
 def test_reload_re_reads_manifest(modules_dir: Path) -> None:
-    """Bumping module.yaml's version then calling reload updates the registry."""
+    """Bumping module.yaml's version then calling reload updates the registry.
+
+    Embedded mode (auth=off) bypasses the RBAC gate per T-110: the
+    localhost bind is the security boundary, so the admin-only reload
+    endpoint responds 200 in embedded mode. (The team-server RBAC path
+    is covered by ``test_reload_requires_admin_role``.)
+    """
     cfg = _config(modules_dir)
     app = build_app(cfg)
     with TestClient(app) as client:
@@ -160,19 +166,18 @@ def test_reload_re_reads_manifest(modules_dir: Path) -> None:
         # Rewrite module.yaml with a new version on disk.
         _write_module(modules_dir, "0.2.0")
 
+        # Embedded mode (auth=off) → RBAC gate passes; reload proceeds.
         resp = client.post("/api/v1/modules/reloadme/reload")
-        # Embedded mode has auth off → request.state.user is None →
-        # require_role("admin") raises 401. We call reload_module directly
-        # to test the mechanism without the RBAC gate.
-        assert resp.status_code == 401, resp.text
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["version"] == "0.2.0"
+        assert body["runtime_version"] == 2
 
-        # Drive the reload directly to test the mechanism.
-        from neuralgentics.web.shell.reload import reload_module
-
-        new_state = reload_module("reloadme", app, registry, cfg)
+        # Registry reflects the new state.
+        new_state = registry.get("reloadme")
+        assert new_state is not None
         assert new_state.manifest.version == "0.2.0"
         assert new_state.version == 2
-        assert registry.get("reloadme") is new_state
 
         # The /api/v1/modules summary now reflects the new version + state.
         summary = client.get("/api/v1/modules").json()
@@ -197,7 +202,9 @@ def test_enable_disable(modules_dir: Path) -> None:
         r = client.get("/modules/reloadme")
         assert r.status_code == 200, r.text
 
-        # Disable via the direct function (auth gate would 401 in embedded).
+        # Disable via the direct function (embedded mode bypasses the
+        # RBAC gate, so we test enable/disable at the function level;
+        # the RBAC path is covered by test_reload_requires_admin_role).
         from neuralgentics.web.shell.reload import disable_module, enable_module
 
         disabled = disable_module("reloadme", app.state.registry)

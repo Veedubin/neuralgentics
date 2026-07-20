@@ -87,6 +87,13 @@ class MeminiClient(Protocol):
         reason: str = "",
     ) -> float: ...
 
+    async def forget(self, memory_id: str) -> None:
+        """Delete a memory (admin-only write path, T-110).
+
+        Raises :class:`KeyError` if the memory doesn't exist.
+        """
+        ...
+
     async def get_graph(self, memory_id: str, *, depth: int = 1) -> MemoryGraph: ...
 
     async def close(self) -> None: ...
@@ -198,6 +205,26 @@ class MockMeminiClient:
             }
         )
         return new_trust
+
+    async def forget(self, memory_id: str) -> None:
+        """Delete a memory + its relationship edges (T-110 admin write path)."""
+        if memory_id not in self._memories:
+            raise KeyError(f"memory not found: {memory_id}")
+        del self._memories[memory_id]
+        # Drop any relationship edges that referenced the deleted memory.
+        self._relationships = [
+            r for r in self._relationships if r.source_id != memory_id and r.target_id != memory_id
+        ]
+        self.trust_audit.append(
+            {
+                "memory_id": memory_id,
+                "signal": "forgotten",
+                "reason": "admin forget",
+                "old_trust": None,
+                "new_trust": None,
+                "ts": datetime.now(UTC),
+            }
+        )
 
     async def get_graph(self, memory_id: str, *, depth: int = 1) -> MemoryGraph:
         if memory_id not in self._memories:
@@ -326,6 +353,26 @@ class SDKMeminiClient:
             new_trust,
         )
         return float(new_trust)
+
+    async def forget(self, memory_id: str) -> None:
+        """Delete a memory via the SDK (T-110 admin write path).
+
+        Resolves the SDK's delete method by name (``delete_memory`` /
+        ``forget`` / ``remove_memory``) so this is robust to minor SDK
+        revisions. Raises :class:`KeyError` if the memory doesn't exist.
+        """
+        delete_fn = (
+            getattr(self._system, "delete_memory", None)
+            or getattr(self._system, "forget", None)
+            or getattr(self._system, "remove_memory", None)
+        )
+        if not callable(delete_fn):
+            raise RuntimeError("memini-ai SDK has no delete_memory/forget/remove_memory method")
+        result = await delete_fn(memory_id)
+        # Some SDKs return a bool/row count; treat falsy as "not found".
+        if result is False or result == 0:
+            raise KeyError(f"memory not found: {memory_id}")
+        log.info("memory forgotten via SDK: %s", memory_id)
 
     async def get_graph(self, memory_id: str, *, depth: int = 1) -> MemoryGraph:
         entry = await self._system.get_memory(memory_id)
@@ -499,6 +546,26 @@ class PGMeminiClient:
         log.info("PG trust adjusted: memory=%s signal=%s reason=%r", memory_id, signal, reason)
         return new
 
+    async def forget(self, memory_id: str) -> None:
+        """Delete a memory + its relationship edges (T-110 admin write path).
+
+        Cascades to ``memory_relationships`` so dangling edges don't
+        survive. Raises :class:`KeyError` if the memory didn't exist.
+        """
+        pool = await self._ensure_pool()
+        async with pool.acquire() as conn:
+            n = await conn.execute("DELETE FROM memories WHERE id = $1", memory_id)
+            # asyncpg returns "DELETE N" — parse the row count.
+            count = int(n.split()[-1]) if isinstance(n, str) else int(n or 0)
+            if count == 0:
+                raise KeyError(f"memory not found: {memory_id}")
+            # Clean up dangling relationship edges (no FK cascade assumed).
+            await conn.execute(
+                "DELETE FROM memory_relationships WHERE source_id = $1 OR target_id = $1",
+                memory_id,
+            )
+        log.info("PG memory forgotten: %s", memory_id)
+
     async def get_graph(self, memory_id: str, *, depth: int = 1) -> MemoryGraph:
         pool = await self._ensure_pool()
         async with pool.acquire() as conn:
@@ -652,6 +719,10 @@ class _LazySDKClient:
     async def adjust_trust(self, memory_id: str, signal: str, reason: str = "") -> float:
         client = await self._ensure()
         return await client.adjust_trust(memory_id, signal, reason)
+
+    async def forget(self, memory_id: str) -> None:
+        client = await self._ensure()
+        await client.forget(memory_id)
 
     async def get_graph(self, memory_id: str, *, depth: int = 1) -> MemoryGraph:
         client = await self._ensure()

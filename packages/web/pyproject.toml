@@ -60,8 +60,13 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 # idiomatic FastAPI pattern — the framework explicitly supports it.
 "src/neuralgentics/web/auth/routes.py" = ["B008"]
 "src/neuralgentics/web/shell/reload.py" = ["B008"]
+"src/neuralgentics/web/shell/routes.py" = ["B008"]
+"src/neuralgentics/web/modules/gateway_audit/routes.py" = ["B008"]
+"src/neuralgentics/web/modules/broker_audit/routes.py" = ["B008"]
+"src/neuralgentics/web/modules/memini_browser/routes.py" = ["B008"]
 "tests/test_auth_*.py" = ["B008"]
 "tests/test_module_reload.py" = ["B008"]
+"tests/test_module_rbac.py" = ["B008"]
 
 [tool.mypy]
 strict = true

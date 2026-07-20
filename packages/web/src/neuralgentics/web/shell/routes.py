@@ -11,10 +11,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
+from neuralgentics.web.auth.rbac import require_role
+from neuralgentics.web.auth.users import User
 from neuralgentics.web.modules.registry import ModuleRegistry, ModuleState
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -43,11 +45,18 @@ def build_shell_router(
         )
 
     @router.get("/api/v1/modules")
-    async def list_modules() -> JSONResponse:
+    async def list_modules(
+        user: User | None = Depends(require_role("admin", "operator", "viewer")),
+    ) -> JSONResponse:
+        _ = user  # noqa: F841 — RBAC gate only; read endpoint
         return JSONResponse({"modules": registry.summaries(), "total": len(registry)})
 
     @router.get("/api/v1/modules/{module_name}")
-    async def get_module(module_name: str) -> JSONResponse:
+    async def get_module(
+        module_name: str,
+        user: User | None = Depends(require_role("admin", "operator", "viewer")),
+    ) -> JSONResponse:
+        _ = user  # noqa: F841 — RBAC gate only; read endpoint
         s = registry.get(module_name)
         if s is None:
             return JSONResponse({"error": "not found", "name": module_name}, status_code=404)
