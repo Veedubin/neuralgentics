@@ -20,6 +20,7 @@ from neuralgentics.web.config import WebConfig
 from neuralgentics.web.modes import EmbeddedMode, TeamServerMode
 from neuralgentics.web.modules.loader import discover_modules, register_module_routes
 from neuralgentics.web.modules.registry import ModuleRegistry
+from neuralgentics.web.shell.reload import DisabledModuleMiddleware, build_admin_modules_router
 from neuralgentics.web.shell.routes import build_shell_router
 
 log = logging.getLogger("neuralgentics.web.app")
@@ -51,7 +52,7 @@ def build_app(config: WebConfig) -> FastAPI:
 
     app = FastAPI(
         title="neuralgentics-web",
-        version="0.14.1",
+        version="0.15.0",
         description="Modular web UI shell for neuralgentics",
         lifespan=None,  # set below after middleware is installed
     )
@@ -73,6 +74,14 @@ def build_app(config: WebConfig) -> FastAPI:
     else:
         mode_handler.configure(app)
 
+    # DisabledModuleMiddleware (T-115): 404 for routes belonging to a
+    # disabled module. Installed AFTER auth so it becomes the outermost
+    # layer — a disabled module's routes return 404 without first demanding
+    # auth (the route is effectively unmounted). The admin reload/enable/
+    # disable endpoints are still auth-gated because they're registered as
+    # normal routes and Auth runs on them via the middleware stack.
+    app.add_middleware(DisabledModuleMiddleware, registry=registry)
+
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     # Include module routers FIRST (literal routes win over the shell's
@@ -80,6 +89,12 @@ def build_app(config: WebConfig) -> FastAPI:
     # it only includes routers + records startup/shutdown hooks; the async
     # background tasks are started by the lifespan via module_starters.
     register_module_routes(app, registry, config)
+
+    # Admin module-management router (T-115): reload/enable/disable.
+    # Registered AFTER module routers so the module's literal
+    # /api/v1/modules/{name} routes (if any) don't shadow these admin paths.
+    # All three endpoints are gated by Depends(require_role("admin")).
+    app.include_router(build_admin_modules_router(registry, app, config))
 
     shell_router = build_shell_router(registry, config.mode, templates)
     app.include_router(shell_router)

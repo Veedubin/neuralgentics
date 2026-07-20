@@ -1,6 +1,6 @@
 [project]
 name = "neuralgentics-web"
-version = "0.14.1"
+version = "0.15.0"
 description = "Modular web UI shell for neuralgentics (Grafana-style plugin manifest system)"
 readme = "README.md"
 license = {text = "MIT"}
@@ -59,7 +59,9 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 # B008: FastAPI's Depends()/require_role() in argument defaults is the
 # idiomatic FastAPI pattern — the framework explicitly supports it.
 "src/neuralgentics/web/auth/routes.py" = ["B008"]
+"src/neuralgentics/web/shell/reload.py" = ["B008"]
 "tests/test_auth_*.py" = ["B008"]
+"tests/test_module_reload.py" = ["B008"]
 
 [tool.mypy]
 strict = true

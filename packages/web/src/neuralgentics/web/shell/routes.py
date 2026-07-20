@@ -2,6 +2,9 @@
 
 These are the *core* routes that always exist regardless of which modules
 are installed. Module routes are added on top by ``app.build_app``.
+
+T-115: the index + list_modules now read from :class:`ModuleState`
+(enabled/version/loaded_at) in addition to the manifest.
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from neuralgentics.web.modules.registry import ModuleRegistry
+from neuralgentics.web.modules.registry import ModuleRegistry, ModuleState
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -27,12 +30,13 @@ def build_shell_router(
 
     @router.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
-        modules = registry.all()
+        states = registry.all()
         return templates.TemplateResponse(
             request,
             "index.html",
             {
-                "modules": modules,
+                "modules": [s.manifest for s in states],
+                "states": states,
                 "mode": mode_name,
                 "title": "neuralgentics-web",
             },
@@ -44,10 +48,10 @@ def build_shell_router(
 
     @router.get("/api/v1/modules/{module_name}")
     async def get_module(module_name: str) -> JSONResponse:
-        m = registry.get(module_name)
-        if m is None:
+        s = registry.get(module_name)
+        if s is None:
             return JSONResponse({"error": "not found", "name": module_name}, status_code=404)
-        return JSONResponse(m.to_summary())
+        return JSONResponse(s.to_summary())
 
     # /api/v1/health is registered in the app factory so it can be enriched
     # with mode-specific fields (db_connected etc.). Do not register it here
@@ -57,9 +61,10 @@ def build_shell_router(
     # Module stub pages: each manifest's first route renders the stub template.
     @router.get("/modules/{module_name}", response_class=HTMLResponse)
     async def module_stub(request: Request, module_name: str) -> HTMLResponse:
-        m = registry.get(module_name)
-        if m is None:
+        s = registry.get(module_name)
+        if s is None:
             return HTMLResponse(f"<h1>Module {module_name} not found</h1>", status_code=404)
+        m = s.manifest
         return templates.TemplateResponse(
             request,
             "module_stub.html",
@@ -71,3 +76,6 @@ def build_shell_router(
         )
 
     return router
+
+
+__all__ = ["build_shell_router", "ModuleState"]

@@ -13,16 +13,32 @@ Python class isn't present.
 Module routers are included BEFORE the shell router (see :func:`build_app`)
 so the module's literal ``/modules/<name>`` route wins over the shell's
 ``/modules/{module_name}`` catch-all.
+
+T-115: the loader now populates :class:`ModuleState` (with the live
+``Module`` instance + router) on the registry so the reload path can
+supersede it. Pure stubs (no Python impl) get a state with
+``instance=None`` / ``router=None``. Module loading is by file path (via
+:func:`load_module_python`) so arbitrary module directories (including
+test fixtures in temp dirs) work without being on ``sys.path``.
 """
 
 from __future__ import annotations
 
+import contextlib
 import importlib
+import importlib.util
 import logging
+import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
-from neuralgentics.web.modules.registry import ModuleManifest, ModuleRegistry, parse_manifest
+from neuralgentics.web.modules.registry import (
+    ModuleManifest,
+    ModuleRegistry,
+    ModuleState,
+    parse_manifest,
+)
 
 log = logging.getLogger("neuralgentics.web.loader")
 
@@ -52,6 +68,73 @@ def discover_modules(modules_path: Path) -> ModuleRegistry:
     return registry
 
 
+def load_module_python(pkg_name: str, modules_path: Path) -> ModuleType | None:
+    """Import (or re-import) a module's ``module.py`` by file path.
+
+    Returns the loaded :class:`ModuleType`, or ``None`` if no ``module.py``
+    exists at ``modules_path/<pkg_name>/module.py``.
+
+    Uses :func:`importlib.util.spec_from_file_location` so the module's
+    directory doesn't need to be on ``sys.path`` — this lets the reload
+    path (T-115) work against arbitrary module directories (including
+    test fixtures in temp dirs). The module is registered in
+    ``sys.modules`` under
+    ``neuralgentics.web.modules.<pkg_name>.module`` so intra-module
+    imports (``from neuralgentics.web.modules.base import Module``)
+    resolve correctly.
+
+    The parent package ``neuralgentics.web.modules.<pkg_name>`` is
+    imported via the normal import machinery *first* so its
+    ``__init__.py`` runs before ``module.py`` execs. This avoids a
+    circular-import failure where ``__init__.py`` does
+    ``from .module import SomeClass`` while ``module.py`` is mid-exec
+    (the sibling modules that ``module.py`` imports often trigger the
+    parent package's ``__init__.py``).
+    """
+    file_path = modules_path / pkg_name / "module.py"
+    if not file_path.exists():
+        return None
+    parent_pkg = f"neuralgentics.web.modules.{pkg_name}"
+    # Ensure the parent package is loaded first. For the packaged
+    # modules this resolves via sys.path; for temp-dir test fixtures the
+    # parent package has no __init__.py on sys.path, so this is a no-op
+    # (ImportError swallowed) — module.py is then loaded standalone.
+    if parent_pkg not in sys.modules:
+        # Temp-dir fixture: no __init__.py on sys.path. Fall through
+        # and load module.py standalone (its imports of
+        # neuralgentics.web.modules.base still resolve). For packaged
+        # modules the normal import below resolves via sys.path.
+        with contextlib.suppress(ImportError):
+            importlib.import_module(parent_pkg)
+    full_name = f"{parent_pkg}.module"
+    # If module.py is already loaded (e.g. prior test), drop it so the
+    # re-exec picks up edits. This is the reload path.
+    sys.modules.pop(full_name, None)
+    spec = importlib.util.spec_from_file_location(full_name, file_path)
+    if spec is None or spec.loader is None:
+        return None
+    mod = importlib.util.module_from_spec(spec)
+    # Register in sys.modules BEFORE exec so intra-module relative
+    # imports resolve during the top-level exec.
+    sys.modules[full_name] = mod
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        # Roll back the sys.modules entry on failure so a retry isn't
+        # poisoned by a half-loaded module.
+        sys.modules.pop(full_name, None)
+        raise
+    return mod
+
+
+def _modules_path_from_config(config: Any) -> Path:
+    """Re-derive the modules directory from the WebConfig (or default)."""
+    modules_path = getattr(config, "modules_path", None)
+    if modules_path is None:
+        modules_path = Path(__file__).resolve().parent.parent / "modules"
+    return Path(modules_path)
+
+
 def register_module_routes(app: Any, registry: ModuleRegistry, config: Any) -> None:
     """For each discovered manifest, try to import its Python module class,
     include its FastAPI router, and record startup/shutdown hooks.
@@ -66,19 +149,26 @@ def register_module_routes(app: Any, registry: ModuleRegistry, config: Any) -> N
     This function is **synchronous**: it only includes routers and records
     hooks. Async background tasks (SSE drains, PG listeners) are started by
     the lifespan via ``app.state.module_starters``.
+
+    T-115: the constructed ``Module`` instance + its router are written back
+    to the registry's :class:`ModuleState` so the reload path can supersede
+    them. Module loading is by file path (via :func:`load_module_python`)
+    so arbitrary module directories (including test fixtures) work.
     """
-    for manifest in registry.all():
+    modules_path = _modules_path_from_config(config)
+
+    for state in registry.all():
+        manifest = state.manifest
         # Directory names use underscores (Python identifiers); manifest
         # ``name`` fields use hyphens (URL-friendly).
         pkg_name = manifest.name.replace("-", "_")
-        module_path = f"neuralgentics.web.modules.{pkg_name}.module"
         try:
-            mod = importlib.import_module(module_path)
-        except ModuleNotFoundError:
-            # No Python implementation — pure stub. Fine.
-            continue
+            mod = load_module_python(pkg_name, modules_path)
         except Exception as exc:  # noqa: BLE001
-            log.error("error importing %s: %s", module_path, exc)
+            log.error("error importing %s: %s", pkg_name, exc)
+            continue
+        if mod is None:
+            # No module.py — pure stub. State already has instance=None.
             continue
         # Find a concrete Module subclass in the package.
         cls = _find_module_class(mod)
@@ -86,6 +176,7 @@ def register_module_routes(app: Any, registry: ModuleRegistry, config: Any) -> N
             continue
         # Construct via the module's build() factory if present.
         build_fn = getattr(mod, "build", None)
+        instance: Any = None
         if callable(build_fn):
             try:
                 instance = build_fn(manifest, config)
@@ -101,6 +192,7 @@ def register_module_routes(app: Any, registry: ModuleRegistry, config: Any) -> N
 
         # Synchronous: include the router + register hooks. Modules expose
         # build_router() (sync) + start_background() (sync) + shutdown() (async).
+        router: Any = None
         try:
             # New-style: split sync router inclusion from async startup.
             router = instance.build_router()
@@ -109,7 +201,14 @@ def register_module_routes(app: Any, registry: ModuleRegistry, config: Any) -> N
         except AttributeError:
             # Old-style: register_routes is async (T-105 stubs). Defer to lifespan.
             _register_legacy_async(app, instance)
+            # Record the instance on the state (router stays None — the
+            # legacy path includes its own router via the async starter).
+            state.instance = instance
             continue
+
+        # Record the live instance + router on the state for the reload path.
+        state.instance = instance
+        state.router = router
 
         # Register async startup + shutdown hooks for the lifespan.
         starters = list(getattr(app.state, "module_starters", []))
@@ -158,4 +257,4 @@ def _find_module_class(mod: Any) -> Any:
     return candidates[0]
 
 
-__all__ = ["discover_modules", "register_module_routes"]
+__all__ = ["ModuleState", "discover_modules", "load_module_python", "register_module_routes"]
