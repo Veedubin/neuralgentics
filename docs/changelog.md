@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.9] - 2026-07-21
+
+### Fixed
+
+- **Agent model remap to API-verified Ollama Cloud models** (agents, overlay templates, installer sources, opencode.json). Devstral models were pulled from Ollama Cloud and `qwen3-coder-next` never existed — the installer would have written broken personas to user machines. Remapped: linter → `qwen3.5:397b`, release → `minimax-m3`, explorer → `deepseek-v4-flash`, researcher → `qwen3.5:397b`. Stale `:cloud` suffixes stripped in `orchestrator.ts`; dead `ollama-cloud` provider block removed from opencode.json.
+
 ## [0.15.8] - 2026-07-21
 
 Documentation overhaul. No functional changes.
