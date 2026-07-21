@@ -10,7 +10,8 @@ __pycache__/
 # ─── Build artifacts ──────────────────────────────────────────────────────────
 dist/
 build/
-site/                # mkdocs build output (deployed to gh-pages branch)
+# mkdocs build output (deployed to gh-pages branch)
+site/
 *.egg-info/
 *.tsbuildinfo
 
