@@ -57,9 +57,30 @@ from neuralgentics.web.modules.broker_audit.data_source import (
     JSONLBrokerAuditSource,
 )
 
-# Repo root (packages/web/tests/integration/../../../.. = repo root).
+# Locate the Go broker checkout that produces the audit records this
+# test consumes. Three candidates, in priority order:
+#   1. NEURALGENTICS_BROKER_GO_DIR env var (explicit override)
+#   2. Monorepo layout: <repo>/packages/broker-go (web at packages/web)
+#   3. Standalone layout: sibling checkout ../neuralgentics-broker
+# In the standalone neuralgentics-web repository only (2)/(3) can exist;
+# the test skips cleanly when no broker checkout is present.
 REPO_ROOT = Path(__file__).resolve().parents[4]
-BROKER_GO_DIR = REPO_ROOT / "packages" / "broker-go"
+
+
+def _find_broker_go_dir() -> Path | None:
+    candidates = []
+    env_dir = os.environ.get("NEURALGENTICS_BROKER_GO_DIR")
+    if env_dir:
+        candidates.append(Path(env_dir))
+    candidates.append(REPO_ROOT / "packages" / "broker-go")
+    candidates.append(REPO_ROOT.parent / "neuralgentics-broker")
+    for c in candidates:
+        if (c / "go.mod").exists():
+            return c
+    return None
+
+
+BROKER_GO_DIR = _find_broker_go_dir()
 AUDIT_PKG_REL = "src/neuralgentics/broker/audit"
 
 # Env var the Go emit helper reads.
