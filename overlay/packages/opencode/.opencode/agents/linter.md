@@ -1,7 +1,7 @@
 ---
 description: Neuralgentics Linter - Quality enforcement using qwen3-coder-next:cloud (Ollama Cloud) with memini-ai-dev for linting patterns.
 mode: subagent
-model: ollama/qwen3-coder-next
+model: ollama/qwen3.5:397b
 steps: 30
 permission:
   read:

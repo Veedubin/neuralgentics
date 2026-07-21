@@ -1,7 +1,7 @@
 ---
 description: Neuralgentics Researcher - Web research and data gathering using qwen3.5:cloud (Ollama Cloud) with memini-ai-dev for context.
 mode: subagent
-model: ollama/qwen3.5
+model: ollama/qwen3.5:397b
 steps: 50
 permission:
   read:
