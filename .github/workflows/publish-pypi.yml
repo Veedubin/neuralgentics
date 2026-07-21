@@ -1,0 +1,79 @@
+# ─── Publish neuralgentics-web to PyPI (trusted publisher) ─────────────────────
+# Triggers on `web-v*.*.*` tag pushes (the `web-` prefix distinguishes these
+# from the plugin's `v*` npm releases handled by release.yml) and on manual
+# workflow_dispatch.
+#
+# PyPI trusted publishing binds to (owner, repo, workflow filename,
+# environment). The binding the user must configure on pypi.org is:
+#   Owner:           Veedubin
+#   Repository:      neuralgentics
+#   Workflow name:   publish-pypi.yml   (this file)
+#   Environment name: pypi
+#
+# See docs/PUBLISH-SETUP.md for the step-by-step setup checklist.
+# ────────────────────────────────────────────────────────────────────────────────
+
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "web-v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: publish-pypi-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    environment: pypi
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build sdist + wheel
+        working-directory: packages/web
+        run: uv build
+
+      - name: Upload dist as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: packages/web/dist
+
+      - name: Extract tag name
+        id: extract_tag
+        run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.extract_tag.outputs.tag_name }}
+          name: ${{ steps.extract_tag.outputs.tag_name }}
+          generate_release_notes: true
+          files: packages/web/dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/web/dist
