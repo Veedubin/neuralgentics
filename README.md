@@ -2,6 +2,70 @@
 
 > Agent orchestration for [OpenCode](https://github.com/sst/opencode) — 12 agent personas, 7 skills, 9 MCP servers, one plugin.
 
+## Ecosystem
+
+Neuralgentics is the **orchestration hub** for a modular agent ecosystem. The diagram below illustrates how Neuralgentics integrates with its sibling projects to provide a seamless, scalable, and secure agentic workflow:
+
+```mermaid
+flowchart LR
+    U[User] -->|prompt| OC[OpenCode TUI]
+    OC -->|task| ORCH["Neuralgentics Orchestrator<br/>12 personas + routing matrix"]
+    ORCH -->|query / save| MEM[("memini-ai<br/>trust-weighted memory<br/>PostgreSQL + pgvector")]
+    ORCH -->|dispatch| AG["Specialist sub-agents<br/>coder · architect · tester · writer"]
+    AG -->|"tool calls"| BRK["Neuralgentics Broker<br/>catalog · access control · audit"]
+    BRK --> MCP["MCP Servers<br/>searxng · github · videre · ssh"]
+    AG -->|outbound HTTP| GW["Neuralgentics Gateway<br/>egress policy + audit"]
+    GW --> NET["Internet / LLM APIs"]
+    MEM --> WEB["Neuralgentics Web<br/>dashboards"]
+    GW --> WEB
+    BRK --> WEB
+```
+
+### Sibling Projects
+- **[memini-ai-dev](https://github.com/Veedubin/memini-ai-dev)**: Trust-weighted semantic memory with PostgreSQL + pgvector backend. PyPI: [`memini-ai`](https://pypi.org/project/memini-ai/).
+- **[neuralgentics-broker](https://github.com/Veedubin/neuralgentics-broker)**: MCP tool brokering, access control, and audit logging.
+- **[neuralgentics-gateway](https://github.com/Veedubin/neuralgentics-gateway)**: Egress policy enforcement and audit for outbound HTTP requests.
+- **[neuralgentics-web](https://github.com/Veedubin/neuralgentics-web)**: Dashboards for memory, broker, and gateway. PyPI: [`neuralgentics-web`](https://pypi.org/project/neuralgentics-web/).
+- **[boomerang-v3](https://github.com/Veedubin/Boomerang-v3)**: Agent personas, skills, and routing matrix. npm: [`@veedubin/boomerang-v3`](https://www.npmjs.com/package/@veedubin/boomerang-v3).
+
+## Features
+
+Neuralgentics provides a **comprehensive, modular, and secure** agent orchestration platform:
+
+### Orchestration
+- **12 specialized agent personas**: Orchestrator, architect, coder, explorer, tester, reviewer, linter, git, writer, researcher, release, and agent-builder.
+- **Routing matrix**: Enforces strict delegation rules to prevent context loss and ensure optimal agent selection.
+- **Parallel dispatch**: Launches multiple sub-agents simultaneously for independent tasks, reducing latency.
+
+### Memory Integration
+- **memini-ai integration**: Trust-weighted semantic memory with PostgreSQL + pgvector backend.
+- **Trust scoring**: Memories are scored based on usage and feedback, ensuring high-trust context is prioritized.
+- **Tiered loading**: Efficient context management with L0 (~100 tokens), L1 (~2K tokens), and L2 (full context) summaries.
+- **Knowledge graph**: Tracks entities and relationships for advanced reasoning and inference.
+
+### Skills Brokering
+- **Local + external skills**: Access to ~400 skills with provenance tracking, LRU caching, and auto-evolution gates.
+- **Broker-mediated tool calls**: MCP tools are provisioned dynamically with access control and audit logging.
+- **Token efficiency**: ~95% reduction in token usage by replacing inline ContextPackages with memory IDs.
+
+### Broker
+- **Tool audit**: Tracks MCP tool usage, access patterns, and anomalies.
+- **Access control**: Fine-grained permissions for MCP tools and external APIs.
+- **Provenance tracking**: Ensures all tool calls are traceable and reproducible.
+
+### Gateway
+- **Egress policy**: Enforces security and compliance for outbound HTTP requests.
+- **Audit logging**: Tracks all external API calls for security and debugging.
+
+### Web
+- **Dashboards**: Real-time visualization of memory, broker, and gateway activity.
+
+### Installer
+- **Zero-Docker database**: Built-in PostgreSQL via `pgembed` — no Docker required.
+- **Flexible initialization**: `--init-homedir` for global config, `--init-project` for project-specific setup.
+- **Team server support**: Connect to shared PostgreSQL for collaborative memory.
+- **Embedding model selection**: CPU, Auto (GPU-aware), or GPU modes for optimal performance.
+
 ## Quick Start
 
 ```bash
@@ -187,6 +251,10 @@ Add `@veedubin/neuralgentics` to your `.opencode/opencode.json` plugin array:
 
 Then run `opencode` to load the plugin.
 
+## Documentation
+
+For full documentation, visit the [Neuralgentics Documentation Site](https://veedubin.github.io/neuralgentics/).
+
 ## Links
 
 | Resource | Link |
@@ -194,6 +262,7 @@ Then run `opencode` to load the plugin.
 | Source | [github.com/Veedubin/neuralgentics](https://github.com/Veedubin/neuralgentics) |
 | npm | [`@veedubin/neuralgentics`](https://www.npmjs.com/package/@veedubin/neuralgentics) |
 | License | [MIT](https://github.com/Veedubin/neuralgentics/blob/main/LICENSE) |
+| Documentation | [veedubin.github.io/neuralgentics](https://veedubin.github.io/neuralgentics/) |
 
 ## License
 
