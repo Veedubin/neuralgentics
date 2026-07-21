@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.8] - 2026-07-21
+
+Documentation overhaul. No functional changes.
+
+- README: ecosystem mermaid diagram + comprehensive features section + sibling project links.
+- docs/: 7 stale planning/cleanup documents moved into `docs/archive/` with an index page; broken internal link fixed.
+- mkdocs: `site_name` version suffix dropped; mermaid support added via superfences custom fence.
+- Repo hygiene: `site/` build output untracked (120 files); `.gitignore` inline-comment bug fixed so `site/` is actually ignored.
+
+> Releases 0.12.1 through 0.15.7 are documented on the
+> [GitHub Releases page](https://github.com/Veedubin/neuralgentics/releases).
+
 ## [0.12.0] - 2026-07-10
 
 Minor release: Multi-model embedding support with RRF (Reciprocal Rank Fusion). Queries can now merge results from memories embedded with different models (MiniLM, BGE-M3, BGE-Large).
