@@ -52,7 +52,13 @@ class TeamServerMode:
         self._refresh_task: Any = None
         # Build the user store once at app construction — the schema is
         # tiny and the default-user seeding must run before any request.
-        self.user_store = UserStore(config.auth.db_path)
+        # T-INSTALL-005: when auth is explicitly disabled (--auth=off),
+        # skip seeding the default users — they are unreachable and the
+        # "seeding 3 default users" warning is misleading in that mode.
+        # The schema is still created so a later switch to jwt/oauth2
+        # mode (same DB path) finds the tables ready.
+        seed = config.auth.auth_mode != "off"
+        self.user_store = UserStore(config.auth.db_path, seed_defaults=seed)
         # JWT secret: explicit config > $WEB_JWT_SECRET (already read in
         # from_args) > generate-and-warn.
         self.jwt_secret: str = (
@@ -98,11 +104,15 @@ class TeamServerMode:
         ]
         # /auth/login (HTML), /auth/login (POST), /auth/refresh, /auth/logout,
         # /auth/me — always mounted; the middleware whitelists them.
+        # T-INSTALL-005: pass auth_mode so /auth/me can return a clean
+        # 200 response (with mode + authenticated=false) in --auth=off
+        # mode instead of 500ing.
         app.include_router(
             build_auth_router(
                 self.user_store,
                 secret=self.jwt_secret,
                 oidc_providers=oidc_providers,
+                auth_mode=auth_mode,
             )
         )
 

@@ -29,7 +29,12 @@ class EmbeddedMode:
         # A user store isn't strictly needed in embedded mode, but we
         # build one so the auth middleware has a consistent contract.
         # Tests can override the db_path via config.auth.db_path.
-        self.user_store = UserStore(config.auth.db_path)
+        # T-INSTALL-005: do NOT seed default users in embedded mode —
+        # they are unreachable (no /auth/login page is mounted) and the
+        # "seeding 3 default users" warning is misleading. The schema is
+        # still created so a later switch to team-server mode (same DB
+        # path) finds the tables ready.
+        self.user_store = UserStore(config.auth.db_path, seed_defaults=False)
 
     def configure(self, app: Any) -> None:
         """Install an ``off``-mode AuthMiddleware so request.state.user is

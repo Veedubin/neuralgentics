@@ -31,7 +31,7 @@ def _build_app(store: UserStore, *, mode: str = "oauth2") -> FastAPI:
     if mode not in ("off", "jwt", "oauth2"):
         raise ValueError(f"invalid mode: {mode}")
     app.add_middleware(AuthMiddleware, mode=mode, user_store=store, secret=SECRET)  # type: ignore[arg-type]
-    app.include_router(build_auth_router(store, secret=SECRET))
+    app.include_router(build_auth_router(store, secret=SECRET, auth_mode=mode))
     return app
 
 

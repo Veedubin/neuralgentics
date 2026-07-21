@@ -26,6 +26,7 @@ from neuralgentics.web.shell.routes import build_shell_router
 log = logging.getLogger("neuralgentics.web.app")
 
 STATIC_DIR = Path(__file__).resolve().parent / "shell" / "static"
+VENDOR_DIR = STATIC_DIR / "vendor"
 TEMPLATES_DIR = Path(__file__).resolve().parent / "shell" / "templates"
 
 # T-120: Chart.js is self-hosted with an SRI integrity hash so a compromised
@@ -34,6 +35,16 @@ TEMPLATES_DIR = Path(__file__).resolve().parent / "shell" / "templates"
 # with the client-side "Error: Chart is not defined" status line rather than
 # loading tampered code.
 CHARTJS_STATIC_PATH = STATIC_DIR / "chart.umd.min.js"
+
+# T-INSTALL-006: htmx + tailwind are self-hosted with SRI integrity hashes so
+# a compromised CDN (unpkg / cdn.tailwindcss.com) cannot inject malicious JS
+# into every page. Same pattern as T-120 Chart.js: if a vendored asset is
+# missing at startup, log a loud warning — the page will degrade (no htmx
+# swaps / no tailwind styling) instead of loading untrusted code.
+VENDOR_ASSETS: tuple[tuple[str, Path], ...] = (
+    ("htmx", VENDOR_DIR / "htmx.min.js"),
+    ("tailwind", VENDOR_DIR / "tailwind.min.js"),
+)
 
 
 def _check_chartjs_present() -> None:
@@ -54,6 +65,28 @@ def _check_chartjs_present() -> None:
         )
 
 
+def _check_vendor_assets_present() -> None:
+    """Warn (do not crash) if any self-hosted htmx/tailwind file is missing.
+
+    T-INSTALL-006: closing the CDN-without-SRI gap for htmx + tailwind (same
+    risk class T-120 closed for Chart.js). The files are shipped in the wheel
+    via ``pyproject.toml`` package-data; if an operator installs only the
+    Python package without the static assets, the shell degrades gracefully
+    (no htmx swaps / no tailwind styling) instead of loading untrusted code
+    from a CDN.
+    """
+    for name, path in VENDOR_ASSETS:
+        if not path.is_file():
+            log.warning(
+                "%s static file missing at %s — the web shell will render "
+                "without %s. Reinstall the neuralgentics-web package to "
+                "restore the bundled asset.",
+                name,
+                path,
+                name,
+            )
+
+
 def build_app(config: WebConfig) -> FastAPI:
     """Construct the FastAPI application for the given config.
 
@@ -70,6 +103,9 @@ def build_app(config: WebConfig) -> FastAPI:
 
     # T-120: loud warning if the self-hosted Chart.js asset is missing.
     _check_chartjs_present()
+    # T-INSTALL-006: loud warning if any self-hosted htmx/tailwind asset is
+    # missing.
+    _check_vendor_assets_present()
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 

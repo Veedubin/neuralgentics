@@ -39,6 +39,7 @@ def build_auth_router(
     secret: str | None = None,
     *,
     oidc_providers: list[dict[str, str]] | None = None,
+    auth_mode: str = "jwt",
 ) -> APIRouter:
     """Construct the ``/auth/*`` APIRouter.
 
@@ -48,6 +49,13 @@ def build_auth_router(
     ``oidc_providers`` is the list of configured OIDC providers (each
     ``{"name": ..., "authorization_url": ...}``) for the login page UI.
     Empty/None = OIDC disabled, login page shows local form only.
+
+    ``auth_mode`` is the active ``--auth`` value (``"off"`` / ``"jwt"`` /
+    ``"oauth2"``). T-INSTALL-005: ``/auth/me`` uses it to return a clean
+    ``{"authenticated": false, "user": null, "mode": "off"}`` response
+    (HTTP 200) in auth-off mode instead of 500ing when the RBAC
+    dependency resolves ``user`` to ``None`` and the handler dereferences
+    ``user.username``.
     """
     router = APIRouter(prefix="/auth", tags=["auth"])
     _secret = secret if secret is not None else get_or_create_secret()
@@ -107,8 +115,24 @@ def build_auth_router(
 
     @router.get("/me")
     async def me_route(
-        user: User = Depends(require_role("admin", "operator", "viewer")),
+        user: User | None = Depends(require_role("admin", "operator", "viewer")),
     ) -> JSONResponse:
+        # T-INSTALL-005: in --auth=off mode the middleware sets
+        # ``request.state.user = None`` and ``require_role`` returns
+        # ``None`` (anonymous pass-through — the localhost bind is the
+        # security boundary in that mode). Dereferencing ``user.username``
+        # would 500, so we return a clean explicit response instead. The
+        # 200 (rather than 401) matches the codebase convention for
+        # auth-off mode: ``/api/v1/health`` returns 200 with
+        # ``auth_mode: "off"``, and ``require_role`` deliberately steps
+        # aside rather than raising. A client can distinguish "no auth
+        # configured" (200, mode=off) from "auth configured but no token"
+        # (401, missing_token) by inspecting the response shape.
+        if user is None:
+            return JSONResponse(
+                {"authenticated": False, "mode": auth_mode, "user": None},
+                status_code=200,
+            )
         return JSONResponse({"username": user.username, "role": user.role})
 
     return router

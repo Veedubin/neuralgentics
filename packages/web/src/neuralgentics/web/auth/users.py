@@ -87,14 +87,33 @@ class UserStore:
     over-engineering for a v0.14.x stub.
     """
 
-    def __init__(self, db_path: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        db_path: Path | str | None = None,
+        *,
+        seed_defaults: bool = True,
+    ) -> None:
+        """Construct the user store.
+
+        Args:
+            db_path: SQLite file path. Defaults to ``~/.neuralgentics/web-users.db``.
+            seed_defaults: When ``True`` (default), seed the three default
+                users (admin/admin, operator/operator, viewer/viewer) into an
+                empty DB and print a loud warning. When ``False``, the schema
+                is still created but no users are seeded and no warning is
+                printed — used by :class:`~neuralgentics.web.modes.embedded.EmbeddedMode`
+                and team-server ``--auth=off`` mode (T-INSTALL-005) where the
+                default users are unreachable and the warning is misleading.
+        """
         self.db_path: Path = Path(db_path) if db_path else _default_db_path()
         # If the path resolves to a non-default location, the parent dir
         # may not exist yet. _conn() creates it on first connect, but
         # tests sometimes inspect the file path before connecting.
         self._lock = threading.Lock()
+        self._seed_defaults = seed_defaults
         self._init_schema()
-        self._maybe_seed_defaults()
+        if seed_defaults:
+            self._maybe_seed_defaults()
 
     # ----- schema ---------------------------------------------------------
 

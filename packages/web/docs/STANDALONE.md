@@ -177,45 +177,67 @@ ecosystem" — but you never have to.
 
 ### `/auth/me` returns 500 in `--auth=off` mode
 
-The `/auth/me` endpoint calls `Depends(require_role(...))` which expects
-`request.state.user` to be set by the auth middleware. In `--auth=off` mode
-the user is `None` and the dependency raises an unhandled exception → 500.
+> **Fixed in T-INSTALL-005.** The endpoint now returns
+> `{"authenticated": false, "mode": "off", "user": null}` with HTTP 200
+> in auth-off mode. Clients can distinguish "no auth configured" (200,
+> `mode=off`) from "auth configured but no token" (401, `missing_token`)
+> by inspecting the response shape.
 
-**Workaround:** use `/api/v1/health` to verify the server is up. It returns
-`{"auth_mode": "off"}` so you can detect this state.
+The `/auth/me` endpoint calls `Depends(require_role(...))` which returns
+`None` in `--auth=off` mode (anonymous pass-through — the localhost bind
+is the security boundary). The previous handler dereferenced
+`user.username` unconditionally → `AttributeError` → 500. The fix
+checks for `user is None` first and returns the explicit response above.
 
-**Fix:** the auth dependency should check the mode first and return 401 with
-a clear message. Tracked in **T-INSTALL-005** (follow-up card).
+**Workaround (older versions):** use `/api/v1/health` to verify the
+server is up. It returns `{"auth_mode": "off"}` so you can detect this
+state.
 
 ### Startup warning: "seeding 3 default users (admin/admin, ...)"
 
-This warning fires in **embedded mode** too, where there's no `/auth/login`
-page to actually use those users. The warning is misleading.
+> **Fixed in T-INSTALL-005.** The warning no longer fires in embedded
+> mode or in team-server mode with `--auth=off`. Default users are
+> still seeded (with the warning) in team-server mode with
+> `--auth=jwt` / `--auth=oauth2` — the only modes where the
+> `/auth/login` form can actually use them.
 
-**Workaround:** ignore the warning in embedded mode (the users are seeded
-but unreachable — that's fine, embedded mode doesn't have a login form).
-
-**Fix:** suppress the warning when `auth_mode == "off"`. Tracked in
-**T-INSTALL-005**.
+Previously the warning fired in **embedded mode** too, where there's no
+`/auth/login` page to actually use those users. The warning was
+misleading. The fix adds a `seed_defaults` flag to `UserStore`;
+`EmbeddedMode` and `TeamServerMode(auth_mode="off")` pass `False`. The
+schema is still created so a later switch to auth-enabled mode (same DB
+path) finds the tables ready.
 
 ### The HTML dashboard loads htmx/tailwind from a CDN (no SRI)
 
-The shell's `index.html` includes:
+> **Fixed in T-INSTALL-006.** htmx 1.9.12 and the Tailwind Play CDN
+> (3.4.1) are now self-hosted under `/static/vendor/` with SRI
+> integrity hashes. The templates no longer reference any CDN URL.
+
+Previously the shell's `base.html` included:
 
 ```html
 <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
 <script src="https://cdn.tailwindcss.com" defer></script>
 ```
 
-These are **CDN-loaded with no Subresource Integrity hash**. If unpkg or
-Cloudflare is compromised, malicious JS could be served to your browser.
-The same risk class that **T-120** closed for Chart.js (which is now
-self-hosted with SRI).
+These were **CDN-loaded with no Subresource Integrity hash**. If unpkg
+or Cloudflare was compromised, malicious JS could be served to your
+browser. The same risk class that **T-120** closed for Chart.js (which
+is now self-hosted with SRI).
 
-**Workaround for paranoid users:** block `unpkg.com` and `cdn.tailwindcss.com`
-in your hosts file, then self-host the two scripts.
+The fix vendored both files into
+`src/neuralgentics/web/shell/static/vendor/` with `.SHA384` sidecars and
+`integrity="sha384-..."` attributes on the `<script>` tags. See
+`static/vendor/README.md` for the exact upstream URLs, versions, and
+sha256 digests, and instructions for updating the vendored copies.
 
-**Fix:** self-host htmx + tailwind, with SRI. Tracked in **T-INSTALL-006**.
+> **Note on the Tailwind Play CDN:** the vendored `tailwind.min.js` is
+> the Tailwind *Play CDN* JavaScript runtime (it scans the DOM and
+> compiles utilities on the fly), not a static CSS bundle. For
+> production, compiling a static CSS bundle with only the utilities the
+> shell uses (via the `tailwindcss` CLI) is the recommended path —
+> tracked in a follow-up card.
 
 ### `/auth/providers` returns 404 when no OIDC providers configured
 
