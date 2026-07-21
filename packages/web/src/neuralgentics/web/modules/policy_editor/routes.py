@@ -42,6 +42,7 @@ from neuralgentics.web.modules.policy_editor.data_source import (
     sanitize_filename,
 )
 from neuralgentics.web.modules.policy_editor.diff import compute_diff, diff_has_changes
+from neuralgentics.web.modules.policy_editor.gateway_client import trigger_reload
 from neuralgentics.web.modules.policy_editor.schema import validate_policy_yaml
 from neuralgentics.web.modules.registry import ModuleRegistry
 
@@ -148,6 +149,35 @@ def build_router(
                 "title": "Policy Editor",
                 "mode": getattr(request.app.state, "mode", "embedded"),
             },
+        )
+
+    # ---- Gateway status (T-157) ----
+    # Registered BEFORE the {filename} route so /modules/policy-editor/gateway-status
+    # is not captured as a filename="gateway-status" view request.
+
+    @router.get("/modules/policy-editor/gateway-status", response_class=HTMLResponse)
+    @module_route("view_list")
+    async def policy_gateway_status(
+        request: Request,
+        user: User | None = Depends(
+            _dep("view_list", _MANAGE_ROLES, registry=registry, rbac_mode=rbac_mode)
+        ),
+    ) -> HTMLResponse:
+        """Poll the gateway for its currently-loaded policy set.
+
+        Returns a partial that swaps into the ``#gateway-status`` panel
+        on the list page every 5s via htmx. Pull-based (no SSE) per the
+        T-157 pragmatic scope. Falls back gracefully when the gateway
+        is unreachable.
+        """
+        _ = user  # noqa: F841
+        from neuralgentics.web.modules.policy_editor.gateway_client import fetch_status
+
+        status = fetch_status()
+        return templates.TemplateResponse(
+            request,
+            "_gateway_status.html",
+            {"status": status},
         )
 
     # ---- New ----
@@ -348,6 +378,13 @@ def build_router(
         _ = user  # noqa: F841
         safe = _safe_filename_or_400(filename)
         result = data_source.save(safe, content)
+        # T-157: after a successful save, ask the gateway to pick up
+        # the new YAML immediately. Best-effort — the disk save is
+        # already the source of truth; if the gateway is unreachable
+        # the watcher poll will catch it within ~2s. Errors are
+        # surfaced in the save partial so the operator knows the
+        # gateway may be stale until the next poll.
+        gateway_reload = trigger_reload() if result.saved else None
         return templates.TemplateResponse(
             request,
             "_save_result.html",
@@ -357,6 +394,7 @@ def build_router(
                 "backup_path": result.backup_path,
                 "errors": result.validation_errors,
                 "error": None,
+                "gateway_reload": gateway_reload,
             },
         )
 
@@ -391,8 +429,10 @@ def build_router(
                     "backup_path": None,
                     "errors": [],
                     "error": str(exc),
+                    "gateway_reload": None,
                 },
             )
+        gateway_reload = trigger_reload() if result.saved else None
         return templates.TemplateResponse(
             request,
             "_save_result.html",
@@ -402,6 +442,7 @@ def build_router(
                 "backup_path": result.backup_path,
                 "errors": result.validation_errors,
                 "error": None if result.saved else "file already exists or template invalid",
+                "gateway_reload": gateway_reload,
             },
         )
 

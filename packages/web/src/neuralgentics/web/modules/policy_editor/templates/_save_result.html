@@ -5,6 +5,18 @@
     ✓ Saved <code class="font-mono">{{ filename }}</code>
     {% if backup_path %}(backup at <code class="font-mono">{{ backup_path.name }}</code>){% endif %}.
   </div>
+  {% if gateway_reload %}
+  <div class="border rounded p-3 text-sm
+              {% if gateway_reload.ok %}bg-blue-50 border-blue-200 text-blue-800{% else %}bg-amber-50 border-amber-200 text-amber-800{% endif %}">
+    {% if gateway_reload.ok and gateway_reload.loaded %}
+      ✓ gateway reloaded: {{ gateway_reload.loaded }} file{{ '' if gateway_reload.loaded == 1 else 's' }}, {{ gateway_reload.statements }} statement{{ '' if gateway_reload.statements == 1 else 's' }}
+    {% elif gateway_reload.ok %}
+      gateway reload skipped ({{ gateway_reload.error }})
+    {% else %}
+      ⚠ gateway reload failed: {{ gateway_reload.error }}
+    {% endif %}
+  </div>
+  {% endif %}
   {% else %}
   <div class="bg-red-50 border border-red-200 rounded p-3 text-sm">
     <strong class="text-red-800">Save blocked:</strong>

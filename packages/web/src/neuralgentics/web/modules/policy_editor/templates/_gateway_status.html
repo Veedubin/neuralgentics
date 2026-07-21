@@ -1,0 +1,43 @@
+{# Partial: gateway policy status panel (polled every 5s by the list page).
+   T-157. Pull-based (no SSE). #}
+<div id="gateway-status"
+     hx-get="/modules/policy-editor/gateway-status"
+     hx-trigger="every 5s"
+     hx-swap="outerHTML">
+  {% if not status.reachable %}
+  <div class="text-amber-700 text-sm">
+    <span class="font-mono">⚠ gateway unreachable</span>
+    {% if status.error %}<span class="text-xs text-amber-600"> · {{ status.error }}</span>{% endif %}
+    <p class="text-xs text-slate-500 mt-1">
+      The watcher will pick up disk saves within ~2s. Set
+      <code class="font-mono">NEURALGENTICS_GATEWAY_URL</code> for immediate reloads.
+    </p>
+  </div>
+  {% elif not status.enabled %}
+  <div class="text-slate-500 text-sm">
+    <span class="font-mono">gateway policy subsystem disabled</span>
+    <p class="text-xs mt-1">No <code class="font-mono">policies_dir</code> configured on the gateway.</p>
+  </div>
+  {% else %}
+  <div class="text-sm space-y-1">
+    <div class="flex gap-4">
+      <span><strong>{{ status.statements }}</strong> statements in <strong>{{ status.files|length }}</strong> file{{ '' if status.files|length == 1 else 's' }}</span>
+      <span class="text-xs px-2 py-0.5 rounded
+                   {% if status.default_decision == 'deny' %}bg-red-100 text-red-800{% else %}bg-green-100 text-green-800{% endif %}">
+        default: {{ status.default_decision }}
+      </span>
+    </div>
+    {% if status.last_reload %}
+    <div class="text-xs text-slate-500">
+      last reload: <code class="font-mono">{{ status.last_reload }}</code>
+      {% if status.watch_enabled %}· watcher on ({{ status.watch_interval_seconds }}s){% else %}· watcher off{% endif %}
+    </div>
+    {% else %}
+    <div class="text-xs text-slate-500">no reload recorded yet</div>
+    {% endif %}
+    <div class="text-xs text-slate-400 font-mono truncate" title="{{ status.gateway_policies_dir }}">
+      {{ status.gateway_policies_dir }}
+    </div>
+  </div>
+  {% endif %}
+</div>

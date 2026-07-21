@@ -17,6 +17,20 @@
     </a>
   </div>
 
+  {# Gateway status panel (T-157): pull-based live view of what the
+     gateway has currently loaded. Polls /modules/policy-editor/gateway-status
+     every 5s via htmx. Falls back gracefully when the gateway is
+     unreachable. #}
+  <div class="bg-white border border-slate-200 rounded-lg p-3">
+    <div class="text-xs uppercase text-slate-500 mb-2">Gateway live status</div>
+    <div id="gateway-status-panel"
+         hx-get="/modules/policy-editor/gateway-status"
+         hx-trigger="load, every 5s"
+         hx-swap="innerHTML">
+      <span class="text-xs text-slate-400">loading gateway status…</span>
+    </div>
+  </div>
+
   <div id="policy-editor-body">
     <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
       <table class="w-full text-sm">

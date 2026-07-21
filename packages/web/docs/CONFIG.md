@@ -100,6 +100,8 @@ looks for manifests. Individual modules read these env vars at runtime:
 |---------|--------|---------|-------------|
 | `NEURALGENTICS_AUDIT_FILE` | `gateway-audit` | `$TMPDIR/neuralgentics-audit.jsonl` | Path to the JSONL audit log (embedded mode only; team-server mode reads from Postgres). |
 | `NEURALGENTICS_BROKER_AUDIT_FILE` | `broker-audit` | `$TMPDIR/neuralgentics-broker-audit.jsonl` | Path to the JSONL broker-audit log (embedded mode only). |
+| `NEURALGENTICS_GATEWAY_URL` | `policy-editor` | (unset) | Gateway base URL (e.g. `http://127.0.0.1:9091`) for the policy editor to call the gateway's reload + status API. When unset, the editor skips the reload call and relies on the gateway's watcher poll. T-157. |
+| `NEURALGENTICS_GATEWAY_POLICY_TOKEN` | `policy-editor` | (unset) | Optional bearer token for the gateway's `policy_api.auth_token`. When unset, no `Authorization` header is sent (the gateway default is auth disabled). T-157. |
 | `NEURALGENTICS_MEMINI_BACKEND` | `memini-browser` | `sdk` | Selects the memini backend: `sdk` (use the `memini_ai` SDK against a live `memini-ai` server), `pg` (team-server mode with a `db_url`, read from Postgres directly), or `mock` (no external service — used for tests and smoke mode). |
 | `NEURALGENTICS_POLICIES_DIR` | `policy-editor` | `~/.neuralgentics/policies` | Directory the policy editor reads/writes gateway policy YAML files. Matches the gateway's `policy.policies_dir` config block. |
 | `TMPDIR` | audit modules | `/tmp` | System temp dir, used as the fallback location for JSONL audit files when `NEURALGENTICS_*_AUDIT_FILE` is unset. |
