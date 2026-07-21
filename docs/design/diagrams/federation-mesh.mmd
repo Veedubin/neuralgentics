@@ -1,0 +1,35 @@
+sequenceDiagram
+    participant GW1 as Gateway A<br/>(dev workstation 1)
+    participant GW2 as Gateway B<br/>(dev workstation 2)
+    participant GW3 as Gateway C<br/>(CI runner)
+    participant TS as Team Server<br/>(shared container)
+    participant PG as PostgreSQL<br/>(audit + config)
+
+    Note over GW1,GW3: Peer Discovery (mDNS on LAN / static config for WAN)
+
+    GW1->>GW2: mDNS probe: "who is neuralgentics-gateway?"
+    GW2-->>GW1: "I am, peer ID: gw-b, version: 0.1.0"
+    GW1->>GW3: mDNS probe
+    GW3-->>GW1: "I am, peer ID: gw-c, version: 0.1.0"
+
+    Note over GW1,GW3: Config Sync (Last-Writer-Wins with Vector Clocks)
+
+    GW1->>GW1: Admin adds domain *.prefect.io to whitelist
+    GW1->>GW2: gossip: config update {key: whitelist, val: *.prefect.io, clock: [A:1]}
+    GW1->>GW3: gossip: config update {key: whitelist, val: *.prefect.io, clock: [A:1]}
+    GW2->>GW2: merge: clock [A:1] > local [A:0], accept
+    GW3->>GW3: merge: clock [A:1] > local [A:0], accept
+
+    Note over GW1,TS: Audit Aggregation (Push to Team Server)
+
+    GW1->>TS: POST /audit/batch {events: [...]}
+    GW2->>TS: POST /audit/batch {events: [...]}
+    GW3->>TS: POST /audit/batch {events: [...]}
+    TS->>PG: INSERT INTO gateway_audit_log
+
+    Note over TS: Team Server Down Scenario
+
+    GW1->>TS: POST /audit/batch (fails)
+    GW1->>GW1: buffer to local SQLite, retry every 30s
+    TS-->>GW1: back online
+    GW1->>TS: POST /audit/batch (flushed buffer)

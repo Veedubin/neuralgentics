@@ -1,0 +1,46 @@
+graph TB
+    subgraph Z0["Zone 0: Model Jail (Highest Restriction)"]
+        MODEL[LLM/Model]
+        note1["Can only call: Broker<br/>Auth: Broker ACL"]
+    end
+
+    subgraph Z1["Zone 1: Broker (Trusted Internal)"]
+        BROKER["Broker<br/>MCP Router"]
+        note2["Can call: memini-ai (SSL+Auth)<br/>Can call: Gateway (localhost)<br/>Auth: Role-based ACL"]
+    end
+
+    subgraph Z2["Zone 2: Gateway (Egress Enforcer)"]
+        GW[Egress Gateway]
+        note3["Can call: Internet only<br/>Cannot call: Model, Broker, memini-ai<br/>Auth: Policy Engine"]
+    end
+
+    subgraph Z3["Zone 3: Internal Services (SSL+Auth)"]
+        MEMINI[memini-ai-dev]
+        PG[(PostgreSQL)]
+        note4["Auth: SSL certs + DB passwords<br/>Gateway does NOT inspect"]
+    end
+
+    subgraph Z4["Zone 4: Internet (Untrusted)"]
+        API[External APIs]
+        note5["Auth: API keys, OAuth2 tokens<br/>Gateway whitelist enforced"]
+    end
+
+    subgraph Z5["Zone 5: Team Infrastructure (mTLS)"]
+        TS[Team Server]
+        note6["Auth: mTLS with cert pinning<br/>Config sync + audit aggregation"]
+    end
+
+    MODEL -->|"Broker ACL"| BROKER
+    BROKER -->|"SSL+Auth NOT inspected"| MEMINI
+    BROKER -->|"SSL+Auth NOT inspected"| PG
+    BROKER -->|"localhost proxy"| GW
+    GW -->|"whitelist + rate limit"| API
+    GW -->|"mTLS + cert pinning"| TS
+
+    style MODEL fill:#FF6B6B,color:#fff
+    style BROKER fill:#FFD93D
+    style GW fill:#6BCB77
+    style MEMINI fill:#4D96FF,color:#fff
+    style PG fill:#4D96FF,color:#fff
+    style API fill:#FF6B6B,color:#fff
+    style TS fill:#9B59B6,color:#fff

@@ -6,10 +6,9 @@
 
 > An open-source agent runtime, built for engineers who ship.
 
-Neuralgentics is the **harness** for AI agents - the execution environment, permission broker, and persistent memory that turns a language model into a reliable, debuggable, and trustworthy agent.
+Neuralgentics is the **harness** for AI agents — the execution environment, permission broker, and persistent memory that turns a language model into a reliable, debuggable, and trustworthy agent.
 
-**What is a harness?**
-A harness provides the structural scaffolding that a raw model lacks. It wraps the LLM with specific prompts, tools, context, and strict permissions, ensuring the agent operates within defined boundaries and maintains continuity across sessions.
+A **harness** provides the structural scaffolding that a raw model lacks. It wraps the LLM with specific prompts, tools, context, and strict permissions, ensuring the agent operates within defined boundaries and maintains continuity across sessions.
 
 **23 specialist agent roles, a trust-scored memory engine, and a permissions-based tool broker -- all packaged as a 340KB OpenCode plugin plus a 3-service container stack.** No cloud account, no telemetry, no vendor lock-in. You run it on your machine; it remembers what your agents did; it stops them from doing things they shouldn't.
 
@@ -18,7 +17,7 @@ A harness provides the structural scaffolding that a raw model lacks. It wraps t
 npx @veedubin/neuralgentics --init && opencode
 ```
 
-Latest: v0.9.4 ships an `npx --init` bootstrapper that replaces the old curl-bash installer, plus a hardened container setup that won't touch existing `.env` files or running containers.
+Latest: The `npx @veedubin/neuralgentics --init` bootstrapper replaces the old curl-bash installer. It deep-merges config, respects existing `.env` files, and never overwrites running containers.
 
 
 [**Get Started →**](getting-started/installation.md)

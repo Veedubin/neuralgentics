@@ -1,4 +1,4 @@
-site_name: Neuralgentics (v0.9.0)
+site_name: Neuralgentics
 site_description: Agentic coding orchestration with a trust-weighted memory engine
 site_url: https://veedubin.github.io/neuralgentics/
 repo_url: https://github.com/Veedubin/neuralgentics
@@ -66,7 +66,11 @@ markdown_extensions:
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.tasklist:
@@ -96,7 +100,12 @@ nav:
       - Changelog: changelog.md
   - Troubleshooting: troubleshooting.md
   - Development: development.md
+  - Publishing: PUBLISH-SETUP.md
+  - Sidecar Setup: sidecar-setup.md
+  - Migrating from v0.6: migrating-from-v0.6.md
+  - Extraction Runbook: EXTRACTION.md
   - Archive:
+      - Index: archive/index.md
       - Pre-docs (v0): archive/v0-pre-docs/ARCHITECTURE.md
       - "Pre-docs: Broker": archive/v0-pre-docs/BROKER.md
       - "Pre-docs: API": archive/v0-pre-docs/API_REFERENCE.md

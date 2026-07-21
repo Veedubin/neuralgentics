@@ -1,0 +1,53 @@
+graph TB
+    subgraph "Topology 1: Solo Developer"
+        subgraph "Single Machine (localhost)"
+            SD_GW[neuralgentics-gateway<br/>:9090 proxy, :9091 dashboard]
+            SD_BROKER[neuralgentics-broker<br/>:8080 MCP router]
+            SD_MEM[memini-ai-dev<br/>:8000 memory server]
+            SD_PG[(memini-postgres<br/>:5434)]
+            SD_WEB[neuralgentics-web<br/>embedded mode<br/>python -m neuralgentics.web]
+        end
+        SD_GW --> SD_BROKER
+        SD_BROKER --> SD_MEM
+        SD_MEM --> SD_PG
+        SD_WEB --> SD_GW
+    end
+
+    subgraph "Topology 2: Small Team (3-10)"
+        subgraph "Workstation 1"
+            W1_GW[Gateway A]
+            W1_BROKER[Broker A]
+        end
+        subgraph "Workstation 2"
+            W2_GW[Gateway B]
+            W2_BROKER[Broker B]
+        end
+        subgraph "Shared Infrastructure"
+            TS[Team Server<br/>container :8443]
+            TS_PG[(Team PostgreSQL<br/>:5432)]
+        end
+        W1_GW -->|mTLS audit push| TS
+        W2_GW -->|mTLS audit push| TS
+        W1_GW <-.->|gossip config sync| W2_GW
+        TS --> TS_PG
+    end
+
+    subgraph "Topology 3: Enterprise (50+)"
+        subgraph "Site A"
+            SA_GW1[Gateway A1]
+            SA_GW2[Gateway A2<br/>failover]
+            SA_TS[Team Server A]
+        end
+        subgraph "Site B"
+            SB_GW1[Gateway B1]
+            SB_GW2[Gateway B2<br/>failover]
+            SB_TS[Team Server B]
+        end
+        subgraph "Central Admin"
+            CA[Central Admin Server<br/>read-only aggregation]
+            CA_SSO[Enterprise SSO<br/>SAML/OIDC]
+        end
+        SA_TS -->|aggregated audit| CA
+        SB_TS -->|aggregated audit| CA
+        CA --> CA_SSO
+    end

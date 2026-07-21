@@ -1,0 +1,36 @@
+graph TB
+    subgraph "neuralgentics-gateway (NEW PUBLIC REPO)"
+        GW[Egress Gateway<br/>Container-first<br/>MIT License]
+        GW_FED[Federation Engine<br/>Config Sync + Peer Discovery]
+        GW_POL[Policy Engine<br/>Whitelist/Blacklist/Rate Limit]
+        GW_AUDIT[Audit Logger<br/>PG Audit Table Writer]
+    end
+
+    subgraph "neuralgentics (EXISTING)"
+        ORCH[Orchestrator<br/>npm package @veedubin/neuralgentics]
+        BROKER[Broker<br/>MCP Router + Tool Registry]
+        WEB[neuralgentics-web<br/>Optional Modular UI]
+    end
+
+    subgraph "memini-ai-dev (EXISTING, UNCHANGED)"
+        MEM[Memory Server<br/>Python FastMCP + PG]
+        KG[Knowledge Graph]
+        TC[Thought Chains]
+    end
+
+    subgraph "External"
+        LLM[LLM / OpenCode]
+        INTERNET[Internet / External APIs]
+        MCP_SERVERS[MCP Servers<br/>ephemeral + static]
+    end
+
+    LLM -->|MCP JSON-RPC| BROKER
+    BROKER -->|SSL+Auth| MEM
+    BROKER -->|outbound HTTP/DB| GW
+    GW -->|policy-checked| INTERNET
+    GW -->|spawn/manage| MCP_SERVERS
+    BROKER -->|tool dispatch| MCP_SERVERS
+    GW -->|audit writes| GW_AUDIT
+    WEB -->|reads audit| GW_AUDIT
+    ORCH -->|delegates| BROKER
+    WEB -->|optional embed| ORCH

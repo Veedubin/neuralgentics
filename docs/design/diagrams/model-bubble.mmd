@@ -1,0 +1,32 @@
+graph LR
+    subgraph "TRUST ZONE: Model Bubble (Gateway Enforced)"
+        MODEL[LLM / Model]
+        BROKER[Broker<br/>MCP Router]
+    end
+
+    subgraph "TRUST ZONE: Internal Trusted (SSL+Auth)"
+        MEMINI[memini-ai-dev<br/>Memory + KG]
+        PG_INTERNAL[(Internal PostgreSQL)]
+    end
+
+    subgraph "TRUST ZONE: Internet (Gateway Inspected)"
+        EXTERNAL[External APIs<br/>GitHub, Prefect, Ollama, etc.]
+        NEW_DB[(New DB Hosts)]
+    end
+
+    subgraph "TRUST ZONE: Team Infrastructure (mTLS)"
+        TEAM[Team Server<br/>Web UI + Audit Aggregator]
+    end
+
+    MODEL -->|"✅ MCP JSON-RPC<br/>(broker ACL)"| BROKER
+    BROKER -->|"❌ NOT inspected<br/>(SSL+Auth already)"| MEMINI
+    BROKER -->|"❌ NOT inspected<br/>(role-based ACL)"| PG_INTERNAL
+    BROKER -->|"✅ Gateway inspects<br/>(whitelist/blacklist/audit)"| EXTERNAL
+    BROKER -->|"✅ Gateway inspects<br/>(DB host whitelist)"| NEW_DB
+    GW -->|"✅ mTLS<br/>(audit push + config sync)"| TEAM
+
+    style MEMINI fill:#90EE90
+    style PG_INTERNAL fill:#90EE90
+    style EXTERNAL fill:#FFB6C1
+    style NEW_DB fill:#FFB6C1
+    style TEAM fill:#87CEEB
