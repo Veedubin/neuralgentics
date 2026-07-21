@@ -337,5 +337,5 @@
     "prune": false,
     "reserved": 10000
   },
-  "small_model": "ollama/devstral-small-2:24b"
+  "small_model": "ollama/minimax-m3"
 }

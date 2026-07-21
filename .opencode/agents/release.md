@@ -1,5 +1,5 @@
 ---
-description: Neuralgentics Release - Version bumps, changelogs, and release automation using devstral-small-2:24b-cloud (Ollama Cloud) with memini-ai-dev for release history.
+description: Neuralgentics Release - Version bumps, changelogs, and release automation using minimax-m3 (Ollama Cloud) with memini-ai-dev for release history.
 mode: subagent
 model: ollama/minimax-m3
 steps: 40

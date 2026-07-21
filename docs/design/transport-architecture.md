@@ -41,7 +41,7 @@ This document designs the transport abstraction and multi-provider LLM registry 
 **File:** `.opencode/opencode.json` line 118:  
 
 ```json
-"small_model": "ollama-cloud/devstral-small-2:24b-cloud"
+"small_model": "ollama/minimax-m3"
 ```
 
 The current `provider` block is a single-key object. There is no runtime selection—the opencode provider ID is hardcoded.
@@ -63,13 +63,13 @@ Replace `"provider": { "ollama-cloud": {...} }` with a plural `"providers"` obje
       "kimi-k2.6:cloud":       { "name": "Kimi K2.6 (Cloud)" },
       "glm-5.1:cloud":         { "name": "GLM 5.1 (Cloud)" },
       "deepseek-v4-pro:cloud": { "name": "DeepSeek V4 Pro (Cloud)" },
-      "devstral-2:123b-cloud": { "name": "Devstral 2 (Cloud)" },
+      "deepseek-v4-flash": { "name": "DeepSeek V4 Flash (Cloud)" },
       "deepseek-v4-flash:cloud": { "name": "DeepSeek V4 Flash (Cloud)" },
-      "qwen3-coder-next:cloud": { "name": "Qwen3 Coder Next (Cloud)" },
+      "qwen3.5:397b": { "name": "Qwen 3.5 397B (Cloud)" },
       "minimax-m2.7:cloud":    { "name": "MiniMax M2.7 (Cloud)" },
       "gemma4:31b-cloud":      { "name": "Gemma 4 31B (Cloud)" },
       "qwen3.5:cloud":         { "name": "Qwen 3.5 (Cloud)" },
-      "devstral-small-2:24b-cloud": { "name": "Devstral Small 2 (Cloud)" }
+      "minimax-m3": { "name": "MiniMax M3 (Cloud)" }
     }
   },
   "dmr-local": {
@@ -113,12 +113,12 @@ Replace `"provider": { "ollama-cloud": {...} }` with a plural `"providers"` obje
 
 **Before (line 118):**  
 ```json
-"small_model": "ollama-cloud/devstral-small-2:24b-cloud"
+"small_model": "ollama/minimax-m3"
 ```
 
 **After:**  
 ```json
-"small_model": "ollama-cloud/devstral-small-2:24b-cloud"
+"small_model": "ollama/minimax-m3"
 ```
 
 This stays unchanged for backward compatibility. The TUI `/provider` command does not change `small_model`—only the active provider for agent dispatching.
@@ -655,7 +655,7 @@ func (ac *AccessControl) CanDeactivate(role string, serverName string) bool {
 |-------------------|-----------------|
 | `"provider": { "ollama-cloud": {...} }` | Broker reads old key, wraps in `"providers"` with `"defaultProvider": "ollama-cloud"`. OpenCode itself needs `"providers"` (plural) to support multiple providers; the broker can translate but OpenCode must also be updated to read the new key. |
 | `"mcp": { "github-mcp": { "type": "local", "command": ["npx", ...] } }` | Broker auto-converts to single-transport list (see Section 2.5). |
-| `"small_model": "ollama-cloud/devstral-small-2:24b-cloud"` | No change. |
+| `"small_model": "ollama/minimax-m3"` | No change. |
 
 ### 5.2 Broker Types
 

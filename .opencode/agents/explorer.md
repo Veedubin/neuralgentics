@@ -1,5 +1,5 @@
 ---
-description: Neuralgentics Explorer - Fast file finding using devstral-2:123b-cloud (Ollama Cloud) with memini-ai-dev semantic search.
+description: Neuralgentics Explorer - Fast file finding using deepseek-v4-flash (Ollama Cloud) with memini-ai-dev semantic search.
 mode: subagent
 model: ollama/deepseek-v4-flash
 steps: 30
