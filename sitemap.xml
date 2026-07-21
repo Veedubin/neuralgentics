@@ -5,14 +5,6 @@
          <lastmod>2026-07-21</lastmod>
     </url>
     <url>
-         <loc>https://veedubin.github.io/neuralgentics/CLEANUP_C1_DELETE_CORE/</loc>
-         <lastmod>2026-07-21</lastmod>
-    </url>
-    <url>
-         <loc>https://veedubin.github.io/neuralgentics/CLEANUP_C3_DELETE_PYTHON_BROKER/</loc>
-         <lastmod>2026-07-21</lastmod>
-    </url>
-    <url>
          <loc>https://veedubin.github.io/neuralgentics/EXTRACTION/</loc>
          <lastmod>2026-07-21</lastmod>
     </url>
@@ -57,6 +49,38 @@
          <lastmod>2026-07-21</lastmod>
     </url>
     <url>
+         <loc>https://veedubin.github.io/neuralgentics/archive/</loc>
+         <lastmod>2026-07-21</lastmod>
+    </url>
+    <url>
+         <loc>https://veedubin.github.io/neuralgentics/archive/AGENT_REGISTRATION_RESEARCH/</loc>
+         <lastmod>2026-07-21</lastmod>
+    </url>
+    <url>
+         <loc>https://veedubin.github.io/neuralgentics/archive/ARCHITECTURE_PLAN_V5/</loc>
+         <lastmod>2026-07-21</lastmod>
+    </url>
+    <url>
+         <loc>https://veedubin.github.io/neuralgentics/archive/CLEANUP_C1_DELETE_CORE/</loc>
+         <lastmod>2026-07-21</lastmod>
+    </url>
+    <url>
+         <loc>https://veedubin.github.io/neuralgentics/archive/CLEANUP_C3_DELETE_PYTHON_BROKER/</loc>
+         <lastmod>2026-07-21</lastmod>
+    </url>
+    <url>
+         <loc>https://veedubin.github.io/neuralgentics/archive/GO_MEMORY_PLAN/</loc>
+         <lastmod>2026-07-21</lastmod>
+    </url>
+    <url>
+         <loc>https://veedubin.github.io/neuralgentics/archive/roadmap-v0.1.0-p1/</loc>
+         <lastmod>2026-07-21</lastmod>
+    </url>
+    <url>
+         <loc>https://veedubin.github.io/neuralgentics/archive/roadmap-v0.1.0/</loc>
+         <lastmod>2026-07-21</lastmod>
+    </url>
+    <url>
          <loc>https://veedubin.github.io/neuralgentics/archive/v0-pre-docs/API_REFERENCE/</loc>
          <lastmod>2026-07-21</lastmod>
     </url>
@@ -81,7 +105,19 @@
          <lastmod>2026-07-21</lastmod>
     </url>
     <url>
+         <loc>https://veedubin.github.io/neuralgentics/design/ecosystem-architecture/</loc>
+         <lastmod>2026-07-21</lastmod>
+    </url>
+    <url>
          <loc>https://veedubin.github.io/neuralgentics/design/init-cli-bootstrapper/</loc>
+         <lastmod>2026-07-21</lastmod>
+    </url>
+    <url>
+         <loc>https://veedubin.github.io/neuralgentics/design/mcp-gateway-architecture-options/</loc>
+         <lastmod>2026-07-21</lastmod>
+    </url>
+    <url>
+         <loc>https://veedubin.github.io/neuralgentics/design/mcp-gateway-hybrid-c-plus-b/</loc>
          <lastmod>2026-07-21</lastmod>
     </url>
     <url>

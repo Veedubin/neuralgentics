@@ -1,0 +1,47 @@
+graph TB
+    subgraph "neuralgentics-web Core Shell"
+        CORE[Web Core<br/>FastAPI/Starlette]
+        ROUTER[Route Registry]
+        SSE[SSE Hub]
+        AUTH[Auth Middleware<br/>JWT + OAuth2]
+    end
+
+    subgraph "Module: gateway-audit (ships v0.1)"
+        GA_ROUTES[Routes: /gateway/*]
+        GA_DASH[Gateway Dashboard<br/>Live egress traffic]
+        GA_SSE[SSE: gateway events]
+    end
+
+    subgraph "Module: broker-audit (ships v0.1)"
+        BA_ROUTES[Routes: /broker/*]
+        BA_DASH[Broker Dashboard<br/>Tool call metrics]
+        BA_SSE[SSE: broker events]
+    end
+
+    subgraph "Module: memini-browser (ships v0.1)"
+        MB_ROUTES[Routes: /memory/*]
+        MB_DASH[Memory Browser<br/>Search + trust scores]
+        MB_KG[Knowledge Graph Viz]
+    end
+
+    subgraph "Module Discovery"
+        MANIFEST[module.yaml<br/>name, version, routes, dashboards, sse_channels]
+    end
+
+    CORE --> ROUTER
+    CORE --> SSE
+    CORE --> AUTH
+
+    MANIFEST -->|registers| GA_ROUTES
+    MANIFEST -->|registers| BA_ROUTES
+    MANIFEST -->|registers| MB_ROUTES
+
+    GA_ROUTES --> GA_DASH
+    GA_ROUTES --> GA_SSE
+    BA_ROUTES --> BA_DASH
+    BA_ROUTES --> BA_SSE
+    MB_ROUTES --> MB_DASH
+    MB_ROUTES --> MB_KG
+
+    GA_SSE --> SSE
+    BA_SSE --> SSE
