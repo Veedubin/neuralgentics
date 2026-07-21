@@ -36,10 +36,10 @@ def test_register_and_lookup() -> None:
 
 
 def test_summaries_returns_dicts_for_all_modules() -> None:
-    """After discovering built-ins, summaries() yields 3 dicts."""
+    """After discovering built-ins, summaries() yields 4 dicts."""
     reg = discover_modules(MODULES_DIR)
     summaries = reg.summaries()
-    assert len(summaries) == 3
+    assert len(summaries) == 4
     for s in summaries:
         assert "name" in s
         assert "version" in s

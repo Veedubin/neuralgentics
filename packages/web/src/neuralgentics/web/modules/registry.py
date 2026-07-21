@@ -163,6 +163,7 @@ def _stub_target(name: str) -> str:
         "gateway-audit": "T-106",
         "broker-audit": "T-107",
         "memini-browser": "T-108",
+        "policy-editor": "T-155",
     }.get(name, "future card")
 
 

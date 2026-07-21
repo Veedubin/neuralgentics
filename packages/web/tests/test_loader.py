@@ -15,12 +15,13 @@ from neuralgentics.web.modules.registry import parse_manifest
 MODULES_DIR = Path(__file__).resolve().parent.parent / "src" / "neuralgentics" / "web" / "modules"
 
 
-def test_discover_finds_three_builtin_modules() -> None:
-    """The 3 v0.1 stub modules (gateway-audit, broker-audit, memini-browser) load."""
+def test_discover_finds_builtin_modules() -> None:
+    """The 4 built-in modules (gateway-audit, broker-audit, memini-browser,
+    policy-editor) load."""
     registry = discover_modules(MODULES_DIR)
     names = sorted(m.name for m in registry.all())
-    assert names == ["broker-audit", "gateway-audit", "memini-browser"], names
-    assert len(registry) == 3
+    assert names == ["broker-audit", "gateway-audit", "memini-browser", "policy-editor"], names
+    assert len(registry) == 4
 
 
 def test_parse_manifest_round_trip() -> None:

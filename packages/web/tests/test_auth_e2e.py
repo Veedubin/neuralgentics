@@ -95,7 +95,7 @@ def test_team_server_admin_token_can_list_modules(db_path: Path) -> None:
         resp = client.get("/api/v1/modules", headers={"Authorization": f"Bearer {tok}"})
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["total"] == 3
+    assert data["total"] == 4
 
 
 def test_team_server_bad_token_returns_401(db_path: Path) -> None:
@@ -126,7 +126,7 @@ def test_oauth2_login_flow_grants_access(db_path: Path) -> None:
             headers={"Authorization": f"Bearer {tokens['access_token']}"},
         )
     assert resp.status_code == 200
-    assert resp.json()["total"] == 3
+    assert resp.json()["total"] == 4
 
 
 def test_oauth2_refresh_rotates_tokens(db_path: Path) -> None:
@@ -199,4 +199,4 @@ def test_auth_off_mode_lets_team_server_run_unauthenticated(db_path: Path) -> No
     with TestClient(app) as client:
         resp = client.get("/api/v1/modules")
     assert resp.status_code == 200
-    assert resp.json()["total"] == 3
+    assert resp.json()["total"] == 4

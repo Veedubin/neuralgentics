@@ -1,0 +1,55 @@
+{# Partial: diff confirmation step (T-156). Swapped into #policy-editor-body. #}
+<section class="space-y-4">
+  <div class="flex items-start justify-between">
+    <div>
+      <h2 class="text-xl font-bold">Confirm save: {{ filename }}</h2>
+      <p class="text-xs text-slate-600 mt-1">
+        {% if diff_lines %}
+        {{ add_count }} addition{{ '' if add_count == 1 else 's' }}, {{ del_count }} deletion{{ '' if del_count == 1 else 's' }}.
+        {% else %}
+        No changes — the proposed content is byte-identical to the current file.
+        {% endif %}
+      </p>
+    </div>
+    <a hx-get="/modules/policy-editor/{{ filename }}/edit"
+       hx-target="#policy-editor-body"
+       class="text-slate-600 text-xs">← Back to editor (cancel)</a>
+  </div>
+
+  {% if not diff_lines %}
+  <div class="bg-slate-50 border border-slate-200 rounded p-3 text-sm text-slate-700">
+    Nothing to save. Use "Back to editor" to make changes first.
+  </div>
+  {% else %}
+  <div class="bg-slate-900 rounded p-3 overflow-x-auto">
+    <pre class="text-xs font-mono whitespace-pre"><code>{% for ln in diff_lines %}<span class="
+{%- if ln.kind == 'add' -%}text-green-300
+{%- elif ln.kind == 'del' -%}text-red-300
+{%- elif ln.kind == 'meta' -%}text-slate-400
+{%- else -%}text-slate-200
+{%- endif -%}
+">{% if ln.kind == 'add' %}+{% elif ln.kind == 'del' %}-{% elif ln.kind == 'meta' %}{{ ln.text }}{% else %} {% endif %}{{ ln.text if ln.kind != 'meta' else '' }}
+</span>{% endfor %}</code></pre>
+  </div>
+
+  <div class="flex gap-2">
+    <form id="policy-confirm-form" class="inline">
+      <input type="hidden" name="filename" value="{{ filename }}">
+      <input type="hidden" name="content" value="{{ proposed_content }}">
+      <button type="button"
+              hx-post="/modules/policy-editor/{{ filename }}/save"
+              hx-include="#policy-confirm-form"
+              hx-target="#policy-editor-body"
+              hx-swap="innerHTML"
+              class="bg-green-600 text-white text-sm px-3 py-1 rounded hover:bg-green-700">
+        Confirm save
+      </button>
+    </form>
+    <a hx-get="/modules/policy-editor/{{ filename }}/edit"
+       hx-target="#policy-editor-body"
+       class="bg-slate-200 text-slate-800 text-sm px-3 py-1 rounded hover:bg-slate-300">
+      Cancel
+    </a>
+  </div>
+  {% endif %}
+</section>

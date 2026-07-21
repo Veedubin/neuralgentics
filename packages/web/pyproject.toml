@@ -60,6 +60,7 @@ where = ["src"]
     "shell/static/vendor/README.md",
     "modules/*/module.yaml",
     "modules/*/templates/*.html",
+    "modules/*/templates/*.yaml",
     "modules/*/static/*.css",
 ]
 
@@ -79,6 +80,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 "src/neuralgentics/web/modules/gateway_audit/routes.py" = ["B008"]
 "src/neuralgentics/web/modules/broker_audit/routes.py" = ["B008"]
 "src/neuralgentics/web/modules/memini_browser/routes.py" = ["B008"]
+"src/neuralgentics/web/modules/policy_editor/routes.py" = ["B008"]
 "tests/test_auth_*.py" = ["B008"]
 "tests/test_module_reload.py" = ["B008"]
 "tests/test_module_rbac.py" = ["B008"]

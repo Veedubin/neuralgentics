@@ -1,0 +1,17 @@
+# Default new-policy template (T-155).
+# A permissive starter: explicitly allow all traffic from all MCPs.
+# The gateway's default is already to allow (no Deny matched); this
+# policy makes the intent explicit so the operator can copy and add
+# Deny statements for the restrictions they actually want.
+version: "2026-07-20"
+statements:
+  - sid: "allow-everything"
+    effect: "Allow"
+    principals:
+      - "nrn:neuralgentics:mcp:*"
+    actions:
+      - "nrn:neuralgentics:http:*://**/**"
+      - "nrn:neuralgentics:tool:*:*"
+    resources:
+      - "nrn:neuralgentics:http:*://**/**"
+      - "nrn:neuralgentics:tool:*:*"

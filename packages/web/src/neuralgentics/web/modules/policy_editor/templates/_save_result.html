@@ -1,0 +1,36 @@
+{# Partial: save outcome (success / validation failure / error). #}
+<section class="space-y-4">
+  {% if saved %}
+  <div class="bg-green-50 border border-green-200 rounded p-3 text-sm text-green-800">
+    ✓ Saved <code class="font-mono">{{ filename }}</code>
+    {% if backup_path %}(backup at <code class="font-mono">{{ backup_path.name }}</code>){% endif %}.
+  </div>
+  {% else %}
+  <div class="bg-red-50 border border-red-200 rounded p-3 text-sm">
+    <strong class="text-red-800">Save blocked:</strong>
+    {% if errors %}
+    <ul class="list-disc list-inside mt-1 text-red-700 text-xs">
+      {% for e in errors %}
+      <li>
+        {% if e.statement_index >= 0 %}statement {{ e.statement_index }} · {% endif %}
+        <code class="font-mono">{{ e.field }}</code>: {{ e.message }}
+      </li>
+      {% endfor %}
+    </ul>
+    {% elif error %}
+    <p class="text-red-700 text-xs mt-1">{{ error }}</p>
+    {% else %}
+    <p class="text-red-700 text-xs mt-1">File already exists or unknown error.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+  <div class="flex gap-2 text-xs">
+    <a hx-get="/modules/policy-editor" hx-target="#policy-editor-body" class="text-slate-600">← Back to list</a>
+    {% if saved %}
+    <a hx-get="/modules/policy-editor/{{ filename }}" hx-target="#policy-editor-body" class="text-blue-600 underline">View</a>
+    <a hx-get="/modules/policy-editor/{{ filename }}/edit" hx-target="#policy-editor-body" class="text-blue-600 underline">Edit again</a>
+    {% elif filename %}
+    <a hx-get="/modules/policy-editor/{{ filename }}/edit" hx-target="#policy-editor-body" class="text-blue-600 underline">Back to editor</a>
+    {% endif %}
+  </div>
+</section>

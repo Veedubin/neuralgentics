@@ -1,0 +1,18 @@
+{# Partial: inline validation result, swapped into #validation-panel. #}
+{% if errors %}
+<div class="bg-red-50 border border-red-200 rounded p-3 text-sm">
+  <strong class="text-red-800">{{ errors|length }} validation error{{ '' if errors|length == 1 else 's' }}:</strong>
+  <ul class="list-disc list-inside mt-1 text-red-700 text-xs">
+    {% for e in errors %}
+    <li>
+      {% if e.statement_index >= 0 %}statement {{ e.statement_index }} · {% endif %}
+      <code class="font-mono">{{ e.field }}</code>: {{ e.message }}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% else %}
+<div class="bg-green-50 border border-green-200 rounded p-3 text-sm text-green-800">
+  ✓ YAML is valid against the gateway policy schema.
+</div>
+{% endif %}

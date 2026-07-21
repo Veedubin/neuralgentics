@@ -1,0 +1,43 @@
+<section class="space-y-4">
+  <div class="flex items-start justify-between">
+    <div>
+      <h2 class="text-xl font-bold">Edit {{ policy.filename }}</h2>
+      <p class="text-xs text-slate-600 mt-1">
+        Edit the YAML below. On save, the editor validates, shows a diff
+        preview, and writes the file atomically (with a .bak of the
+        current version).
+      </p>
+    </div>
+    <a hx-get="/modules/policy-editor/{{ policy.filename }}" hx-target="#policy-editor-body" class="text-slate-600 text-xs">← Cancel</a>
+  </div>
+
+  <form id="policy-edit-form" class="space-y-3">
+    <input type="hidden" name="filename" value="{{ policy.filename }}">
+    <div>
+      <label class="block text-xs text-slate-600 mb-1">YAML content</label>
+      <textarea name="content" rows="28"
+                class="w-full font-mono text-xs border border-slate-300 rounded p-2 bg-slate-50"
+                spellcheck="false">{{ policy.raw }}</textarea>
+    </div>
+    <div class="flex gap-2">
+      <button type="button"
+              hx-post="/modules/policy-editor/{{ policy.filename }}/validate"
+              hx-include="#policy-edit-form"
+              hx-target="#validation-panel"
+              hx-swap="innerHTML"
+              class="bg-slate-200 text-slate-800 text-sm px-3 py-1 rounded hover:bg-slate-300">
+        Validate
+      </button>
+      <button type="button"
+              hx-post="/modules/policy-editor/{{ policy.filename }}/preview"
+              hx-include="#policy-edit-form"
+              hx-target="#policy-editor-body"
+              hx-swap="innerHTML"
+              class="bg-blue-600 text-white text-sm px-3 py-1 rounded hover:bg-blue-700">
+        Preview &amp; Save
+      </button>
+    </div>
+  </form>
+
+  <div id="validation-panel" class="text-sm"></div>
+</section>

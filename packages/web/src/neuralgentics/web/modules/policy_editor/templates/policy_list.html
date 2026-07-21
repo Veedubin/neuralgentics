@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · neuralgentics-web{% endblock %}
+{% block content %}
+<section class="space-y-6">
+  <div class="flex items-start justify-between">
+    <div>
+      <h1 class="text-2xl font-bold">{{ title }}</h1>
+      <p class="text-sm text-slate-600 mt-1">
+        Manage gateway policy YAML files in <code class="font-mono">{{ policies_dir }}</code> ·
+        <span id="policy-count">{{ policies|length }}</span> file{{ '' if policies|length == 1 else 's' }}
+      </p>
+    </div>
+    <a hx-get="/modules/policy-editor/new"
+       hx-target="#policy-editor-body"
+       class="bg-blue-600 text-white text-sm px-3 py-1 rounded hover:bg-blue-700">
+      + New policy
+    </a>
+  </div>
+
+  <div id="policy-editor-body">
+    <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-100 text-slate-700 text-xs uppercase">
+          <tr>
+            <th class="text-left px-3 py-2">Name</th>
+            <th class="text-left px-3 py-2">Size</th>
+            <th class="text-left px-3 py-2">Modified (UTC)</th>
+            <th class="text-left px-3 py-2">Statements</th>
+            <th class="text-left px-3 py-2">Valid</th>
+            <th class="text-left px-3 py-2">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="policy-tbody">
+          {% for p in policies %}
+          <tr class="border-t border-slate-100">
+            <td class="px-3 py-2 font-mono">{{ p.filename }}</td>
+            <td class="px-3 py-2 font-mono text-xs">{{ p.size }} B</td>
+            <td class="px-3 py-2 font-mono text-xs">{{ p.mtime.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+            <td class="px-3 py-2 font-mono">{{ p.statement_count }}</td>
+            <td class="px-3 py-2">
+              {% if p.valid %}
+              <span class="text-xs px-2 py-0.5 rounded bg-green-100 text-green-800">valid</span>
+              {% else %}
+              <span class="text-xs px-2 py-0.5 rounded bg-red-100 text-red-800" title="{{ p.parse_error or '' }}">invalid</span>
+              {% endif %}
+            </td>
+            <td class="px-3 py-2 text-xs flex gap-3">
+              <a hx-get="/modules/policy-editor/{{ p.filename }}"
+                 hx-target="#policy-editor-body"
+                 class="text-blue-600 underline">view</a>
+              <a hx-get="/modules/policy-editor/{{ p.filename }}/edit"
+                 hx-target="#policy-editor-body"
+                 class="text-blue-600 underline">edit</a>
+              {% if p.has_backup %}
+              <a hx-get="/modules/policy-editor/{{ p.filename }}/history"
+                 hx-target="#policy-editor-body"
+                 class="text-blue-600 underline">history</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="px-3 py-8 text-center text-slate-400">
+            No policy files found in <code class="font-mono">{{ policies_dir }}</code>.
+            Click "+ New policy" to create one.
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-xs text-slate-500 mt-2">
+      The gateway loads <code class="font-mono">*.yaml</code> files from
+      <code class="font-mono">{{ policies_dir }}</code> at startup (T-150).
+      <code class="font-mono">*.yml</code> files are listed here for visibility but are
+      <strong>silently ignored</strong> by the gateway loader.
+    </p>
+  </div>
+</section>
+{% endblock %}

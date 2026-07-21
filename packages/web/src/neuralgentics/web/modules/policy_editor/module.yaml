@@ -1,0 +1,40 @@
+name: policy-editor
+version: 0.15.0
+display_name: "Policy Editor"
+description: "Edit gateway policy YAML files with validation + diff preview"
+author: Veedubin
+license: MIT
+rbac:
+  # T-111: per-module RBAC overrides. Policy editing is gated to
+  # operator + admin (the same two roles that can manage the gateway
+  # config). Reading a policy's contents is itself sensitive — it
+  # reveals what is allowed/denied — so the list/view/history actions
+  # share the operator+admin floor.
+  required_role: operator
+  actions:
+    view_list: [operator, admin]
+    view_policy: [operator, admin]
+    view_history: [operator, admin]
+    edit_policy: [operator, admin]
+    create_policy: [operator, admin]
+routes:
+  - path: /modules/policy-editor
+    method: GET
+    template: policy_list.html
+  - path: /modules/policy-editor/new
+    method: GET
+    template: policy_new.html
+  - path: /modules/policy-editor/{filename}
+    method: GET
+    template: policy_view.html
+  - path: /modules/policy-editor/{filename}/edit
+    method: GET
+    template: policy_edit.html
+  - path: /modules/policy-editor/{filename}/history
+    method: GET
+    template: policy_history.html
+api_endpoints: []
+data_sources:
+  - type: filesystem
+    mode: embedded
+    dir_env: NEURALGENTICS_POLICIES_DIR

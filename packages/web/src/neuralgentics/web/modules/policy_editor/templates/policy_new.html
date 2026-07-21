@@ -1,0 +1,35 @@
+<section class="space-y-4">
+  <h2 class="text-xl font-bold">New policy</h2>
+  <form id="policy-create-form" class="space-y-3">
+    <div>
+      <label class="block text-xs text-slate-600 mb-1">Filename (without extension, .yaml added)</label>
+      <input type="text" name="filename" required
+             class="w-full border border-slate-300 rounded px-2 py-1 font-mono text-sm"
+             placeholder="mcp-my-tool-restricted">
+    </div>
+    <div>
+      <label class="block text-xs text-slate-600 mb-1">Template</label>
+      <select name="template" class="w-full border border-slate-300 rounded px-2 py-1 text-sm">
+        <option value="default">default (allow-all starter)</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs text-slate-600 mb-1">Preview</label>
+      <textarea name="content" rows="20" readonly
+                class="w-full font-mono text-xs border border-slate-300 rounded p-2 bg-slate-50"
+                spellcheck="false">{{ template_content }}</textarea>
+    </div>
+    <div class="flex gap-2">
+      <button type="button"
+            hx-post="/modules/policy-editor/create"
+            hx-include="#policy-create-form"
+            hx-target="#policy-editor-body"
+            hx-swap="innerHTML"
+            class="bg-blue-600 text-white text-sm px-3 py-1 rounded hover:bg-blue-700">
+        Create
+      </button>
+      <a hx-get="/modules/policy-editor" hx-target="#policy-editor-body"
+         class="text-slate-600 text-sm">Cancel</a>
+    </div>
+  </form>
+</section>

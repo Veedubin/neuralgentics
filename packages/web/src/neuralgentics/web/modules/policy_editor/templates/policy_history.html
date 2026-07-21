@@ -1,0 +1,35 @@
+{# History view (T-156). One-level diff against the .bak file. #}
+<section class="space-y-4">
+  <div class="flex items-start justify-between">
+    <div>
+      <h2 class="text-xl font-bold">History: {{ filename }}</h2>
+      <p class="text-xs text-slate-600 mt-1">
+        Diff of current file vs. last-saved backup (<code class="font-mono">{{ backup_filename }}</code>).
+        One level of history is kept; each save overwrites the backup.
+      </p>
+    </div>
+    <a hx-get="/modules/policy-editor" hx-target="#policy-editor-body" class="text-slate-600 text-xs">← Back to list</a>
+  </div>
+
+  {% if backup_content is none %}
+  <div class="bg-slate-50 border border-slate-200 rounded p-3 text-sm text-slate-700">
+    No backup exists for this file yet. A <code class="font-mono">.bak</code> is created
+    automatically the first time you save an existing policy.
+  </div>
+  {% elif not diff_lines %}
+  <div class="bg-green-50 border border-green-200 rounded p-3 text-sm text-green-800">
+    The current file is byte-identical to its backup — no changes since the last save.
+  </div>
+  {% else %}
+  <div class="bg-slate-900 rounded p-3 overflow-x-auto">
+    <pre class="text-xs font-mono whitespace-pre"><code>{% for ln in diff_lines %}<span class="
+{%- if ln.kind == 'add' -%}text-green-300
+{%- elif ln.kind == 'del' -%}text-red-300
+{%- elif ln.kind == 'meta' -%}text-slate-400
+{%- else -%}text-slate-200
+{%- endif -%}
+">{% if ln.kind == 'add' %}+{% elif ln.kind == 'del' %}-{% elif ln.kind == 'meta' %}{{ ln.text }}{% else %} {% endif %}{{ ln.text if ln.kind != 'meta' else '' }}
+</span>{% endfor %}</code></pre>
+  </div>
+  {% endif %}
+</section>

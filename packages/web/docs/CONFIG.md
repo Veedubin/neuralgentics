@@ -101,6 +101,7 @@ looks for manifests. Individual modules read these env vars at runtime:
 | `NEURALGENTICS_AUDIT_FILE` | `gateway-audit` | `$TMPDIR/neuralgentics-audit.jsonl` | Path to the JSONL audit log (embedded mode only; team-server mode reads from Postgres). |
 | `NEURALGENTICS_BROKER_AUDIT_FILE` | `broker-audit` | `$TMPDIR/neuralgentics-broker-audit.jsonl` | Path to the JSONL broker-audit log (embedded mode only). |
 | `NEURALGENTICS_MEMINI_BACKEND` | `memini-browser` | `sdk` | Selects the memini backend: `sdk` (use the `memini_ai` SDK against a live `memini-ai` server), `pg` (team-server mode with a `db_url`, read from Postgres directly), or `mock` (no external service — used for tests and smoke mode). |
+| `NEURALGENTICS_POLICIES_DIR` | `policy-editor` | `~/.neuralgentics/policies` | Directory the policy editor reads/writes gateway policy YAML files. Matches the gateway's `policy.policies_dir` config block. |
 | `TMPDIR` | audit modules | `/tmp` | System temp dir, used as the fallback location for JSONL audit files when `NEURALGENTICS_*_AUDIT_FILE` is unset. |
 
 ### Logging
@@ -146,6 +147,7 @@ secrets; module-level env vars use `NEURALGENTICS_<MODULE>_*`.
 | `NEURALGENTICS_AUDIT_FILE` | `gateway-audit` (embedded mode only) | `$TMPDIR/neuralgentics-audit.jsonl` | Path to the JSONL audit log. Ignored in team-server mode (Postgres is used instead). |
 | `NEURALGENTICS_BROKER_AUDIT_FILE` | `broker-audit` (embedded mode only) | `$TMPDIR/neuralgentics-broker-audit.jsonl` | Path to the JSONL broker-audit log. Ignored in team-server mode. |
 | `NEURALGENTICS_MEMINI_BACKEND` | `memini-browser` | `sdk` | `sdk` / `pg` / `mock`. `mock` requires no external service — useful for smoke testing. |
+| `NEURALGENTICS_POLICIES_DIR` | `policy-editor` | `~/.neuralgentics/policies` | Directory the policy editor reads/writes gateway policy YAML files. Matches the gateway's `policy.policies_dir` config block. |
 | `TMPDIR` | audit modules | `/tmp` | System temp dir, used as the fallback location for JSONL audit files. |
 
 ### Planned env vars (not yet implemented)
@@ -251,7 +253,7 @@ embedded mode. Requests are anonymous; RBAC is not enforced.
 
 ### Reads from local files
 
-The three shipped modules read from local files (or mock data) in
+The four shipped modules read from local files (or mock data) in
 embedded mode:
 
 - `gateway-audit` — reads `$NEURALGENTICS_AUDIT_FILE` (default
@@ -261,6 +263,9 @@ embedded mode:
 - `memini-browser` — uses the `memini_ai` SDK against a local
   `memini-ai` server by default. Set `NEURALGENTICS_MEMINI_BACKEND=mock`
   for a no-external-service smoke mode.
+- `policy-editor` — reads/writes gateway policy YAML files from
+  `$NEURALGENTICS_POLICIES_DIR` (default `~/.neuralgentics/policies`,
+  matching the gateway's `policy.policies_dir`).
 
 Module manifests are loaded from the built-in
 `neuralgentics/web/modules/` directory (override via `--modules-path`).

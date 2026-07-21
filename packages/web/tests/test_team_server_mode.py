@@ -61,8 +61,8 @@ def test_team_server_modules_endpoint_requires_auth(tmp_path: Path) -> None:
     assert resp.headers["WWW-Authenticate"].startswith("Bearer")
 
 
-def test_team_server_modules_endpoint_lists_three_with_admin_token(tmp_path: Path) -> None:
-    """T-109 AC #6: admin JWT → /api/v1/modules returns 200 with 3 modules."""
+def test_team_server_modules_endpoint_lists_all_with_admin_token(tmp_path: Path) -> None:
+    """T-109 AC #6: admin JWT → /api/v1/modules returns 200 with 4 modules."""
     UserStore(tmp_path / "ts-users.db")  # pre-seed
     app = build_app(_config_no_db(tmp_path))
     tok = issue_access_token("admin", "admin", secret=SECRET)
@@ -70,4 +70,4 @@ def test_team_server_modules_endpoint_lists_three_with_admin_token(tmp_path: Pat
         resp = client.get("/api/v1/modules", headers={"Authorization": f"Bearer {tok}"})
     assert resp.status_code == 200
     data = resp.json()
-    assert data["total"] == 3
+    assert data["total"] == 4
