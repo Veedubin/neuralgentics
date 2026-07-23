@@ -128,14 +128,14 @@ memini-ai-dev supports team server mode with per-project PostgreSQL users, SSL/T
 
 Neuralgentics inherits all of memini-ai-dev's team server capabilities. The `--team` flag during `neuralgentics --init-homedir` or `--init-project` passes through to memini-ai-dev's installer.
 
-2. **Team server setup** (only if you chose team server):
-   - `1. Connect to an existing database` or `2. Connect to a new database`
+2. **Team server setup** (only if you chose team server) — connect-to-existing only:
    - Server IP/hostname (default: `localhost`)
-   - Port (default: `5432`)
+   - Port (default: `6200`, matching the shipped `docker-compose.yml`)
    - Database name (default: `neuralgentics`)
-   - Username (default: `postgres`)
+   - Username (default: `neuralgentics`)
    - Password (you enter)
    - Save credentials to `.env`? (default: yes)
+   - **Don't have a PostgreSQL server yet?** Run `npx @veedubin/neuralgentics --db-start` first — it ships a compose file + example env, brings the stack up, and offers to create your first database user. See the overlay README's "Team server mode (connect-to-existing)" section.
 
 3. **What embedding model should memini-ai use?**
    - `1. CPU` — Fast and lightweight, runs on any machine.
