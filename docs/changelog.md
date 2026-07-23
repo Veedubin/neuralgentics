@@ -5,7 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.15.14] - 2026-07-23
+## [0.15.16] - 2026-07-23
+
+### Changed
+
+- **Team mode no longer probes or migrates the database during install.** The installer now does ZERO database work for team mode: no `psql` probe, no `uvx --from memini-ai-dev memini-ai init` migration, no pass/fail `Database:` section. memini-ai auto-creates its schema (`CREATE EXTENSION/TABLE IF NOT EXISTS`) on first MCP launch against an external postgres, so install-time migration was unnecessary. Team mode install now just writes the config and prints an informational note:
+  ```
+  Team mode: no database changes were made.
+  memini-ai will create its tables automatically on first launch.
+  Make sure PostgreSQL is running before launching opencode.
+  (Need a local server? Run: neuralgentics --db-start)
+  ```
+  The install summary's `Database:` line for team mode is now a neutral `skipped (team mode — tables auto-create on first launch)` instead of a scary red ✗ `Cannot connect to PostgreSQL` block. Removes the confusing "Cannot connect" failure block for fresh installs where the server isn't running yet. The pgembed (built-in) path is unchanged — it still calls `bootstrapDatabase()` during install (the embedded init is harmless and makes first launch fast).
+
+### Removed
+
+- **Dead code: `testTeamConnection()` and the team branch of `bootstrapDatabase()`** removed from `db-setup.ts`. The `TeamDbConfig` interface is also removed. `bootstrapDatabase()` now takes a single `dryRun: boolean` parameter and only handles the pgembed path. No other code referenced the team branch or `TeamDbConfig` (verified via grep across the repo + tests).
+
+### Added
+
+- **`db-setup.test.ts`** — 8 new bun tests covering: pgembed `bootstrapDatabase` invokes `execSync` with `uvx --from memini-ai-dev memini-ai init` when `dryRun=false`; does NOT invoke `execSync` when `dryRun=true`; reports success/failure correctly; message includes pgembed data dir; `bootstrapDatabase.length === 1` (arity regression guard); `init.ts` team branch never calls `bootstrapDatabase` (static source guard); `init.ts` summary prints the "skipped" line for team mode. 79 total tests pass (was 71).
+
+## [0.15.15] - 2026-07-23
 
 ### Fixed
 

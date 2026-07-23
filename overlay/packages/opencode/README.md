@@ -214,11 +214,17 @@ Both stacks share the same `docker-compose.yml` — only the env file differs.
 Run `neuralgentics --db-start --db-user <name>` once per stack to create its
 first database user.
 
-### Team server mode (connect-to-existing)
+### Team server mode (connect-to-existing, config-only install)
 
 `--init-project` team mode is **connect-to-existing only**. The old
 "I'll create it" option (which was a no-op lie) has been removed. If you
 don't have a PostgreSQL server yet, run `neuralgentics --db-start` first.
+
+The installer **never touches the team database** — no probe, no migration,
+no pass/fail block. It just writes the config (DSN in `.env`) and prints an
+informational note. memini-ai auto-creates its tables (`CREATE EXTENSION/TABLE
+IF NOT EXISTS`) on first MCP launch, so install-time migration is unnecessary.
+Make sure PostgreSQL is running before launching opencode.
 
 ## What You Get
 

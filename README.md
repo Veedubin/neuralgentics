@@ -107,7 +107,7 @@ Installs to `./.opencode/` (or `--target <dir>`):
 - **Same agents, skills, AGENTS.md** as homedir (or project-specific overrides)
 - **Database setup**:
   - **Built-in (pgembed)**: Zero Docker. Uses a local Unix socket — no username or password needed. Data stored in `~/.local/share/memini-ai/pgembed/data`.
-  - **Team server**: Connects to a shared PostgreSQL. Asks for host, port, database name, username, and password. Saves credentials to `.env` if you want.
+  - **Team server**: Connects to a shared PostgreSQL. Asks for host, port, database name, username, and password. Saves credentials to `.env`. The installer does NOT probe or migrate the team database — it just writes the config. memini-ai auto-creates its tables on first launch. Make sure PostgreSQL is running before launching opencode (run `npx @veedubin/neuralgentics --db-start` if you need a local server).
 - **Offers to launch opencode** when done
 
 ## Interactive Prompts

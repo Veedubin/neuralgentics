@@ -41,7 +41,7 @@ import { runAllPrompts, DEFAULT_PROMPT_CONFIG, type PromptFlags, type PromptConf
 import { backupFile, type BackupRecord } from "./backup.js";
 import { preDownloadPackages, type PreDownloadResult } from "./install-packages.js";
 import { checkAndInstallSystemDeps, type SysDepsResult } from "./sysdeps.js";
-import { bootstrapDatabase, type BootstrapResult, type TeamDbConfig } from "./db-setup.js";
+import { bootstrapDatabase, type BootstrapResult } from "./db-setup.js";
 
 /**
  * Copy static assets (agent personas, skills, commands, AGENTS.md) from the npm
@@ -1669,24 +1669,20 @@ async function runInstall(
     args.dryRun,
   );
 
-  // DB bootstrap — ONLY for team server mode (pgembed manages its own DB)
+  // DB bootstrap — ONLY for pgembed (built-in mode's promise is zero-setup).
+  // Team mode does NOT touch the database: memini-ai auto-creates its tables
+  // on first MCP launch (CREATE EXTENSION/TABLE IF NOT EXISTS). We just write
+  // the config and print an informational note.
   let dbResult: BootstrapResult | null = null;
-  if (promptConfig.backend === "team" &&
-      promptConfig.teamHost !== undefined &&
-      promptConfig.teamPort !== undefined &&
-      promptConfig.teamDatabase !== undefined) {
-    process.stdout.write("\nSetting up team database connection...\n");
-    dbResult = await bootstrapDatabase(
-      promptConfig.backend,
-      {
-        host: promptConfig.teamHost,
-        port: promptConfig.teamPort,
-        database: promptConfig.teamDatabase,
-        user: promptConfig.teamUser,
-        password: promptConfig.teamPassword,
-      },
-      args.dryRun,
-    );
+  if (promptConfig.backend === "pgembed") {
+    process.stdout.write("\nSetting up built-in database...\n");
+    dbResult = await bootstrapDatabase(args.dryRun);
+  } else if (promptConfig.backend === "team") {
+    process.stdout.write("\n");
+    process.stdout.write("Team mode: no database changes were made.\n");
+    process.stdout.write("memini-ai will create its tables automatically on first launch.\n");
+    process.stdout.write("Make sure PostgreSQL is running before launching opencode.\n");
+    process.stdout.write("(Need a local server? Run: neuralgentics --db-start)\n");
   }
 
   // Print summary
@@ -1708,7 +1704,10 @@ async function runInstall(
   }
 
   // Database section
-  if (promptConfig.backend === "team" && dbResult !== null) {
+  if (promptConfig.backend === "team") {
+    process.stdout.write("\nDatabase:\n");
+    process.stdout.write("  skipped (team mode — tables auto-create on first launch)\n");
+  } else if (promptConfig.backend === "pgembed" && dbResult !== null) {
     process.stdout.write("\nDatabase:\n");
     if (dbResult.success) {
       process.stdout.write(`  ✓ ${dbResult.message}\n`);
@@ -1720,12 +1719,6 @@ async function runInstall(
           `      neuralgentics ${rerunCmd}\n`,
       );
     }
-  } else if (promptConfig.backend === "pgembed") {
-    process.stdout.write("\nDatabase:\n");
-    process.stdout.write("  ✓ Built-in database (pgembed)\n");
-    process.stdout.write("    Uses a local Unix socket — no username or password needed.\n");
-    process.stdout.write("    Data stored in ~/.local/share/memini-ai/pgembed/data\n");
-    process.stdout.write("    To switch to a team server later, re-run with --team\n");
   }
 
   process.stdout.write(`\nState:   ${configDir}/${STATE_FILENAME}\n`);
