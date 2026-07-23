@@ -34,11 +34,19 @@ import {
   resolveVersion,
   verifySha256,
 } from "./download.js";
-import { getHomedirConfigPath, getProjectConfigPath } from "./paths.js";
+import { getHomedirConfigPath, getProjectConfigPath, getOverridesDir } from "./paths.js";
 import { backupFile, type BackupRecord } from "./backup.js";
+import { mergePersonalizations } from "./personalizations.js";
 
 /** Name of the state file inside a config directory. */
 const STATE_FILENAME = ".neuralgentics-state.json";
+
+/**
+ * Tarball-relative path prefixes that must NEVER be overwritten by update.
+ * The `overrides/` directory is the user's personalization surface — update
+ * reads from it (to merge into `agents/`) but never writes to it.
+ */
+const NEVER_TOUCH_PREFIXES = ["overrides/"];
 
 /** Read chunk size for SHA256 computation (64 KiB). */
 const CHUNK_SIZE = 64 * 1024;
@@ -195,6 +203,12 @@ async function updateConfigDir(
 
   for (const src of newFiles) {
     const rel = path.relative(extractDir, src).split(path.sep).join("/");
+
+    // User personalization dir — never overwrite via tarball.
+    if (NEVER_TOUCH_PREFIXES.some((p) => rel.startsWith(p))) {
+      continue;
+    }
+
     const dest = path.join(configDir, rel);
 
     const newSha = await computeFileSha256(src);
@@ -232,6 +246,18 @@ async function updateConfigDir(
       last_known_shipped_sha256: newSha,
       merged: rel.endsWith("opencode.json") ? true : null,
     };
+  }
+
+  // Merge user personalizations from .opencode/overrides/ into the freshly
+  // updated default agent files. Safe no-op if no overrides directory exists.
+  const overridesDir = getOverridesDir(configDir);
+  const agentsDir = path.join(configDir, "agents");
+  const mergeResult = await mergePersonalizations(agentsDir, overridesDir, opts.dryRun);
+  if (mergeResult.merged > 0) {
+    process.stdout.write(`  ✓ Applied ${mergeResult.merged} user override(s) from overrides/\n`);
+  }
+  for (const w of mergeResult.warnings) {
+    process.stderr.write(`  ⚠ ${w}\n`);
   }
 
   // Write updated state file

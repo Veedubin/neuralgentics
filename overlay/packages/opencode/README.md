@@ -228,6 +228,38 @@ don't have a PostgreSQL server yet, run `neuralgentics --db-start` first.
 - **Self-Evolution**: Auto-creates skills from repeated session patterns.
 - **Kanban Board**: Tracks tasks in `TASKS.md` (triage, todo, ready, running, blocked, done, archived).
 
+## Personalizing Agents
+
+Neuralgentics supports **user overrides** to customize agent personas without losing your changes during updates. This is ideal for adding project-specific instructions, coding standards, or workflow preferences.
+
+### How It Works
+
+1. **Directory**: `.opencode/overrides/`
+2. **File Naming**: Create a file with the same name as an agent (e.g., `overrides/coder.md` for `agents/coder.md`).
+3. **Content**: Only the markdown body is appended to the default agent file. YAML frontmatter is stripped.
+4. **Preservation**: The `overrides/` directory is never modified by Neuralgentics updates.
+5. **Idempotent**: Re-running `--init` or `--update` does not double-append your overrides.
+
+### Example
+
+Create `.opencode/overrides/coder.md`:
+
+```markdown
+## Project-Specific Standards
+
+- Use TypeScript for all new frontend features.
+- Prefer functional components over class components.
+- Always include JSDoc comments for public APIs.
+- Run `bun run lint --fix` before committing.
+```
+
+After running `npx @veedubin/neuralgentics --init` or `--update`, the `coder.md` agent file will include your custom instructions at the bottom.
+
+### Notes
+
+- Orphaned overrides (no matching agent) produce a warning but are preserved.
+- Overrides are **user-owned** — they persist across updates and are never overwritten.
+
 ## License
 
 MIT

@@ -34,7 +34,8 @@ import {
   ExtractionFailed,
   VersionNotFound,
 } from "./download.js";
-import { getHomedirConfigPath, getProjectConfigPath, getBackupDir } from "./paths.js";
+import { getHomedirConfigPath, getProjectConfigPath, getBackupDir, getOverridesDir } from "./paths.js";
+import { mergePersonalizations, type MergeResult } from "./personalizations.js";
 import { HOMEDIR_MCP_TEMPLATES, PROJECT_MCP_TEMPLATES, type McpBlock } from "./mcp-templates.js";
 import { runAllPrompts, DEFAULT_PROMPT_CONFIG, type PromptFlags, type PromptConfig, type BackendMode, type EmbeddingMode } from "./prompts.js";
 import { backupFile, type BackupRecord } from "./backup.js";
@@ -184,6 +185,30 @@ async function copyStaticAssets(
 }
 
 /**
+ * Merge user personalizations from `.opencode/overrides/` into the freshly
+ * copied default agent files, then log the result.
+ *
+ * Called after `copyStaticAssets()` (two-init flow) and after `placeFiles()`
+ * (legacy `runInit` flow). Safe to call when the overrides directory does not
+ * exist — `mergePersonalizations` returns a zero-result in that case.
+ */
+async function applyOverrides(
+  configDir: string,
+  dryRun: boolean,
+): Promise<MergeResult> {
+  const overridesDir = getOverridesDir(configDir);
+  const agentsDir = path.join(configDir, "agents");
+  const mergeResult = await mergePersonalizations(agentsDir, overridesDir, dryRun);
+  if (mergeResult.merged > 0) {
+    process.stdout.write(`  ✓ Applied ${mergeResult.merged} user override(s) from overrides/\n`);
+  }
+  for (const w of mergeResult.warnings) {
+    process.stderr.write(`  ⚠ ${w}\n`);
+  }
+  return mergeResult;
+}
+
+/**
  * Local base class for init-flow errors. Extends the download module's
  * `NeuralgenticsError` so all CLI errors share a single `instanceof` root
  * (callers only need to import from `init.js`).
@@ -234,6 +259,14 @@ const COPY_IF_ABSENT_WARN = [
   ".opencode/.gitignore",
   ".opencode/package-lock.json",
 ];
+
+/**
+ * Tarball paths that must NEVER be overwritten by init/update, even if the
+ * tarball happens to ship an entry under them. The `overrides/` directory
+ * is the user's personalization surface — init/update read from it (to merge
+ * into `agents/`) but never write to it.
+ */
+const NEVER_TOUCH_PREFIXES = [".opencode/overrides/"];
 
 /** Paths that are never a safe init target unless `--force` is set. */
 const SCARY_PATHS = new Set(["/", "/tmp", "/tmp/"]);
@@ -593,6 +626,12 @@ export async function runInit(args: InitOptions): Promise<number> {
   // 8. Place files per the file-placement table.
   const manifest = await placeFiles(extractDir, target, version, force, backupPathStr);
 
+  // 8b. Merge user personalizations from .opencode/overrides/ into the
+  //     freshly placed default agent files. Safe no-op if no overrides dir.
+  if (!dryRun) {
+    await applyOverrides(path.join(target, ".opencode"), false);
+  }
+
   // 9. Run npm install.
   await runNpmInstall(path.join(target, ".opencode"));
 
@@ -681,6 +720,10 @@ async function downloadAndExtract(version: string, repo: string): Promise<string
 
 /** Classify a tarball-relative path into its destination relative to target. */
 function classifyDestination(rel: string): string | null {
+  // User personalization dir — never touched by tarball placement.
+  for (const prefix of NEVER_TOUCH_PREFIXES) {
+    if (rel.startsWith(prefix)) return null;
+  }
   if (COPY_IF_ABSENT.includes(rel) || COPY_IF_ABSENT_WARN.includes(rel) || MERGE_FILES.includes(rel)) {
     return rel;
   }
@@ -1615,6 +1658,9 @@ async function runInstall(
 
   // Copy agent personas, skills, AGENTS.md from the npm package
   const assets = await copyStaticAssets(configDir, args.dryRun || false);
+
+  // Merge user personalizations from .opencode/overrides/ (after defaults land)
+  await applyOverrides(configDir, args.dryRun || false);
 
   // Pre-download MCP packages (both modes)
   process.stdout.write("\nPre-downloading MCP packages...\n");

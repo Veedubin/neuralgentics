@@ -52,6 +52,21 @@ export function getBackupDir(basePath: string): string {
 }
 
 /**
+ * Returns the user personalization overrides directory for a config dir.
+ *
+ * `.opencode/overrides/` holds user-authored `.md` files named the same as
+ * default agent personas (e.g. `coder.md`). On init/update, each override's
+ * body (YAML frontmatter stripped) is appended to the bottom of the matching
+ * default agent file. The overrides directory itself is NEVER written to
+ * by init or update — it is read-only from the installer's perspective.
+ *
+ * @param configDir — the config directory (homedir or project `.opencode/`)
+ */
+export function getOverridesDir(configDir: string): string {
+  return path.join(configDir, "overrides");
+}
+
+/**
  * Returns a timestamped backup file path inside `backupDir`.
  *
  * Filename format: `{originalName}-{ISO-timestamp-with-ms}.json`

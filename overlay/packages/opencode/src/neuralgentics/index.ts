@@ -14,6 +14,8 @@ export { GoBackendClient } from "./go-backend-client.js";
 export { ROUTING_MATRIX, validateAgentRouting, getPrimaryAgent } from "./routing.js";
 export { StatelessProtocol } from "./stateless.js";
 export { NeuralgenticsUpdater } from "./updater.js";
+export { mergePersonalizations, stripYamlFrontmatter } from "./personalizations.js";
+export type { MergeResult } from "./personalizations.js";
 export type {
   AgentDefinition,
   RoutingRule,
