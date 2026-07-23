@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.14] - 2026-07-23
+
+### Fixed
+
+- Stale team-mode copy in the root `README.md`. v0.15.13 ships `connect-to-existing` only (the misleading "Connect to a new database" sub-choice was removed — it was a no-op lie). The root README's "Team server setup" section still described the old two-option prompt and used pre-v0.15.13 defaults (port 5432, user `postgres`). It now reflects the v0.15.13 reality: connect-to-existing only, port `6200`, user `neuralgentics`. The overlay README + shipped `AGENTS.md` + changelog were already updated in v0.15.13; this is the matching fix in the root README.
+
 ## [0.15.13] - 2026-07-22
 
 ### Changed
