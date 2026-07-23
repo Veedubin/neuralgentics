@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.12] - 2026-07-22
+
+### Changed
+
+- **Skills renamed: `boomerang-` prefix dropped from shipped skills.** `boomerang-handoff` → `handoff`, `boomerang-orchestrator` → `orchestrator`. Frontmatter `name:` updated; cross-references in `skill-self-audit` and `update-gh-docs` updated. Both `overlay/packages/opencode/.opencode/skills/` and `.opencode/skills/` updated and kept diff-identical.
+
+### Added
+
+- **Slash commands** — `.opencode/commands/` now ships 7 slash-command files: `handoff.md`, `orchestrator.md`, `kanban-board-manager.md`, `skill-self-audit.md`, `todo-list-updater.md`, `update-gh-docs.md`, `external-skills-fetcher.md`. Users can now type `/handoff`, `/orchestrator`, etc. The installer (`init.ts`) copies the commands directory alongside agents and skills.
+- **Shipped AGENTS.md documents the videre-mcp vision tools** — new `## Vision (videre-mcp)` section in `overlay/packages/opencode/.opencode/AGENTS.md` listing the 6 base tools (`take_screenshot`, `describe_screenshot`, `describe_image`, `ocr_image`, `ocr_paddle`, `parse_document`), a "when to reach for vision" mandate, and the optional vision-memory tools gated on `MEMINI_IMAGE_SEARCH_ENABLED`.
+
+### References
+
+- README, AGENTS.md, `routing.ts`, `context_builder.go`, and `improve_test.go` updated to use the plain skill names.
+
+### Housekeeping
+
+- Version sync: root `package.json`, `packages/tui/package.json`, and `scripts/install.sh DEFAULT_VERSION` had drifted to 0.12.2 since v0.12.2 and were not updated by bumpversion (which only tracks the canonical `overlay/packages/opencode/package.json`). All three are now at 0.15.12. `validate-release.sh` previously passed despite this drift because the drift check only ran in `--check` mode; the script's hard fail on version disagreement caught it here.
+
 ## [0.15.11] - 2026-07-21
 
 ### Changed
@@ -284,7 +303,7 @@ Minor release: Skills Brokering + Auto-Evolution (Phases 1-3, 13 cards T-SB-001 
 
 - **Phase 1 — Skills Brokering wire-up (T-SB-001 through T-SB-007)**:
   - Default `auto_create=true` in `SelfEvolutionGate`; `gate.run({autoCreate: true})` is invoked BEFORE `handleCompaction` in the compaction hook so newly-created SKILL.md files are captured in backups.
-  - `//boomerang-handoff` skill (NEW) — runs the self-evolution gate, then updates HANDOFF.md + TASKS.md, then commits new SKILL.md files.
+  - `/handoff` skill (NEW) — runs the self-evolution gate, then updates HANDOFF.md + TASKS.md, then commits new SKILL.md files.
   - Go `SkillCatalog` (in `packages/broker-go/src/neuralgentics/broker/catalog/skills.go`) — mirrors `ServerCatalog` shape. `Builder.BuildSkills(role, workspaceRoot)` walks `.opencode/skills/*/SKILL.md`, parses front-matter, merges tags via hybrid YAML baseline + front-matter override. Orchestrator sees all; missing YAML = allow-all.
   - `broker.listSkills(role)` JSON-RPC method (parallel to `broker.buildCatalog`).
   - `agent-skill-scope.yaml` at repo root — per-role allow-list of skill tags. 23 role entries matching the Role constants in `access.go`.

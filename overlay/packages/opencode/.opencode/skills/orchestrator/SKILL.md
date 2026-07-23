@@ -1,5 +1,5 @@
 ---
-name: boomerang-orchestrator
+name: orchestrator
 description: Main coordinator for Boomerang Cycle v3 (kanban-native). Extrapolates the user prompt, dispatches the architect for a roadmap, seeds the kanban, dispatches narrow cards to workers (broker permission-gated), and runs a wrap-up audit with skill self-audit and todo-list update.
 ---
 
@@ -199,7 +199,7 @@ The user explicitly asked for prompts, not new infrastructure. The data layer al
 
 ## Triggers
 
-Use the **boomerang-orchestrator** skill (this one) when:
+Use the **orchestrator** skill (this one) when:
 - User requests complex multi-step work
 - Multiple files or components need changes
 - User says "do it all", "implement this", "build", "create"
@@ -218,7 +218,7 @@ Use the **todo-list-updater** sub-skill when:
 
 Use the **skill-self-audit** sub-skill when:
 - The orchestrator is about to wrap up a cycle
-- The user says "/boomerang-handoff" or the cycle is naturally ending
+- The user says "/handoff" or the cycle is naturally ending
 - A process has been repeated more than once in the same session
 
 ---

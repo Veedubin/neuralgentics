@@ -22,7 +22,7 @@ So this skill is built in.
 ## When to Use This Skill
 
 - The orchestrator is about to wrap up a cycle (every cycle)
-- The user says "/boomerang-handoff" or the cycle is naturally ending
+- The user says "/handoff" or the cycle is naturally ending
 - A session is being terminated
 - The user explicitly invokes "skill audit" or "self-audit"
 
@@ -110,7 +110,7 @@ The audit returns a single Markdown block:
   - Tracked as: T-XXX on the kanban board
 
 ### No Action Needed
-- <one-liner per non-issue, e.g. "The Context Package template is already in boomerang-orchestrator SKILL.md">
+- <one-liner per non-issue, e.g. "The Context Package template is already in orchestrator SKILL.md">
 
 ### Cycle Summary
 - Total actions reviewed: N

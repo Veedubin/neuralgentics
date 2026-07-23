@@ -43,34 +43,37 @@ import { checkAndInstallSystemDeps, type SysDepsResult } from "./sysdeps.js";
 import { bootstrapDatabase, type BootstrapResult, type TeamDbConfig } from "./db-setup.js";
 
 /**
- * Copy static assets (agent personas, skills, AGENTS.md) from the npm
+ * Copy static assets (agent personas, skills, commands, AGENTS.md) from the npm
  * package directory to the target config directory.
  *
- * The npm package ships `.opencode/agents/`, `.opencode/skills/`, and
- * `.opencode/AGENTS.md` alongside `dist/`. When the CLI runs via `npx`,
- * `__dirname` points to `dist/` inside the extracted package, so
- * `path.join(__dirname, "..", ".opencode")` finds the bundled assets.
+ * The npm package ships `.opencode/agents/`, `.opencode/skills/`,
+ * `.opencode/commands/`, and `.opencode/AGENTS.md` alongside `dist/`. When
+ * the CLI runs via `npx`, `__dirname` points to `dist/` inside the extracted
+ * package, so `path.join(__dirname, "..", ".opencode")` finds the bundled
+ * assets.
  *
  * Files are copied with SHA-256 idempotency — existing files with
  * identical content are skipped (no backup created). Modified files
  * are backed up before overwrite.
  *
- * Returns the count of agents, skills, and AGENTS.md status.
+ * Returns the count of agents, skills, commands, and AGENTS.md status.
  */
 async function copyStaticAssets(
   targetDir: string,
   dryRun: boolean,
-): Promise<{ agents: number; skills: number; agentsMd: boolean }> {
+): Promise<{ agents: number; skills: number; commands: number; agentsMd: boolean }> {
   // Find the bundled .opencode directory (sibling of dist/, two levels up from init.js)
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
   const bundledOpencode = path.join(__dirname, "..", "..", ".opencode");
   const bundledAgents = path.join(bundledOpencode, "agents");
   const bundledSkills = path.join(bundledOpencode, "skills");
+  const bundledCommands = path.join(bundledOpencode, "commands");
   const bundledAgentsMd = path.join(bundledOpencode, "AGENTS.md");
 
   let agentCount = 0;
   let skillCount = 0;
+  let commandCount = 0;
   let agentsMdCopied = false;
 
   // Copy agent personas
@@ -136,6 +139,36 @@ async function copyStaticAssets(
     }
   }
 
+  // Copy commands (slash-command markdown files)
+  if (existsSync(bundledCommands)) {
+    const targetCommands = path.join(targetDir, "commands");
+    await fs.mkdir(targetCommands, { recursive: true });
+    const files = await fs.readdir(bundledCommands);
+    for (const file of files) {
+      if (!file.endsWith(".md")) continue;
+      const src = path.join(bundledCommands, file);
+      const dest = path.join(targetCommands, file);
+      const srcContent = await fs.readFile(src, "utf-8");
+      const srcHash = createHash("sha256").update(srcContent).digest("hex");
+      if (existsSync(dest)) {
+        const destContent = await fs.readFile(dest, "utf-8");
+        const destHash = createHash("sha256").update(destContent).digest("hex");
+        if (srcHash === destHash) {
+          commandCount++;
+          continue; // Identical, skip
+        }
+        // Different — back up then overwrite
+        if (!dryRun) {
+          await backupFile(targetCommands, file);
+          await fs.writeFile(dest, srcContent, "utf-8");
+        }
+      } else {
+        if (!dryRun) await fs.writeFile(dest, srcContent, "utf-8");
+      }
+      commandCount++;
+    }
+  }
+
   // Copy AGENTS.md (only if it doesn't exist — don't overwrite user's)
   if (existsSync(bundledAgentsMd)) {
     const destAgentsMd = path.join(targetDir, "AGENTS.md");
@@ -147,7 +180,7 @@ async function copyStaticAssets(
     }
   }
 
-  return { agents: agentCount, skills: skillCount, agentsMd: agentsMdCopied };
+  return { agents: agentCount, skills: skillCount, commands: commandCount, agentsMd: agentsMdCopied };
 }
 
 /**
@@ -184,6 +217,7 @@ const COPY_IF_ABSENT = [
 const COPY_TREE_PREFIXES = [
   ".opencode/agents/",
   ".opencode/skills/",
+  ".opencode/commands/",
   "docker/",
   "node_modules/@veedubin/neuralgentics/",
 ];
@@ -878,6 +912,14 @@ function printSuccessSummary(
   } catch {
     skills = 0;
   }
+  const commandsDir = path.join(extractDir, ".opencode", "commands");
+  let commands = 0;
+  try {
+    const entries = require("node:fs").readdirSync(commandsDir) as string[];
+    commands = entries.filter((e) => e.endsWith(".md")).length;
+  } catch {
+    commands = 0;
+  }
   const statePath = path.join(target, ".opencode", STATE_FILENAME);
   const useColor = shouldUseColor();
   const check = useColor ? "\u2713" : "OK";
@@ -889,6 +931,7 @@ function printSuccessSummary(
       `Config:  ${target}/.opencode/opencode.json\n` +
       `Agents:  ${agents} personas\n` +
       `Skills:  ${skills} skills\n` +
+      `Commands: ${commands} slash commands\n` +
       `State:   ${statePath}\n` +
       backupLine +
       `\n` +
@@ -1607,6 +1650,7 @@ async function runInstall(
   process.stdout.write(`Embed:   ${promptConfig.embedding}\n`);
   process.stdout.write(`Agents:  ${assets.agents} personas\n`);
   process.stdout.write(`Skills:  ${assets.skills} skills\n`);
+  process.stdout.write(`Commands: ${assets.commands} slash commands\n`);
 
   // Packages installed section
   process.stdout.write("\nPackages installed:\n");

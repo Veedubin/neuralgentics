@@ -59,6 +59,33 @@ Agents must state their intent clearly in their thought process. The orchestrato
 ## External Tools
 For web research, GitHub operations, or other external integrations, describe the required capability. The MCP Broker will provision the relevant tools for the session.
 
+## Vision (videre-mcp)
+
+`videre-mcp` is **enabled by default** in the homedir MCP load (command `uvx videre-mcp[vision]`). It gives text-only models eyes via **Florence-2** (image captioning, OCR, region detection), **PaddleOCR** (production-grade multi-language OCR), and **Docling** (PDF/DOCX/PPTX parsing). Agents do not need to be vision models to use it — the tools return text that any model can read. If a task requires seeing something — a screenshot, a UI state, a diagram, a scanned document — the agent **MUST** use videre-mcp instead of asking the user to describe it or guessing from markup alone.
+
+### Tools
+
+| Tool | When to use it |
+|------|----------------|
+| `take_screenshot` | Capture the screen (all monitors or one) and optionally describe the UI regions. Use to debug frontend/UI issues without asking the user what they see. |
+| `describe_screenshot` | Describe UI regions in a screenshot the user pasted or you captured. Returns bounding boxes + labels per region. |
+| `describe_image` | Natural-language caption of any image (PNG/JPEG/SVG). `detail_level: "high"` for a verbose caption; `model_mode: "deep"` for MiniCPM-V (better documents). |
+| `ocr_image` | Extract text from an image via Florence-2. `detail_level: "high"` adds bounding regions. |
+| `ocr_paddle` | Production OCR via PaddleOCR (100+ languages, rotated-text correction). Prefer this over `ocr_image` for scanned docs, multi-language text, or high-volume extraction. |
+| `parse_document` | Parse PDF/DOCX/PPTX/HTML/MD/XLSX/images into structured Markdown/JSON/text/HTML via Docling. Extracts tables, formulas, and embedded images. |
+
+### When to reach for vision
+
+- **Debugging UI/frontend** — `take_screenshot` then `describe_screenshot` to see what's actually rendered, not what the markup says.
+- **Reading diagrams/screenshots the user pastes** — `describe_image` or `describe_screenshot` to extract the visual content as text.
+- **Extracting text from images or scanned docs** — `ocr_paddle` for accuracy and language coverage; `ocr_image` for a quick Florence-2 pass.
+- **Parsing PDFs/DOCX/PPTX into structured markdown** — `parse_document` (tables, formulas, layout-aware).
+- **Verifying a rendered page/document looks right** — capture or open the artifact, then describe/OCR it and compare against expectations.
+
+### Vision memory (optional)
+
+When `MEMINI_IMAGE_SEARCH_ENABLED=true` (gated in the homedir config) and the `memini-vision` package is installed, three additional tools are registered: `save_image_memory` (store a screenshot/image with a CLIP embedding), `query_images` (cross-modal text→image search), and `get_image` (retrieve image metadata by ID). Agents can save screenshots as searchable memories and recall them later — useful for building a visual history of debugging sessions.
+
 ## Quality Gates
 All code changes must pass the automatic quality gate before being marked as complete:
 **Lint** $\rightarrow$ **Typecheck** $\rightarrow$ **Test**

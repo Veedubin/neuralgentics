@@ -1,6 +1,6 @@
 ---
-name: boomerang-handoff
-description: End-of-session wrap-up. Runs the self-evolution gate (auto-create), then updates HANDOFF.md + TASKS.md, then commits any new SKILL.md files. Invoke via `//boomerang-handoff`.
+name: handoff
+description: End-of-session wrap-up. Runs the self-evolution gate (auto-create), then updates HANDOFF.md + TASKS.md, then commits any new SKILL.md files. Invoke via `/handoff`.
 tags:
   - handoff
   - session
@@ -12,7 +12,7 @@ tags:
 
 ## When to Invoke
 
-At the **end of every session**, or when the user explicitly requests `//boomerang-handoff`. This skill wraps up the session, runs the self-evolution gate to auto-create skills from repeated patterns, updates documentation, and commits any new artifacts.
+At the **end of every session**, or when the user explicitly requests `/handoff`. This skill wraps up the session, runs the self-evolution gate to auto-create skills from repeated patterns, updates documentation, and commits any new artifacts.
 
 ## Preconditions
 

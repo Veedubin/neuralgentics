@@ -143,7 +143,7 @@ const DEFAULT_AGENT_CONFIGS: Record<string, AgentConfig> = {
   'boomerang': {
     id: 'boomerang',
     name: 'Boomerang Orchestrator',
-    skill: 'boomerang-orchestrator',
+    skill: 'orchestrator',
     model: 'kimi-k2.6:cloud',
     permissions: {
       'memoryManager_query_memories': 'allow',

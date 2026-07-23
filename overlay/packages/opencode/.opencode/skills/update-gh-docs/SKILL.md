@@ -201,6 +201,6 @@ Use **Gemma** for routine doc updates (formatting, link checks, version bumps). 
 
 - `boomerang-writer` is the primary agent for this skill.
 - The orchestrator invokes it as part of the release-card workflow.
-- The skill can also be invoked manually when the user says "update the docs" or "/boomerang-handoff" if a release is imminent.
+- The skill can also be invoked manually when the user says "update the docs" or "/handoff" if a release is imminent.
 
 *(Added 2026-06-05 Session 23. Prior to this, doc updates were ad-hoc. This skill formalizes the checklist and ties it to the release-card workflow so docs are NEVER out of sync with the code at tag time.)*

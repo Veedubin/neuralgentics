@@ -474,7 +474,7 @@ func resolveSkillContent(agent AgentRole) string {
 // agentRoleToSkillName maps an AgentRole to the corresponding skill name.
 func agentRoleToSkillName(agent AgentRole) string {
 	mapping := map[AgentRole]string{
-		AgentOrchestrator:  "boomerang-orchestrator",
+		AgentOrchestrator:  "orchestrator",
 		AgentArchitect:     "boomerang-architect",
 		AgentCoder:         "boomerang-coder",
 		AgentReviewer:      "boomerang-architect", // reviewer uses architect skill

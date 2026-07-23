@@ -196,8 +196,8 @@ func TestComputeConfigFingerprint_AGENTSmd(t *testing.T) {
 		t.Fatalf("WriteFile opencode.json: %v", err)
 	}
 
-	// Write .opencode/skills/boomerang-orchestrator/SKILL.md
-	skillsDir := filepath.Join(opencodeDir, "skills", "boomerang-orchestrator")
+	// Write .opencode/skills/orchestrator/SKILL.md
+	skillsDir := filepath.Join(opencodeDir, "skills", "orchestrator")
 	if err := os.MkdirAll(skillsDir, 0755); err != nil {
 		t.Fatalf("MkdirAll skills: %v", err)
 	}

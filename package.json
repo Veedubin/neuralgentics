@@ -1,6 +1,6 @@
 {
   "name": "@neuralgentics/root",
-  "version": "0.12.2",
+  "version": "0.15.12",
   "description": "Neuralgentics — coding agent built on OpenCode",
   "private": true,
   "type": "module",

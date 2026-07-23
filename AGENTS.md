@@ -154,7 +154,8 @@ The old curl-bash installer (`curl -fsSL https://raw.githubusercontent.com/Veedu
 ### What's in the archive
 - `@veedubin/neuralgentics` — npm package providing the OpenCode plugin (orchestrator, memory client, routing)
 - `.opencode/agents/` — 12 agent personas (orchestrator, architect, coder, explorer, tester, reviewer, linter, git, writer, researcher, release, agent-builder)
-- `.opencode/skills/` — 5 skills (boomerang-orchestrator, kanban-board-manager, skill-self-audit, todo-list-updater, update-gh-docs)
+- `.opencode/skills/` — 7 skills (orchestrator, handoff, kanban-board-manager, skill-self-audit, todo-list-updater, update-gh-docs, external-skills-fetcher)
+- `.opencode/commands/` — 7 slash commands (`/handoff`, `/orchestrator`, `/kanban-board-manager`, `/skill-self-audit`, `/todo-list-updater`, `/update-gh-docs`, `/external-skills-fetcher`)
 - `.opencode/opencode.json` — OpenCode config with Ollama Cloud models, MCP servers, LSP, formatter
 - `.opencode/AGENTS.md` — Project instructions and agent protocol
 - `docker-compose.yml` + `docker/*.Dockerfile` — Container stack for memory backend

@@ -93,7 +93,8 @@ Installs to `~/.config/opencode/` (Linux) or `~/Library/Application Support/open
 - **Provider config** — Ollama Cloud with 10 models pre-configured
 - **9 MCP server templates** — videre-mcp enabled, rest disabled (enable what you need)
 - **12 agent personas** — orchestrator, architect, coder, explorer, tester, reviewer, linter, git, writer, researcher, release, agent-builder
-- **7 skills** — kanban-board-manager, todo-list-updater, skill-self-audit, boomerang-orchestrator, boomerang-handoff, external-skills-fetcher, update-gh-docs
+- **7 skills** — kanban-board-manager, todo-list-updater, skill-self-audit, orchestrator, handoff, external-skills-fetcher, update-gh-docs
+- **7 slash commands** — `/handoff`, `/orchestrator`, `/kanban-board-manager`, `/skill-self-audit`, `/todo-list-updater`, `/update-gh-docs`, `/external-skills-fetcher`
 - **AGENTS.md** — project instructions and agent protocol
 - **Pre-downloads all MCP packages** via `uvx`/`npx` so first launch is fast
 

@@ -7,7 +7,8 @@ Neuralgentics OpenCode Plugin — Multi-agent orchestration with trust-weighted 
 This npm package provides the Neuralgentics plugin for [OpenCode](https://github.com/modelcontextprotocol/opencode). It includes:
 
 - **8 agent personas**: architect, coder, explorer, git, orchestrator, reviewer, tester, writer
-- **5 skills**: boomerang-orchestrator, kanban-board-manager, skill-self-audit, todo-list-updater, update-gh-docs
+- **7 skills**: orchestrator, handoff, kanban-board-manager, skill-self-audit, todo-list-updater, update-gh-docs, external-skills-fetcher
+- **7 slash commands**: `/handoff`, `/orchestrator`, `/kanban-board-manager`, `/skill-self-audit`, `/todo-list-updater`, `/update-gh-docs`, `/external-skills-fetcher`
 - **MCP tools**: memory save/query, compaction backup/restore, stateless agent dispatch, self-evolution gate
 - **Lifecycle hooks**: `session.created`, `session.idle`, `session.compacting`
 - **Config merger**: Injects Neuralgentics version and memory URL into OpenCode config
