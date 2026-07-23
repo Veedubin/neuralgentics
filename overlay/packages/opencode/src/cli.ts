@@ -33,6 +33,8 @@ interface ParsedArgs {
   update: boolean;
   updateProject: boolean;
   updateHomedir: boolean;
+  dbStart: boolean;
+  dbStop: boolean;
   embedded: boolean;
   team: boolean;
   cpuEmbed: boolean;
@@ -59,6 +61,9 @@ interface ParsedArgs {
   batch: number; // batch size (default: 10)
   backup: boolean; // preserve old vectors (default: true)
   dryRunMigrate: boolean; // --dry-run for migrate (distinct from init --dry-run)
+  // First-user bootstrap flags (v0.15.13+) — drive --db-start's user creation.
+  dbUser: string | undefined;
+  dbPassword: string | undefined;
   command: string | undefined;
 }
 
@@ -69,6 +74,8 @@ function parseArgv(argv: string[]): ParsedArgs {
       init: { type: "boolean", default: false },
       "init-homedir": { type: "boolean", default: false },
       "init-project": { type: "boolean", default: false },
+      "db-start": { type: "boolean", default: false },
+      "db-stop": { type: "boolean", default: false },
       update: { type: "boolean", default: false },
       "update-project": { type: "boolean", default: false },
       "update-homedir": { type: "boolean", default: false },
@@ -98,6 +105,9 @@ function parseArgv(argv: string[]): ParsedArgs {
       to: { type: "string" },
       batch: { type: "string" }, // numeric, parsed below
       "no-backup": { type: "boolean", default: false },
+      // First-user bootstrap flags (v0.15.13+) for --db-start.
+      "db-user": { type: "string" },
+      "db-password": { type: "string" },
     },
     allowPositionals: true,
   });
@@ -110,6 +120,7 @@ function parseArgv(argv: string[]): ParsedArgs {
   const positionals: string[] = [];
   const knownFlags = new Set([
     "--init", "--init-homedir", "--init-project",
+    "--db-start", "--db-stop",
     "--update", "--update-project", "--update-homedir",
     "--embedded", "--team",
     "--CPU-Embed", "--Auto-Embed", "--GPU-Embed",
@@ -121,6 +132,7 @@ function parseArgv(argv: string[]): ParsedArgs {
     "--quantize", "--embed-dtype", "--device", "--idle-min", "--status-port",
     "--embed-model",
     "--from", "--to", "--batch",
+    "--db-user", "--db-password",
   ]);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -138,6 +150,8 @@ function parseArgv(argv: string[]): ParsedArgs {
     init: values.init === true,
     initHomedir: values["init-homedir"] === true,
     initProject: values["init-project"] === true,
+    dbStart: values["db-start"] === true,
+    dbStop: values["db-stop"] === true,
     update: values.update === true,
     updateProject: values["update-project"] === true,
     updateHomedir: values["update-homedir"] === true,
@@ -165,6 +179,8 @@ function parseArgv(argv: string[]): ParsedArgs {
     batch: parseInt(values.batch ?? "10", 10),
     backup: !(values["no-backup"] === true),
     dryRunMigrate: values["dry-run"] === true,
+    dbUser: values["db-user"] as string | undefined,
+    dbPassword: values["db-password"] as string | undefined,
     command,
   };
 }
@@ -184,6 +200,12 @@ function printHelp(): void {
       `  --update             Update ALL installs under user's home (projects + homedir).\n` +
       `  --update-project     Update just THIS project (CWD).\n` +
       `  --update-homedir     Update just the home dir.\n` +
+      `\n` +
+      `Database stack helpers:\n` +
+      `  --db-start           Start the bundled PostgreSQL stack (writes docker-compose.yml + .env to ~/.neuralgentics/, runs compose up -d, waits for ready, offers to create your first database user).\n` +
+      `  --db-stop            Stop the bundled PostgreSQL stack (volumes are NEVER deleted — data is preserved).\n` +
+      `  --db-user NAME       (with --db-start) Non-interactive first-user creation. Skips the interactive offer.\n` +
+      `  --db-password PW     (with --db-start) Password for the user created via --db-user. Required when --db-user is set.\n` +
       `\n` +
       `Backend / embedding flags:\n` +
       `  --embedded           Skip backend prompt, use pgembed (zero Docker).\n` +
@@ -272,10 +294,36 @@ async function main(argv: string[]): Promise<number> {
   const initRequested = parsed.init || parsed.initHomedir || parsed.initProject || parsed.command === "init";
   const migrateRequested = parsed.command === "migrate-embeddings";
   const updateRequested = parsed.update || parsed.updateProject || parsed.updateHomedir;
+  const dbStackRequested = parsed.dbStart || parsed.dbStop;
 
-  if (!initRequested && !migrateRequested && !updateRequested) {
+  if (!initRequested && !migrateRequested && !updateRequested && !dbStackRequested) {
     printHelp();
     return 0;
+  }
+
+  // db-start / db-stop are standalone commands — handle before init/update flows.
+  if (dbStackRequested) {
+    const { dbStart, dbStop } = await import("./neuralgentics/db-stack.js");
+    if (parsed.dbStart && !parsed.dbStop) {
+      const result = await dbStart({
+        dryRun: parsed.dryRun,
+        dbUser: parsed.dbUser,
+        dbPassword: parsed.dbPassword,
+        yes: parsed.yes,
+      });
+      if (!result.success) process.stderr.write(`[ERROR] ${result.message}\n`);
+      else process.stdout.write(`${result.message}\n`);
+      return result.exitCode;
+    }
+    if (parsed.dbStop && !parsed.dbStart) {
+      const result = await dbStop(parsed.dryRun);
+      if (!result.success) process.stderr.write(`[ERROR] ${result.message}\n`);
+      else process.stdout.write(`${result.message}\n`);
+      return result.exitCode;
+    }
+    // Both --db-start and --db-stop passed — error.
+    process.stderr.write("[ERROR] --db-start and --db-stop are mutually exclusive.\n");
+    return 2;
   }
 
   // migrate-embeddings is a parallel command, not a subcommand of init.

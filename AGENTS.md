@@ -1,5 +1,15 @@
 # Neuralgentics Agents
 
+## Agent Git Isolation (v0.7.0)
+
+All agents EXCEPT `neuralgentics-git` are restricted from running destructive git commands:
+- ❌ `git stash` — use branches instead
+- ❌ `git checkout` / `git switch` — stay on your branch
+- ❌ `git reset --hard` — never
+- ❌ `git clean` — never
+
+Only `neuralgentics-git` may merge branches, switch branches, or run destructive git operations.
+
 ## Provider Configuration (Ollama Cloud & Alternatives)
 
 All projects in this workspace ship with **Ollama Cloud** as the default

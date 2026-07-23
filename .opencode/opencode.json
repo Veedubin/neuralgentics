@@ -51,7 +51,7 @@
       "api": "openai",
       "options": {
         "baseURL": "https://ollama.com/v1",
-        "apiKey": "YOUR_OLLAMA_CLOUD_API_KEY"
+        "apiKey": "{env:OLLAMA_API_KEY}"
       },
       "models": {
         "kimi-k2.6": {
@@ -116,6 +116,128 @@
             "context": 262144,
             "output": 262144
           }
+        }
+      }
+    },
+    "openai": {
+      "name": "OpenAI",
+      "options": {
+        "apiKey": "{env:OPENAI_API_KEY}"
+      },
+      "models": {
+        "gpt-4o": {
+          "name": "GPT-4o",
+          "limit": { "context": 128000, "output": 16384 }
+        },
+        "gpt-4.1": {
+          "name": "GPT-4.1",
+          "limit": { "context": 1047576, "output": 32768 }
+        },
+        "o3-mini": {
+          "name": "o3-mini",
+          "limit": { "context": 200000, "output": 100000 }
+        }
+      }
+    },
+    "anthropic": {
+      "name": "Anthropic",
+      "options": {
+        "apiKey": "{env:ANTHROPIC_API_KEY}"
+      },
+      "models": {
+        "claude-sonnet-4-20250514": {
+          "name": "Claude Sonnet 4",
+          "limit": { "context": 200000, "output": 16384 }
+        },
+        "claude-3-5-haiku-latest": {
+          "name": "Claude 3.5 Haiku",
+          "limit": { "context": 200000, "output": 8192 }
+        }
+      }
+    },
+    "google": {
+      "name": "Google",
+      "options": {
+        "apiKey": "{env:GOOGLE_API_KEY}"
+      },
+      "models": {
+        "gemini-2.5-flash": {
+          "name": "Gemini 2.5 Flash",
+          "limit": { "context": 1000000, "output": 65536 }
+        },
+        "gemini-2.5-pro": {
+          "name": "Gemini 2.5 Pro",
+          "limit": { "context": 1000000, "output": 65536 }
+        }
+      }
+    },
+    "groq": {
+      "name": "Groq",
+      "options": {
+        "apiKey": "{env:GROQ_API_KEY}"
+      },
+      "models": {
+        "llama-3.3-70b-versatile": {
+          "name": "Llama 3.3 70B (Groq)",
+          "limit": { "context": 128000, "output": 32768 }
+        }
+      }
+    },
+    "kimi": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Kimi (Moonshot)",
+      "options": {
+        "baseURL": "https://api.moonshot.cn/v1",
+        "apiKey": "{env:KIMI_API_KEY}"
+      },
+      "models": {
+        "kimi-k2": {
+          "name": "Kimi K2 (Direct)",
+          "limit": { "context": 262144, "output": 262144 }
+        }
+      }
+    },
+    "minimax": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "MiniMax",
+      "options": {
+        "baseURL": "https://api.minimax.io/v1",
+        "apiKey": "{env:MINIMAX_API_KEY}"
+      },
+      "models": {
+        "MiniMax-M3": {
+          "name": "MiniMax M3",
+          "limit": { "context": 512000, "output": 128000 }
+        }
+      }
+    },
+    "mammoth": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Mammoth AI",
+      "options": {
+        "baseURL": "https://api.mammouth.ai/v1",
+        "apiKey": "{env:MAMMOTH_API_KEY}"
+      },
+      "models": {
+        "gpt-4.1": {
+          "name": "GPT-4.1 (via Mammoth)",
+          "limit": { "context": 1047576, "output": 32768 }
+        },
+        "glm-5.2": {
+          "name": "GLM 5.2 (via Mammoth)",
+          "limit": { "context": 1048576, "output": 131072 }
+        },
+        "kimi-k2.6": {
+          "name": "Kimi K2.6 (via Mammoth)",
+          "limit": { "context": 262144, "output": 262144 }
+        },
+        "claude-sonnet-4-6": {
+          "name": "Claude Sonnet 4.6 (via Mammoth)",
+          "limit": { "context": 1000000, "output": 128000 }
+        },
+        "mammouth-recommended": {
+          "name": "Mammoth Recommended (auto-curated)",
+          "limit": { "context": 1048576, "output": 131072 }
         }
       }
     }

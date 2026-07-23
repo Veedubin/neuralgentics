@@ -1,0 +1,123 @@
+# docker-compose.yml — Neuralgentics PostgreSQL stack
+#
+# Shipped inside the @veedubin/neuralgentics npm package.
+# Brought up by `neuralgentics --db-start` (writes this file to
+# ~/.neuralgentics/ if absent, then runs compose up -d).
+#
+# Compatible with both `docker compose` (v2.38+) and `podman-compose` (v1.x).
+# Usage:
+#   docker compose up -d          # docker
+#   podman-compose up -d          # podman
+#
+# The neuralgentics CLI prefers `podman-compose`, then `podman compose`,
+# then `docker compose` — in that order. See `neuralgentics --db-start`.
+#
+# This file ships a SINGLE rock-solid PostgreSQL service named `db-server`.
+# The sidecar (embedding gRPC) and backend (Go JSON-RPC) services are commented
+# out below — uncomment when you need them and have the images available.
+#
+# ── Multi-instance (run several stacks side by side) ──────────────────────
+# Every resource is parameterised by ${NEURALGENTICS_STACK_NAME:-neuralgentics}:
+#   - container_name: ${STACK}-db
+#   - volume name:    ${STACK}-db  (via the `name:` property of the volume)
+#   - network name:   ${STACK}-net
+# So you can run a second stack alongside the first by setting a different
+# stack name AND a different port:
+#   cp compose.example.env .env.proj2
+#   # edit .env.proj2: NEURALGENTICS_STACK_NAME=neuralgentics-proj2
+#   #                  NEURALGENTICS_DB_PORT=6300
+#   podman-compose --env-file .env.proj2 up -d
+# Both stacks share the same compose file — only the env file differs.
+#
+# Env file: copy compose.example.env → .env and edit as needed.
+#   cp compose.example.env .env
+
+services:
+  # ── PostgreSQL 18 + pgvector + TimescaleDB ────────────────────────────────
+  # The memory database. All neuralgentics memories live here.
+  # Default credentials: user/db = neuralgentics, password = neuralgentics.
+  # CHANGE THE PASSWORD for any non-local deployment.
+  # After the stack is up, `neuralgentics --db-start` offers to create your
+  # FIRST database user (recommended — don't share the superuser account).
+  db-server:
+    image: ghcr.io/veedubin/neuralgentics-postgres:${NEURALGENTICS_VERSION:-latest}
+    container_name: ${NEURALGENTICS_STACK_NAME:-neuralgentics}-db
+    ports:
+      - "${NEURALGENTICS_DB_PORT:-6200}:5432"
+    environment:
+      POSTGRES_USER: ${NEURALGENTICS_DB_USER:-neuralgentics}
+      POSTGRES_PASSWORD: ${NEURALGENTICS_DB_PASSWORD:-neuralgentics}
+      POSTGRES_DB: ${NEURALGENTICS_DB_NAME:-neuralgentics}
+    volumes:
+      - neuralgentics-db:/var/lib/postgresql/data
+    networks:
+      - neuralgentics-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── Python gRPC embedding sidecar (OPTIONAL) ──────────────────────────────
+  # Uncomment to run the embedding model as a container. Only needed if you
+  # want GPU-accelerated embeddings or the multi-model (RRF) search path.
+  # Requires the sidecar image: ghcr.io/veedubin/neuralgentics-sidecar
+  #
+  # db-sidecar:
+  #   image: ghcr.io/veedubin/neuralgentics-sidecar:${NEURALGENTICS_VERSION:-latest}
+  #   container_name: ${NEURALGENTICS_STACK_NAME:-neuralgentics}-sidecar
+  #   ports:
+  #     - "${NEURALGENTICS_SIDECAR_STATUS_PORT:-50052}:50052"
+  #   environment:
+  #     NEURAL_EMBED_ADDR: "0.0.0.0:50051"
+  #     NEURALGENTICS_EMBED_DEVICE: ${NEURALGENTICS_EMBED_DEVICE:-cpu}
+  #     NEURALGENTICS_EMBED_DTYPE: ${NEURALGENTICS_EMBED_DTYPE:-int8}
+  #     EAGER: ${EAGER:-false}
+  #     IDLE_MIN: ${IDLE_MIN:-5}
+  #   volumes:
+  #     - sidecar-cache:/root/.cache/huggingface
+  #   networks:
+  #     - neuralgentics-net
+  #   depends_on:
+  #     db-server:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # ── Go backend (JSON-RPC over stdio) (OPTIONAL) ────────────────────────────
+  # Uncomment to run the Go memory backend as a container. Most setups use the
+  # in-process backend instead; this is for team-server multi-user deployments.
+  # Requires the backend image: ghcr.io/veedubin/neuralgentics-backend
+  #
+  # db-backend:
+  #   image: ghcr.io/veedubin/neuralgentics-backend:${NEURALGENTICS_VERSION:-latest}
+  #   container_name: ${NEURALGENTICS_STACK_NAME:-neuralgentics}-backend
+  #   environment:
+  #     NEURALGENTICS_DB_URL: postgresql://${NEURALGENTICS_DB_USER:-neuralgentics}:${NEURALGENTICS_DB_PASSWORD:-neuralgentics}@db-server:5432/${NEURALGENTICS_DB_NAME:-neuralgentics}
+  #     NEURALGENTICS_DB_PORT: "5432"
+  #     MEMINI_TRUST_ENGINE: "true"
+  #     MEMINI_MEMORY_GRAPH: "true"
+  #     MEMINI_KG_ENABLED: "true"
+  #     THOUGHT_CHAINS: "true"
+  #   networks:
+  #     - neuralgentics-net
+  #   depends_on:
+  #     db-server:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+volumes:
+  # The `name:` property supports env interpolation on all modern compose
+  # runtimes (podman-compose 1.x, docker compose v2+). The top-level key
+  # itself cannot use interpolation on every runtime, so we keep a fixed
+  # key and set the actual volume name via `name:`.
+  neuralgentics-db:
+    name: ${NEURALGENTICS_STACK_NAME:-neuralgentics}-db
+  # sidecar-cache:
+
+networks:
+  # Named per-stack so multiple stacks don't share a bridge.
+  neuralgentics-net:
+    name: ${NEURALGENTICS_STACK_NAME:-neuralgentics}-net
+    driver: bridge

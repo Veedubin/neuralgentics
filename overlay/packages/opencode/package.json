@@ -10,7 +10,9 @@
   },
   "files": [
     "dist/",
-    ".opencode/"
+    ".opencode/",
+    "docker-compose.yml",
+    "compose.example.env"
   ],
   "exports": {
     ".": {

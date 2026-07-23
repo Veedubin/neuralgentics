@@ -25,9 +25,26 @@ permission:
   bash:
     "basename *": allow
     "*": allow
+    "git stash": deny
+    "git stash *": deny
+    "git checkout": deny
+    "git checkout *": deny
+    "git checkout -b agent/*": allow
+    "git switch": deny
+    "git switch *": deny
+    "git reset --hard": deny
+    "git reset --hard *": deny
+    "git clean": deny
+    "git clean *": deny
   task:
     "*": deny
 ---
+
+## ⚠️ CRITICAL: Git Isolation Rules
+- You are working on a branch: `agent/<your-role>/<task-id>`. Do NOT switch branches.
+- NEVER run `git stash`, `git reset --hard`, or `git clean`. These destroy other agents' work.
+- Only neuralgentics-git is authorized to merge branches, switch branches, or run destructive git commands.
+- If you need git operations beyond `git add`, `git commit`, `git status`, `git diff`, `git log`: delegate to neuralgentics-git.
 
 ## Neuralgentics Tester
 

@@ -153,12 +153,60 @@ Neuralgentics is an **OpenCode plugin** — not a standalone TUI. The user runs 
 - **Config merger**: injects neuralgentics version + memory URL into opencode config
 
 ### Container Stack (memory backend)
+
+The bundled PostgreSQL stack is shipped inside the npm package as `docker-compose.yml` + `compose.example.env`. The canonical port is **6200**. The service is named **`db-server`** (a generic, role-based name) so you can run as many independent stacks as you want — every resource is parameterised by `${NEURALGENTICS_STACK_NAME:-neuralgentics}` (container name, volume name, network name).
+
+**Quick start (recommended):**
+```bash
+npx @veedubin/neuralgentics --db-start
 ```
+This writes the shipped compose file + example env to `~/.neuralgentics/` (backing up any existing `docker-compose.yml` with a timestamp — never destroys user edits), detects `podman-compose` / `podman compose` / `docker compose` in that preference order, runs `up -d`, waits for `pg_isready`, then **offers to create your first database user** (recommended — don't share the default `neuralgentics` superuser; `--db-start` creates a plain `CREATE USER` + `GRANT ALL PRIVILEGES ON DATABASE`, no superuser). After a user is created it prints that user's DSN to paste into `--init-project`:
+```
+postgresql://<your-user>:<your-password>@localhost:6200/neuralgentics
+```
+
+Non-interactive (for scripts / CI):
+```bash
+npx @veedubin/neuralgentics --db-start --db-user alice --db-password 's3cret'
+# or skip user creation entirely:
+npx @veedubin/neuralgentics --db-start --yes
+```
+
+**Stop the stack** (volumes are NEVER deleted — data is preserved):
+```bash
+npx @veedubin/neuralgentics --db-stop
+```
+
+**Manual start** (if you prefer to run compose yourself):
+```bash
 docker compose -f ~/.neuralgentics/docker-compose.yml up -d
+# or
+podman-compose -f ~/.neuralgentics/docker-compose.yml up -d
 ```
-- **neuralgentics-postgres**: PostgreSQL 18 + pgvector + TimescaleDB (port 6200). Supports multi-model embeddings with `embedding` (384-dim), `embedding_bge_m3` (1024-dim), and `embedding_bge_large` (1024-dim) columns. RRF (Reciprocal Rank Fusion) merges results across all populated columns by default.
-- **neuralgentics-sidecar**: Python gRPC embedding service (BGE-M3 by default, port 50051). BGE-Large is still available via `--embed-model bge-large` for backwards compat.
-- **neuralgentics-backend**: Go JSON-RPC memory server (trust engine, knowledge graph, thought chains). Supports `memory.search_rrf` for multi-model queries.
+
+The shipped `docker-compose.yml` contains a single rock-solid PostgreSQL service. The sidecar (embedding gRPC) and backend (Go JSON-RPC) services are commented out — uncomment them only if you need multi-model embeddings or the team-server Go backend.
+
+- **`db-server`** (container `${NEURALGENTICS_STACK_NAME:-neuralgentics}-db`): PostgreSQL 18 + pgvector + TimescaleDB (port `${NEURALGENTICS_DB_PORT:-6200}`). Supports multi-model embeddings with `embedding` (384-dim), `embedding_bge_m3` (1024-dim), and `embedding_bge_large` (1024-dim) columns. RRF (Reciprocal Rank Fusion) merges results across all populated columns by default.
+- **db-sidecar** (optional, commented out): Python gRPC embedding service (BGE-M3 by default, port 50051). BGE-Large is still available via `--embed-model bge-large` for backwards compat.
+- **db-backend** (optional, commented out): Go JSON-RPC memory server (trust engine, knowledge graph, thought chains). Supports `memory.search_rrf` for multi-model queries.
+
+### Why create your own user?
+
+The default superuser (`neuralgentics`/`neuralgentics`) works, but it has full administrative privileges — you shouldn't share it across people or machines. `--db-start`'s interactive offer creates a plain `CREATE USER` + `GRANT ALL PRIVILEGES ON DATABASE` (no superuser), so the new account can connect and read/write memories but can't drop the database or create other roles. Usernames must match `^[a-zA-Z_][a-zA-Z0-9_]*$` (letters, digits, underscore; must start with a letter or underscore) — this prevents SQL injection in the identifier. Passwords are single-quote-escaped (`'` → `''`) in the SQL literal. If you decline the offer, `--db-start` prints the exact `podman exec` psql one-liner you can run later.
+
+### Multi-instance (run several stacks side by side)
+
+Every resource in the compose file is parameterised by `${NEURALGENTICS_STACK_NAME:-neuralgentics}`: container name (`${STACK}-db`), volume name (`${STACK}-db`, via the volume's `name:` property), network name (`${STACK}-net`). Copy the env file, set a different stack name AND a different port, and point compose at the new env file:
+```bash
+cp ~/.neuralgentics/compose.example.env ~/.neuralgentics/.env.proj2
+# edit .env.proj2: NEURALGENTICS_STACK_NAME=neuralgentics-proj2, NEURALGENTICS_DB_PORT=6300
+podman-compose --env-file ~/.neuralgentics/.env.proj2 up -d
+```
+Both stacks share the same `docker-compose.yml` — only the env file differs. Run `neuralgentics --db-start --db-user <name>` once per stack to create its first database user.
+
+### Team server mode (connect-to-existing)
+
+`--init-project` team mode is **connect-to-existing only**. The old "I'll create it" option (which was a no-op lie — nothing was ever created) has been removed. The flow is now: host, port (default 6200), database, username (default `neuralgentics`), password. If you don't have a PostgreSQL server yet, run `neuralgentics --db-start` first.
 
 ### Sidecar lifecycle (v0.9.6+)
 
@@ -184,7 +232,7 @@ The old curl-bash installer (`curl -fsSL https://raw.githubusercontent.com/Veedu
 - `.opencode/skills/` — 5 skills (boomerang-orchestrator, kanban-board-manager, skill-self-audit, todo-list-updater, update-gh-docs)
 - `.opencode/opencode.json` — OpenCode config with Ollama Cloud models, MCP servers, LSP, formatter
 - `.opencode/AGENTS.md` — Project instructions and agent protocol
-- `docker-compose.yml` + `docker/*.Dockerfile` — Container stack for memory backend
+- `docker-compose.yml` + `compose.example.env` — Bundled PostgreSQL stack (shipped in the npm tarball; `--db-start` writes them to `~/.neuralgentics/`)
 
 ### What was REMOVED (v0.9.0+)
 - **TUI binary** — the `neuralgentics` command no longer exists. Run `opencode` instead.

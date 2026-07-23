@@ -133,17 +133,92 @@ npm install @veedubin/neuralgentics
 
 ## Container Stack
 
-The memory backend runs as 3 containers:
+The memory backend runs as a PostgreSQL container (default port 6200). The
+sidecar and backend services are optional and commented out in the shipped
+compose file.
 
-- `neuralgentics-postgres`: PostgreSQL 18 + pgvector + TimescaleDB (port 6200)
-- `neuralgentics-sidecar`: Python gRPC embedding service (BGE-Large, port 50051)
-- `neuralgentics-backend`: Go JSON-RPC memory server (trust engine, knowledge graph, thought chains)
+Start the bundled stack (recommended):
+```bash
+npx @veedubin/neuralgentics --db-start
+```
+This writes `docker-compose.yml` + `.env` to `~/.neuralgentics/`, runs
+`compose up -d`, waits for `pg_isready`, then **offers to create your first
+database user** (recommended — don't share the default `neuralgentics`
+superuser). After a user is created it prints that user's DSN to paste into
+`--init-project`:
+```
+postgresql://<your-user>:<your-password>@localhost:6200/neuralgentics
+```
 
-Start them with:
+Non-interactive (for scripts / CI):
+```bash
+npx @veedubin/neuralgentics --db-start --db-user alice --db-password 's3cret'
+# or skip user creation entirely:
+npx @veedubin/neuralgentics --db-start --yes
+```
 
+Stop the stack (volumes are preserved):
+```bash
+npx @veedubin/neuralgentics --db-stop
+```
+
+Manual start (if you prefer compose directly):
 ```bash
 docker compose -f ~/.neuralgentics/docker-compose.yml up -d
+# or
+podman-compose -f ~/.neuralgentics/docker-compose.yml up -d
 ```
+
+The shipped compose file ships a single PostgreSQL service:
+- **`db-server`** (container `${NEURALGENTICS_STACK_NAME:-neuralgentics}-db`):
+  PostgreSQL 18 + pgvector + TimescaleDB, port `${NEURALGENTICS_DB_PORT:-6200}`.
+  The service is named `db-server` (a generic, role-based name) so you can run
+  as many independent stacks as you want — see "Multi-instance" below.
+
+The sidecar (embedding gRPC) and backend (Go JSON-RPC) services are commented
+out in the compose file — uncomment them only if you need multi-model
+embeddings or the team-server Go backend.
+
+### Why create your own user?
+
+The default superuser (`neuralgentics`/`neuralgentics`) works, but it has full
+administrative privileges — you shouldn't share it across people or machines.
+`--db-start`'s interactive offer creates a plain `CREATE USER` + `GRANT ALL
+PRIVILEGES ON DATABASE` (no superuser), so the new account can connect and
+read/write memories but can't drop the database or create other roles.
+Usernames must match `^[a-zA-Z_][a-zA-Z0-9_]*$` (letters, digits, underscore;
+must start with a letter or underscore) — this prevents SQL injection in the
+identifier. Passwords are single-quote-escaped (`'` → `''`) in the SQL
+literal. If you decline the offer, `--db-start` prints the exact `podman exec`
+psql one-liner you can run later.
+
+### Multi-instance (run several stacks side by side)
+
+Every resource in the compose file is parameterised by
+`${NEURALGENTICS_STACK_NAME:-neuralgentics}`:
+- container name: `${STACK}-db`
+- volume name: `${STACK}-db` (via the volume's `name:` property)
+- network name: `${STACK}-net`
+
+So you can run a second stack alongside the first by copying the env file,
+setting a different stack name AND a different port, and pointing at the new
+env file:
+```bash
+cp ~/.neuralgentics/compose.example.env ~/.neuralgentics/.env.proj2
+# edit .env.proj2:
+#   NEURALGENTICS_STACK_NAME=neuralgentics-proj2
+#   NEURALGENTICS_DB_PORT=6300
+podman-compose --env-file ~/.neuralgentics/.env.proj2 up -d
+```
+Both stacks share the same `docker-compose.yml` — only the env file differs.
+Run `neuralgentics --db-start --db-user <name>` once per stack to create its
+first database user.
+
+### Team server mode (connect-to-existing)
+
+`--init-project` team mode is **connect-to-existing only**. The old
+"I'll create it" option (which was a no-op lie) has been removed. If you
+don't have a PostgreSQL server yet, run `neuralgentics --db-start` first.
 
 ## What You Get
 

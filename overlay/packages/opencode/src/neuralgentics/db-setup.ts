@@ -47,7 +47,8 @@ function testTeamConnection(cfg: TeamDbConfig): { ok: boolean; error?: string } 
   const user = cfg.user ?? "neuralgentics";
   const password = cfg.password ?? "neuralgentics";
   const connStr =
-    `postgresql://${user}:${password}@${cfg.host}:${cfg.port}/${cfg.database}`;
+    `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@` +
+    `${cfg.host}:${cfg.port}/${cfg.database}`;
 
   // Try psql first.
   try {
@@ -165,15 +166,19 @@ export async function bootstrapDatabase(
     return {
       success: false,
       message:
-        `Cannot connect to PostgreSQL at ${teamConfig.host}:${teamConfig.port}. ` +
-        `Make sure the server is running and credentials are correct. ` +
-        `Detail: ${probe.error ?? "connection refused"}`,
+        `✗ Cannot connect to PostgreSQL at ${teamConfig.host}:${teamConfig.port}.\n` +
+        `  If you don't have a server yet, start the bundled stack:\n` +
+        `      npx @veedubin/neuralgentics --db-start\n` +
+        `  Then re-run: neuralgentics --init-project\n` +
+        `  (Remote server? Make sure it's running and credentials are correct.)\n` +
+        `  Detail: ${probe.error ?? "connection refused"}`,
     };
   }
 
   // Connection OK — run migrations.
   const dbUrl =
-    `postgresql://${user}:${teamConfig.password ?? "neuralgentics"}@` +
+    `postgresql://${encodeURIComponent(user)}:` +
+    `${encodeURIComponent(teamConfig.password ?? "neuralgentics")}@` +
     `${teamConfig.host}:${teamConfig.port}/${teamConfig.database}`;
   try {
     execSync("uvx --from memini-ai-dev memini-ai init", {

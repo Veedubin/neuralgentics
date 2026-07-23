@@ -1388,11 +1388,11 @@ function buildProjectOpencodeJson(promptConfig: PromptConfig): Record<string, un
       // Apply team server settings if team mode was chosen
       if (promptConfig.backend === "team") {
         const host = promptConfig.teamHost ?? "localhost";
-        const port = promptConfig.teamPort ?? "5432";
+        const port = promptConfig.teamPort ?? "6200";
         const db = promptConfig.teamDatabase ?? "neuralgentics";
-        const user = promptConfig.teamUser ?? "postgres";
-        const password = promptConfig.teamPassword ?? "";
-        env.MEMINI_DB_URL = `postgresql://${user}:${password}@${host}:${port}/${db}`;
+        const user = promptConfig.teamUser ?? "neuralgentics";
+        const password = promptConfig.teamPassword ?? "neuralgentics";
+        env.MEMINI_DB_URL = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${db}`;
         env.MEMINI_VECTOR_BACKEND = "postgres-external";
       }
     }

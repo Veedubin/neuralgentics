@@ -31,8 +31,6 @@ export interface PromptConfig {
   teamDatabase?: string;
   teamUser?: string;
   teamPassword?: string;
-  /** Whether team DB is existing or new */
-  teamIsNew?: boolean;
   embedding: EmbeddingMode;
   ollamaApiKey?: string;
 }
@@ -119,7 +117,9 @@ async function promptBackendMode(session: PromptSession, flags: PromptFlags): Pr
 /**
  * Prompt for team server connection details.
  *
- * Asks: existing or new database, then host/port/user/password.
+ * Asks: host/port/database/user/password for an EXISTING PostgreSQL server.
+ * The user is responsible for starting the server beforehand — see
+ * `neuralgentics --db-start` for the bundled compose stack.
  * Offers to save credentials to .env.
  */
 async function promptTeamConnection(
@@ -131,22 +131,16 @@ async function promptTeamConnection(
   database: string;
   user: string;
   password: string;
-  isNew: boolean;
 }> {
-  process.stdout.write("\n  Team server setup:\n");
-  process.stdout.write("\n");
-  process.stdout.write("  1. Connect to an existing PostgreSQL database\n");
-  process.stdout.write("  2. Connect to a new database (I'll create it)\n");
-  process.stdout.write("\n");
-  const isNewAnswer = await session.ask("  Enter 1 or 2 [1]: ");
-  const isNew = isNewAnswer.trim() === "2";
+  process.stdout.write("\n  Team server setup — connect to an existing PostgreSQL server.\n");
+  process.stdout.write("  (Don't have one yet? Run `neuralgentics --db-start` first.)\n");
 
   const host = (await session.ask("\n  Server IP or hostname [localhost]: ")).trim() || "localhost";
-  const port = (await session.ask("  Port [5432]: ")).trim() || "5432";
+  const port = (await session.ask("  Port [6200]: ")).trim() || "6200";
   const database = (await session.ask("  Database name [neuralgentics]: ")).trim() || "neuralgentics";
 
   process.stdout.write("\n  Database credentials:\n");
-  const user = (await session.ask("  Username [postgres]: ")).trim() || "postgres";
+  const user = (await session.ask("  Username [neuralgentics]: ")).trim() || "neuralgentics";
   const password = (await session.ask("  Password: ")).trim();
 
   // Offer to save credentials to .env
@@ -156,7 +150,7 @@ async function promptTeamConnection(
     const saveCreds = (await session.ask("  [Y/n]: ")).trim().toLowerCase();
     if (!saveCreds.startsWith("n")) {
       const envPath = path.join(configDir, ".env");
-      const dbUrl = `postgresql://${user}:${password}@${host}:${port}/${database}`;
+      const dbUrl = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
       const envLines = [
         `MEMINI_DB_URL=${dbUrl}`,
         `MEMINI_VECTOR_BACKEND=postgres-external`,
@@ -197,7 +191,7 @@ async function promptTeamConnection(
     }
   }
 
-  return { host, port, database, user, password, isNew };
+  return { host, port, database, user, password };
 }
 
 /**
@@ -346,10 +340,10 @@ export async function runAllPrompts(
     if (config.backend === "team") {
       if (flags.yes) {
         config.teamHost = "localhost";
-        config.teamPort = "5432";
+        config.teamPort = "6200";
         config.teamDatabase = "neuralgentics";
-        config.teamUser = "postgres";
-        config.teamPassword = "";
+        config.teamUser = "neuralgentics";
+        config.teamPassword = "neuralgentics";
       } else {
         const session = new PromptSession();
         try {
@@ -359,7 +353,6 @@ export async function runAllPrompts(
           config.teamDatabase = conn.database;
           config.teamUser = conn.user;
           config.teamPassword = conn.password;
-          config.teamIsNew = conn.isNew;
         } finally {
           session.close();
         }
@@ -380,7 +373,6 @@ export async function runAllPrompts(
       config.teamDatabase = conn.database;
       config.teamUser = conn.user;
       config.teamPassword = conn.password;
-      config.teamIsNew = conn.isNew;
     }
 
     // 2. Embedding mode
