@@ -22,7 +22,8 @@ services:
       POSTGRES_PASSWORD: ${NEURALGENTICS_DB_PASSWORD:-neuralgentics}
       POSTGRES_DB: ${NEURALGENTICS_DB_NAME:-neuralgentics}
     volumes:
-      - neuralgentics-db:/var/lib/postgresql/data
+      # pg18+ images expect /var/lib/postgresql (data goes in /var/lib/postgresql/18/docker).
+      - neuralgentics-db:/var/lib/postgresql
     networks:
       - neuralgentics-net
     healthcheck:

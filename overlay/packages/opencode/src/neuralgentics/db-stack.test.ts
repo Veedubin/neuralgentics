@@ -717,4 +717,50 @@ describe("dbStart first-user bootstrap", () => {
     const execCmds = (execSpy.mock.calls as unknown as [string][]).map((c) => c[0]);
     expect(execCmds.some((c) => c.includes("CREATE USER"))).toBe(false);
   });
+
+  it("timeout waiting for pg_isready returns 60s message with both log commands", async () => {
+    // pg_isready always fails → waitForPostgres exhausts its deadline and
+    // returns false. The error message must mention 60s (the new timeout,
+    // bumped from 30s for first-boot initdb on slow machines) and include
+    // BOTH the compose-logs command and the `podman logs <container>`
+    // fallback so the user can find the crash-loop reason either way.
+    //
+    // We make `sleep` a no-op so the loop spins fast (the deadline is
+    // Date.now()-based; mocking execSync to throw for pg_isready and return
+    // empty for sleep means the loop body runs ~instantly and the deadline
+    // check trips on the first iteration because Date.now() has advanced
+    // past it — we set the deadline implicitly by having pg_isready throw).
+    execSpy.mockImplementation((cmd: string) => {
+      if (cmd === "command -v podman-compose") return Buffer.from("/usr/bin/podman-compose");
+      if (cmd === "podman-compose --version") return Buffer.from("podman-compose version 1.6.0");
+      if (cmd.includes("up -d")) return Buffer.from("");
+      // pg_isready always rejects → waitForPostgres loop never succeeds.
+      if (cmd.includes("pg_isready")) throw new Error("no response");
+      if (cmd.startsWith("sleep")) return Buffer.from("");
+      throw new Error(`unexpected exec: ${cmd}`);
+    });
+    // Fast-forward: skip the real 60s wait by stubbing Date.now so the
+    // deadline is already in the past on the first pg_isready failure.
+    const realNow = Date.now;
+    const fixedStart = realNow();
+    let callCount = 0;
+    spyOn(Date, "now").mockImplementation(() => {
+      // First call computes the deadline (fixedStart + 60_000); subsequent
+      // calls (the while-condition re-check) report past the deadline.
+      callCount += 1;
+      return callCount <= 1 ? fixedStart : fixedStart + 120_000;
+    });
+    try {
+      const result = await dbStart({ dbUser: "alice", dbPassword: "pw" });
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain("60s");
+      expect(result.message).toContain("logs db-server"); // compose logs command
+      expect(result.message).toContain("podman logs"); // container logs fallback
+      expect(result.message).toContain("neuralgentics-db"); // stack-name-derived container
+    } finally {
+      (Date.now as unknown as { mockRestore: () => void }).mockRestore();
+      void realNow;
+    }
+  });
 });

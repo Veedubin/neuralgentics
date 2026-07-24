@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.17] - 2026-07-24
+
+### Fixed
+
+- **Fixed shipped compose volume mount for PostgreSQL 18 images.** The bundled `docker-compose.yml` mounted the named volume at `/var/lib/postgresql/data` (the pg≤17 convention). The pg18-based image (`ghcr.io/veedubin/neuralgentics-postgres`) requires a single mount at `/var/lib/postgresql`; PGDATA becomes `/var/lib/postgresql/18/docker` inside it. With the old path the container crash-looped on first boot with:
+  ```
+  Error: in 18+, these Docker images are configured to store database data in a
+  format which is compatible with "pg_ctlcluster" ...
+  Counter to that, there appears to be PostgreSQL data in:
+    /var/lib/postgresql/data (unused mount/volume)
+  ```
+  The mount target is now `/var/lib/postgresql`. The dev-repo root `docker-compose.yml` got the same fix.
+- **Wait-for-ready timeout 30s → 60s.** First-boot `initdb` on a fresh volume plus a freshly-pulled image can exceed 30s on slower machines, so `neuralgentics --db-start` now waits up to 60s for `pg_isready`.
+- **Better timeout error message.** When the container fails to become ready, the error now includes both the compose-logs command (`podman-compose -f ... logs db-server`) and the `podman logs <container>` fallback so the user can find the crash-loop reason either way.
+- **Image: removed `pgvector` from `shared_preload_libraries`.** `docker/postgres.Dockerfile` previously set `shared_preload_libraries = 'pgvector,timescaledb'`. That FATALed the container on boot with `FATAL: could not access file "pgvector"` because no `pgvector.so` exists — pgvector's library file is `vector.so`, and pgvector requires no preload at all (it works via `CREATE EXTENSION vector`). Only `timescaledb` needs preloading; `timescaledb_toolkit` and `vectorscale` (pgvectorscale) are likewise plain `CREATE EXTENSION` extensions and need no preload. The preload line is now `shared_preload_libraries = 'timescaledb'` and the comment states the truth.
+
 ## [0.15.16] - 2026-07-23
 
 ### Changed

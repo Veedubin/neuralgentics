@@ -27,9 +27,14 @@ RUN apt-get update && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 
-# Enable TimescaleDB in shared_preload_libraries. The pgvector image
-# already has pgvector in shared_preload_libraries; we append timescaledb.
-RUN echo "shared_preload_libraries = 'pgvector,timescaledb'" \
+# Enable TimescaleDB in shared_preload_libraries. Only timescaledb needs
+# preloading: pgvector's library file is vector.so (not pgvector.so), and
+# pgvector requires no preload at all — it works via CREATE EXTENSION
+# vector. timescaledb_toolkit and vectorscale (pgvectorscale) likewise need
+# no preload (they are plain CREATE EXTENSION extensions). Listing
+# "pgvector" here previously FATALed the container on boot because no
+# pgvector.so exists for PostgreSQL to load.
+RUN echo "shared_preload_libraries = 'timescaledb'" \
         >> /usr/share/postgresql/18/postgresql.conf.sample && \
     echo "timescaledb.telemetry_level = 'off'" \
         >> /usr/share/postgresql/18/postgresql.conf.sample

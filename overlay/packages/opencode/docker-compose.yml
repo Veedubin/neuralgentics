@@ -49,7 +49,14 @@ services:
       POSTGRES_PASSWORD: ${NEURALGENTICS_DB_PASSWORD:-neuralgentics}
       POSTGRES_DB: ${NEURALGENTICS_DB_NAME:-neuralgentics}
     volumes:
-      - neuralgentics-db:/var/lib/postgresql/data
+      # PostgreSQL 18+ Docker images expect a single mount at /var/lib/postgresql
+      # and place data in /var/lib/postgresql/18/docker inside it. Mounting at
+      # /var/lib/postgresql/data (the pg<=17 convention) causes the stock pg18
+      # entrypoint to refuse to start with:
+      #   "in 18+, these Docker images are configured to store database data in
+      #    a format which is compatible with pg_ctlcluster ... Counter to that,
+      #    there appears to be PostgreSQL data in /var/lib/postgresql/data".
+      - neuralgentics-db:/var/lib/postgresql
     networks:
       - neuralgentics-net
     healthcheck:

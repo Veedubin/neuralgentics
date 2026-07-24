@@ -487,7 +487,8 @@ async function offerFirstUser(
  *   1. Detect compose runtime (podman-compose / podman compose / docker compose).
  *   2. Write shipped docker-compose.yml + compose.example.env to ~/.neuralgentics/.
  *   3. Run `up -d`.
- *   4. Wait for pg_isready (30s max).
+ *   4. Wait for pg_isready (60s max — first-boot initdb on a fresh volume
+ *      plus a freshly-pulled image can exceed 30s on slower machines).
  *   5. Offer to create the user's first database user (interactive, or
  *      non-interactive via --db-user/--db-password).
  *   6. Print the DSN to paste into --init-project.
@@ -565,15 +566,17 @@ export async function dbStart(opts: DbStartOptions = {}): Promise<DbStackResult>
 
   // Wait for pg_isready
   process.stdout.write("Waiting for PostgreSQL to accept connections");
-  const ready = waitForPostgres(runtime.command, composePath, cfg, 30_000);
+  const ready = waitForPostgres(runtime.command, composePath, cfg, 60_000);
   process.stdout.write("\n");
 
   if (!ready) {
     return {
       success: false,
       message:
-        "PostgreSQL container started but did not become ready within 30s.\n" +
-        "Check logs: " + runtime.command + ` -f "${composePath}" logs db-server`,
+        "PostgreSQL container started but did not become ready within 60s.\n" +
+        "Compose logs: " + runtime.command + ` -f "${composePath}" logs db-server\n` +
+        `Container logs: podman logs ${cfg.stackName}-db ` +
+        `(or: docker logs ${cfg.stackName}-db)`,
       exitCode: 1,
     };
   }
