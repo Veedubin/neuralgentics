@@ -20,7 +20,7 @@
  * Uses bun:test with mocked execSync / fs to avoid touching real containers.
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from "bun:test";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, mock, spyOn } from "bun:test";
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -40,27 +40,56 @@ import {
 } from "./db-stack.js";
 
 // ============================================================================
+// Global execSync spy — installed ONCE and shared across all describe blocks
+// to prevent cross-file interference when bun runs test files concurrently.
+//
+// Both db-stack.test.ts and db-setup.test.ts install the same spy on
+// globalThis.__execSyncSpy. The second file's beforeAll skips creating a new
+// spy if one already exists. Per-describe-block code uses mockReset() on the
+// shared spy instead of spyOn()/mockRestore(), so the spy is NEVER restored
+// to the real function during the test run. This ensures:
+//   1. No test executes real system commands (every execSync is intercepted).
+//   2. No cross-file spy interference (one spy, shared reference).
+//   3. Deterministic call counts under concurrency.
+// ============================================================================
+
+beforeAll(() => {
+  if (!(globalThis as any).__execSyncSpy) {
+    (globalThis as any).__execSyncSpy = spyOn(childProcess, "execSync");
+    (globalThis as any).__execSyncSpy.mockImplementation(() => {
+      throw new Error(
+        "execSync was called without a mock implementation. " +
+        "Each test must call mockReset() + mockImplementation() on the global spy.",
+      );
+    });
+  }
+});
+
+/** Convenience accessor for the shared execSync spy. */
+function execSpy(): any {
+  return (globalThis as any).__execSyncSpy;
+}
+
+// ============================================================================
 // Runtime detection order
 // ============================================================================
 
 describe("detectComposeRuntime", () => {
-  let execSpy: ReturnType<typeof spyOn>;
   let osHomedirSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
-    execSpy = spyOn(childProcess, "execSync");
+    execSpy().mockReset();
     // Stub os.homedir so stackDir() is deterministic
     osHomedirSpy = spyOn(os, "homedir");
     osHomedirSpy.mockImplementation(() => "/tmp/test-home");
   });
 
   afterEach(() => {
-    execSpy.mockRestore();
     osHomedirSpy.mockRestore();
   });
 
   it("prefers podman-compose when available", () => {
-    execSpy.mockImplementation((cmd: string) => {
+    execSpy().mockImplementation((cmd: string) => {
       if (cmd === "command -v podman-compose") return Buffer.from("/usr/bin/podman-compose");
       if (cmd === "podman-compose --version") return Buffer.from("podman-compose version 1.6.0");
       throw new Error(`unexpected: ${cmd}`);
@@ -71,7 +100,7 @@ describe("detectComposeRuntime", () => {
   });
 
   it("falls back to podman compose when podman-compose is missing", () => {
-    execSpy.mockImplementation((cmd: string) => {
+    execSpy().mockImplementation((cmd: string) => {
       if (cmd === "command -v podman-compose") throw new Error("not found");
       if (cmd === "command -v podman") return Buffer.from("/usr/bin/podman");
       if (cmd === "podman compose version") return Buffer.from("podman compose version 4.x");
@@ -83,7 +112,7 @@ describe("detectComposeRuntime", () => {
   });
 
   it("falls back to docker compose when podman variants are missing", () => {
-    execSpy.mockImplementation((cmd: string) => {
+    execSpy().mockImplementation((cmd: string) => {
       if (cmd.includes("podman-compose")) throw new Error("not found");
       if (cmd === "command -v podman") throw new Error("not found");
       if (cmd === "command -v docker") return Buffer.from("/usr/bin/docker");
@@ -96,7 +125,7 @@ describe("detectComposeRuntime", () => {
   });
 
   it("returns null when no compose runtime exists", () => {
-    execSpy.mockImplementation(() => {
+    execSpy().mockImplementation(() => {
       throw new Error("not found");
     });
     const result = detectComposeRuntime();
@@ -326,17 +355,12 @@ const defaultCfg: StackConfig = {
 };
 
 describe("createFirstUser", () => {
-  let execSpy: ReturnType<typeof spyOn>;
-
   beforeEach(() => {
-    execSpy = spyOn(childProcess, "execSync");
-  });
-  afterEach(() => {
-    execSpy.mockRestore();
+    execSpy().mockReset();
   });
 
   it("targets the ${STACK}-db container (db-server service, stack-named container)", () => {
-    execSpy.mockImplementation((cmd: string) => {
+    execSpy().mockImplementation((cmd: string) => {
       // Assert the exec target is "db-server" (the compose service) NOT
       // "neuralgentics-postgres" (the old service name).
       expect(cmd).toContain("exec -T db-server");
@@ -352,7 +376,7 @@ describe("createFirstUser", () => {
 
   it("uses a custom stack name's admin user in the exec target", () => {
     const cfg: StackConfig = { ...defaultCfg, stackName: "teststack", adminUser: "admin", adminDb: "mydb" };
-    execSpy.mockImplementation((cmd: string) => {
+    execSpy().mockImplementation((cmd: string) => {
       expect(cmd).toContain("exec -T db-server");
       expect(cmd).toContain("-U admin");
       expect(cmd).toContain("-d mydb");
@@ -364,7 +388,7 @@ describe("createFirstUser", () => {
 
   it("escapes single quotes in password (SQL '' escape)", () => {
     let capturedCmd = "";
-    execSpy.mockImplementation((cmd: string) => {
+    execSpy().mockImplementation((cmd: string) => {
       capturedCmd = cmd;
       return Buffer.from("CREATE ROLE\n");
     });
@@ -376,7 +400,7 @@ describe("createFirstUser", () => {
   });
 
   it("treats 'already exists' as success (alreadyExisted=true)", () => {
-    execSpy.mockImplementation(() => {
+    execSpy().mockImplementation(() => {
       throw Object.assign(new Error('psql: ERROR:  role "alice" already exists'), {
         stderr: Buffer.from('ERROR:  role "alice" already exists\n'),
       });
@@ -387,7 +411,7 @@ describe("createFirstUser", () => {
   });
 
   it("treats 'already exists' in stdout as success", () => {
-    execSpy.mockImplementation(() =>
+    execSpy().mockImplementation(() =>
       Buffer.from('NOTICE:  role "alice" already exists, skipping\nCREATE ROLE\n'),
     );
     const result = createFirstUser("podman-compose", "/fake/compose.yml", defaultCfg, "alice", "secret");
@@ -396,7 +420,7 @@ describe("createFirstUser", () => {
   });
 
   it("returns created=false on a real error (not already-exists)", () => {
-    execSpy.mockImplementation(() => {
+    execSpy().mockImplementation(() => {
       throw Object.assign(new Error("psql: FATAL: password authentication failed"), {
         stderr: Buffer.from("FATAL:  password authentication failed for user \"neuralgentics\"\n"),
       });
@@ -416,7 +440,7 @@ describe("createFirstUser", () => {
     // ensureStackFiles is bypassed by mocking fs, up -d succeeds, pg_isready
     // succeeds, and then the --db-user validation fires.
     const upCalls: string[] = [];
-    execSpy.mockImplementation((cmd: string) => {
+    execSpy().mockImplementation((cmd: string) => {
       // detectComposeRuntime probes — succeed for podman-compose
       if (cmd === "command -v podman-compose") return Buffer.from("/usr/bin/podman-compose");
       if (cmd === "podman-compose --version") return Buffer.from("podman-compose version 1.6.0");
@@ -438,7 +462,9 @@ describe("createFirstUser", () => {
     // We can't easily mock fs/ensureStackFiles to avoid touching the real
     // filesystem, so we mock at a higher level by spying on fs operations.
     const existsSpy = spyOn(fs, "existsSync");
-    const mkdirSpy = spyOn(fs, "mkdirSync");
+    // NOTE: ensureStackFiles calls fs.promises.mkdir (async), NOT fs.mkdirSync.
+    // Bug B fix: mock the async version to prevent real filesystem side effects.
+    const mkdirSpy = spyOn(fs.promises, "mkdir");
     // Make ensureStackFiles find the bundled compose file (we're running from
     // the source tree, so bundledStackFiles resolves to the real path).
     existsSpy.mockImplementation((p: fs.PathLike) => {
@@ -449,7 +475,7 @@ describe("createFirstUser", () => {
       if (ps.endsWith("compose.example.env")) return true;
       return false;
     });
-    mkdirSpy.mockImplementation(() => undefined as any);
+    mkdirSpy.mockImplementation(async () => undefined);
     const copyFileSpy = spyOn(fs.promises, "copyFile").mockImplementation(async () => undefined);
     const readSpy = spyOn(fs, "readFileSync").mockImplementation(
       (() =>
@@ -476,7 +502,6 @@ describe("createFirstUser", () => {
 // ============================================================================
 
 describe("dbStart first-user bootstrap", () => {
-  let execSpy: ReturnType<typeof spyOn>;
   let existsSpy: ReturnType<typeof spyOn>;
   let mkdirSpy: ReturnType<typeof spyOn>;
   let copyFileSpy: ReturnType<typeof spyOn>;
@@ -486,9 +511,11 @@ describe("dbStart first-user bootstrap", () => {
   let rlCreateSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
-    execSpy = spyOn(childProcess, "execSync");
+    execSpy().mockReset();
     existsSpy = spyOn(fs, "existsSync");
-    mkdirSpy = spyOn(fs, "mkdirSync");
+    // NOTE: ensureStackFiles calls fs.promises.mkdir (async), NOT fs.mkdirSync.
+    // Bug B fix: mock the async version to prevent real filesystem side effects.
+    mkdirSpy = spyOn(fs.promises, "mkdir");
     copyFileSpy = spyOn(fs.promises, "copyFile").mockImplementation(async () => undefined);
     readSpy = spyOn(fs, "readFileSync").mockImplementation(
       (() =>
@@ -501,7 +528,6 @@ describe("dbStart first-user bootstrap", () => {
   });
 
   afterEach(() => {
-    execSpy.mockRestore();
     existsSpy.mockRestore();
     mkdirSpy.mockRestore();
     copyFileSpy.mockRestore();
@@ -515,7 +541,7 @@ describe("dbStart first-user bootstrap", () => {
   });
 
   function mockStackUp(createUserResult: string | Error = "CREATE ROLE\nGRANT\n"): void {
-    execSpy.mockImplementation((cmd: string) => {
+    execSpy().mockImplementation((cmd: string) => {
       if (cmd === "command -v podman-compose") return Buffer.from("/usr/bin/podman-compose");
       if (cmd === "podman-compose --version") return Buffer.from("podman-compose version 1.6.0");
       if (cmd.includes("up -d")) return Buffer.from("");
@@ -536,7 +562,7 @@ describe("dbStart first-user bootstrap", () => {
       if (ps.endsWith("compose.example.env")) return true;
       return false;
     });
-    mkdirSpy.mockImplementation(() => undefined as any);
+    mkdirSpy.mockImplementation(async () => undefined);
   }
 
   it("--db-user non-interactive path creates user and prints DSN", async () => {
@@ -590,7 +616,7 @@ describe("dbStart first-user bootstrap", () => {
     const allStderr = (stderrSpy.mock.calls as unknown as [string][]).map((c) => c[0]).join("");
     expect(allStderr).toContain("Invalid username");
     // Ensure CREATE USER was never executed.
-    const execCmds = (execSpy.mock.calls as unknown as [string][]).map((c) => c[0]);
+    const execCmds = (execSpy().mock.calls as unknown as [string][]).map((c) => c[0]);
     expect(execCmds.some((c) => c.includes("CREATE USER"))).toBe(false);
   });
 
@@ -714,7 +740,7 @@ describe("dbStart first-user bootstrap", () => {
     const allOutput = (stdoutSpy.mock.calls as unknown as [string][]).map((c) => c[0]).join("");
     expect(allOutput).toContain("[DRY-RUN]");
     // No CREATE USER should have been executed.
-    const execCmds = (execSpy.mock.calls as unknown as [string][]).map((c) => c[0]);
+    const execCmds = (execSpy().mock.calls as unknown as [string][]).map((c) => c[0]);
     expect(execCmds.some((c) => c.includes("CREATE USER"))).toBe(false);
   });
 
@@ -730,7 +756,7 @@ describe("dbStart first-user bootstrap", () => {
     // empty for sleep means the loop body runs ~instantly and the deadline
     // check trips on the first iteration because Date.now() has advanced
     // past it — we set the deadline implicitly by having pg_isready throw).
-    execSpy.mockImplementation((cmd: string) => {
+    execSpy().mockImplementation((cmd: string) => {
       if (cmd === "command -v podman-compose") return Buffer.from("/usr/bin/podman-compose");
       if (cmd === "podman-compose --version") return Buffer.from("podman-compose version 1.6.0");
       if (cmd.includes("up -d")) return Buffer.from("");

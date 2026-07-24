@@ -1,0 +1,40 @@
+name: Update Model Presets
+
+on:
+  schedule:
+    # 06:00 UTC daily
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-presets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Playwright + Chromium
+        run: |
+          pip install playwright
+          playwright install chromium
+
+      - name: Run presets pipeline
+        run: python scripts/update_presets.py
+
+      - name: Commit if changed
+        run: |
+          if ! git diff --quiet -- presets.json; then
+            git config user.name "neuralgentics-bot"
+            git config user.email "bot@neuralgentics.dev"
+            git add presets.json scripts/model_aliases.json
+            git commit -m "chore(presets): update model rankings $(date -u +%Y-%m-%d)"
+            git push
+          else
+            echo "No changes to presets.json — skipping commit."
+          fi

@@ -3,6 +3,8 @@ node_modules/
 .venv/
 venv/
 env/
+# Playwright debugging output from scripts/update_presets.py (runtime artifacts)
+scripts/screenshots/
 .secrets-venv/
 __pycache__/
 *.pyc

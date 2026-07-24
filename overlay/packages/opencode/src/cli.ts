@@ -33,6 +33,7 @@ interface ParsedArgs {
   update: boolean;
   updateProject: boolean;
   updateHomedir: boolean;
+  remodel: boolean;
   dbStart: boolean;
   dbStop: boolean;
   embedded: boolean;
@@ -79,6 +80,7 @@ function parseArgv(argv: string[]): ParsedArgs {
       update: { type: "boolean", default: false },
       "update-project": { type: "boolean", default: false },
       "update-homedir": { type: "boolean", default: false },
+      remodel: { type: "boolean", default: false },
       embedded: { type: "boolean", default: false },
       team: { type: "boolean", default: false },
       "CPU-Embed": { type: "boolean", default: false },
@@ -121,7 +123,7 @@ function parseArgv(argv: string[]): ParsedArgs {
   const knownFlags = new Set([
     "--init", "--init-homedir", "--init-project",
     "--db-start", "--db-stop",
-    "--update", "--update-project", "--update-homedir",
+    "--update", "--update-project", "--update-homedir", "--remodel",
     "--embedded", "--team",
     "--CPU-Embed", "--Auto-Embed", "--GPU-Embed",
     "--force", "--dry-run", "--yes", "-y", "--offline",
@@ -155,6 +157,7 @@ function parseArgv(argv: string[]): ParsedArgs {
     update: values.update === true,
     updateProject: values["update-project"] === true,
     updateHomedir: values["update-homedir"] === true,
+    remodel: values.remodel === true,
     embedded: values.embedded === true,
     team: values.team === true,
     cpuEmbed: values["CPU-Embed"] === true,
@@ -187,7 +190,7 @@ function parseArgv(argv: string[]): ParsedArgs {
 
 function printHelp(): void {
   process.stdout.write(
-    `Usage: neuralgentics [init|update] [options]\n` +
+    `Usage: neuralgentics [init|update|remodel] [options]\n` +
       `\n` +
       `Bootstrapper CLI for the neuralgentics OpenCode plugin.\n` +
       `\n` +
@@ -200,6 +203,11 @@ function printHelp(): void {
       `  --update             Update ALL installs under user's home (projects + homedir).\n` +
       `  --update-project     Update just THIS project (CWD).\n` +
       `  --update-homedir     Update just the home dir.\n` +
+      `\n` +
+      `Remodel options:\n` +
+      `  --remodel            Re-pick agent models from .opencode/neuralgentics.config.json\n` +
+      `                       + benchmark rankings, patching only the \`model:\` line in each\n` +
+      `                       agent persona. The \`overrides/\` directory is not touched.\n` +
       `\n` +
       `Database stack helpers:\n` +
       `  --db-start           Start the bundled PostgreSQL stack (writes docker-compose.yml + .env to ~/.neuralgentics/, runs compose up -d, waits for ready, offers to create your first database user).\n` +
@@ -244,7 +252,7 @@ function printHelp(): void {
       `\n` +
       `  -h, --help          Show this help and exit.\n` +
       `\n` +
-      `Positional alias: \`neuralgentics init\` is equivalent to \`--init\`.\n`,
+      `Positional aliases: \`neuralgentics init\` = \`--init\`; \`neuralgentics remodel\` = \`--remodel\`.\n`,
   );
 }
 
@@ -294,9 +302,10 @@ async function main(argv: string[]): Promise<number> {
   const initRequested = parsed.init || parsed.initHomedir || parsed.initProject || parsed.command === "init";
   const migrateRequested = parsed.command === "migrate-embeddings";
   const updateRequested = parsed.update || parsed.updateProject || parsed.updateHomedir;
+  const remodelRequested = parsed.remodel || parsed.command === "remodel";
   const dbStackRequested = parsed.dbStart || parsed.dbStop;
 
-  if (!initRequested && !migrateRequested && !updateRequested && !dbStackRequested) {
+  if (!initRequested && !migrateRequested && !updateRequested && !remodelRequested && !dbStackRequested) {
     printHelp();
     return 0;
   }
@@ -355,6 +364,43 @@ async function main(argv: string[]): Promise<number> {
       } else {
         await updateHomedir(updateOpts);
       }
+      return 0;
+    } catch (err) {
+      if (err instanceof NeuralgenticsError) {
+        process.stderr.write(formatError(err) + "\n");
+        return err.exitCode;
+      }
+      if (err instanceof Error) {
+        process.stderr.write(`[ERROR] ${err.message}\n`);
+        return 1;
+      }
+      process.stderr.write(`[ERROR] ${String(err)}\n`);
+      return 1;
+    }
+  }
+
+  // --remodel flow: re-pick agent models from config + benchmark rankings.
+  // Interactive by default (TUI prompts via @clack/prompts); non-interactive
+  // when --yes/-y is passed OR stdout is not a TTY OR a CI env is present.
+  if (remodelRequested) {
+    const { getProjectConfigPath } = await import("./neuralgentics/paths.js");
+    const { remodel } = await import("./neuralgentics/remodel.js");
+    const { runInteractiveRemodel, shouldRunNonInteractive } = await import(
+      "./neuralgentics/remodel-tui.js"
+    );
+    const configDir = getProjectConfigPath(parsed.target === "." ? undefined : parsed.target);
+    try {
+      const nonInteractive =
+        shouldRunNonInteractive({ yes: parsed.yes, stdout: process.stdout }) || parsed.dryRun;
+      if (nonInteractive) {
+        // Plain non-interactive path: pick + patch + print summary.
+        await remodel(configDir, parsed.dryRun);
+        return 0;
+      }
+      // Interactive path: TUI gathers picks, then we patch via patchAssignments.
+      const picks = await runInteractiveRemodel({ configDir, dryRun: parsed.dryRun });
+      const { patchAssignments } = await import("./neuralgentics/remodel.js");
+      await patchAssignments(configDir, picks, parsed.dryRun);
       return 0;
     } catch (err) {
       if (err instanceof NeuralgenticsError) {

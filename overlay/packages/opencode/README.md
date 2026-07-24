@@ -49,6 +49,7 @@ The `init` command accepts these flags:
 | `--yes`, `-y` | false | Skip all confirmation prompts. |
 | `--dry-run` | false | Preview actions without writing. |
 | `--force` | false | Overwrite existing files. |
+| `--remodel` | false | Re-pick agent models based on `neuralgentics.config.json` and benchmark rankings. No reinstall needed. |
 
 ### Examples
 
@@ -61,6 +62,9 @@ npx @veedubin/neuralgentics --init --quantize fp16 --no-lazy-load
 
 # Long-idle tolerance — don't unload for 30 min
 npx @veedubin/neuralgentics --init --idle-min 30
+
+# Re-pick agent models after enabling Mammoth in config
+npx @veedubin/neuralgentics --remodel
 ```
 
 ## Migrate Embeddings
@@ -233,6 +237,55 @@ Make sure PostgreSQL is running before launching opencode.
 - **Orchestration**: 9-step Boomerang Protocol (Memory Query → Thought Chain → Planning → Delegation → Git Check → Quality Gates → IMPROVE → Doc Update → Memory Save).
 - **Self-Evolution**: Auto-creates skills from repeated session patterns.
 - **Kanban Board**: Tracks tasks in `TASKS.md` (triage, todo, ready, running, blocked, done, archived).
+
+## Model Selection & Remodeling
+
+Neuralgentics lets you **dynamically re-pick which LLM model each agent uses** without reinstalling. This is useful when:
+
+- You want to switch providers (e.g., enable Mammoth, disable Kimi)
+- New benchmark rankings favor different models
+- You want to override a specific agent's model
+
+### How It Works
+
+1. **Edit `neuralgentics.config.json`** to enable/disable providers and set per-agent overrides.
+2. **Run `npx @veedubin/neuralgentics --remodel`** to re-pick models based on your config and the latest benchmark rankings.
+3. The command patches the `model:` line in each agent's YAML frontmatter — your overrides (body content) are **never touched**.
+
+### Example Workflow
+
+1. Enable Mammoth and disable Kimi in `neuralgentics.config.json`:
+   ```json
+   {
+     "version": "1.0.0",
+     "providers": {
+       "ollama": { "enabled": true },
+       "mammoth": { "enabled": true },
+       "kimi": { "enabled": false }
+     }
+   }
+   ```
+2. Run the remodel command:
+   ```bash
+   npx @veedubin/neuralgentics --remodel
+   ```
+3. Agents now use the best available Mammoth models for their roles.
+
+### Config File Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | string | Schema version (use `"1.0.0"`). |
+| `providers` | object | Map of providers to enable/disable. |
+| `providers.<name>.enabled` | boolean | Whether the provider is enabled. |
+| `providers.<name>.apiKeyEnv` | string | Environment variable for the API key. |
+| `overrides` | object | Optional per-agent model overrides. |
+
+### Notes
+
+- Benchmark rankings are sourced from `presets.json`, which is auto-updated daily by GitHub Actions.
+- Overrides take priority over benchmark rankings.
+- The `overrides/` directory (body content) is **never modified** by `--remodel`.
 
 ## Personalizing Agents
 

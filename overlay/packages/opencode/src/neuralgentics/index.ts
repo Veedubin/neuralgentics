@@ -16,6 +16,9 @@ export { StatelessProtocol } from "./stateless.js";
 export { NeuralgenticsUpdater } from "./updater.js";
 export { mergePersonalizations, stripYamlFrontmatter } from "./personalizations.js";
 export type { MergeResult } from "./personalizations.js";
+export * from "./config.js";
+export * from "./model-picker.js";
+export * from "./remodel.js";
 export type {
   AgentDefinition,
   RoutingRule,

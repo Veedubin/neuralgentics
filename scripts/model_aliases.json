@@ -1,0 +1,359 @@
+{
+  "$comment": "Canonical model name mapping for the presets pipeline. Maps every known alias to a canonical name and records each provider's native model ID. Maintained by scripts/update_presets.py.",
+  "version": "1.1.0",
+  "canonical_names": {
+    "claude-sonnet-4": {
+      "aliases": [
+        "claude-sonnet-4-20250514",
+        "anthropic/claude-sonnet-4",
+        "claude-sonnet-4-6",
+        "Claude Sonnet 4"
+      ],
+      "provider_ids": {
+        "anthropic": "claude-sonnet-4-20250514",
+        "mammoth": "claude-sonnet-4-6",
+        "openrouter": "anthropic/claude-sonnet-4"
+      }
+    },
+    "claude-sonnet-4.5": {
+      "aliases": [
+        "claude-sonnet-4-5-20250929",
+        "Claude-Sonnet-4-5-20250929",
+        "Claude Sonnet 4.5",
+        "Claude 4.5 Sonnet",
+        "Claude 4.5 Sonnet (high reasoning)"
+      ],
+      "provider_ids": {
+        "anthropic": "claude-sonnet-4-5-20250929",
+        "openrouter": "anthropic/claude-sonnet-4.5"
+      }
+    },
+    "claude-opus-4": {
+      "aliases": [
+        "claude-opus-4-20250514",
+        "anthropic/claude-opus-4",
+        "Claude Opus 4"
+      ],
+      "provider_ids": {
+        "anthropic": "claude-opus-4-20250514",
+        "openrouter": "anthropic/claude-opus-4"
+      }
+    },
+    "claude-opus-4.5": {
+      "aliases": [
+        "claude-opus-4-5-20251101",
+        "Claude-Opus-4-5-20251101",
+        "Claude Opus 4.5",
+        "Claude 4.5 Opus",
+        "Claude 4.5 Opus (high reasoning)"
+      ],
+      "provider_ids": {
+        "anthropic": "claude-opus-4-5-20251101",
+        "openrouter": "anthropic/claude-opus-4.5"
+      }
+    },
+    "claude-haiku-4.5": {
+      "aliases": [
+        "claude-haiku-4-5-20251001",
+        "Claude-Haiku-4-5-20251001",
+        "Claude Haiku 4.5",
+        "Claude 4.5 Haiku",
+        "Claude 4.5 Haiku (high reasoning)"
+      ],
+      "provider_ids": {
+        "anthropic": "claude-haiku-4-5-20251001",
+        "openrouter": "anthropic/claude-haiku-4.5"
+      }
+    },
+    "gpt-4o": {
+      "aliases": [
+        "openai/gpt-4o",
+        "GPT-4o",
+        "gpt-4o-2024-05-13",
+        "GPT-4O-2024-05-13"
+      ],
+      "provider_ids": {
+        "openai": "gpt-4o",
+        "openrouter": "openai/gpt-4o",
+        "mammoth": "gpt-4o"
+      }
+    },
+    "gpt-4.1": {
+      "aliases": [
+        "openai/gpt-4.1",
+        "GPT-4.1",
+        "gpt-4.1-2025-04-14",
+        "GPT-4.1-2025-04-14",
+        "gpt-4.1-mini-2025-04-14",
+        "GPT-4.1-mini-2025-04-14",
+        "gpt-4.1-nano-2025-04-14",
+        "GPT-4.1-nano-2025-04-14"
+      ],
+      "provider_ids": {
+        "openai": "gpt-4.1",
+        "mammoth": "gpt-4.1"
+      }
+    },
+    "gpt-5.2": {
+      "aliases": [
+        "gpt-5.2-2025-12-11",
+        "GPT-5.2-2025-12-11",
+        "GPT 5.2",
+        "GPT 5.2 Codex",
+        "GPT-5-2 Codex",
+        "GPT-5-2",
+        "GPT 5.2 (high reasoning)"
+      ],
+      "provider_ids": {
+        "openai": "gpt-5.2-2025-12-11",
+        "openrouter": "openai/gpt-5.2"
+      }
+    },
+    "gpt-5-mini": {
+      "aliases": [
+        "gpt-5-mini-2025-08-07",
+        "GPT-5-mini-2025-08-07",
+        "GPT 5 mini",
+        "GPT-5 Mini"
+      ],
+      "provider_ids": {
+        "openai": "gpt-5-mini-2025-08-07"
+      }
+    },
+    "gpt-5-nano": {
+      "aliases": [
+        "gpt-5-nano-2025-08-07",
+        "GPT-5-nano-2025-08-07",
+        "GPT 5 nano"
+      ],
+      "provider_ids": {
+        "openai": "gpt-5-nano-2025-08-07"
+      }
+    },
+    "o3": {
+      "aliases": [
+        "o3-2025-04-16",
+        "O3-2025-04-16",
+        "openai/o3"
+      ],
+      "provider_ids": {
+        "openai": "o3-2025-04-16"
+      }
+    },
+    "o3-mini": {
+      "aliases": ["o3-mini"],
+      "provider_ids": {
+        "openai": "o3-mini"
+      }
+    },
+    "o4-mini": {
+      "aliases": [
+        "o4-mini-2025-04-16",
+        "O4-mini-2025-04-16",
+        "openai/o4-mini"
+      ],
+      "provider_ids": {
+        "openai": "o4-mini-2025-04-16"
+      }
+    },
+    "kimi-k2.6": {
+      "aliases": [
+        "kimi-k2.6",
+        "Kimi K2.6",
+        "moonshot/kimi-k2",
+        "Moonshotai-Kimi-K2-Instruct",
+        "moonshotai/kimi-k2-instruct",
+        "Kimi K2.5",
+        "Kimi K2.5 (high reasoning)"
+      ],
+      "provider_ids": {
+        "ollama": "kimi-k2.6",
+        "kimi": "kimi-k2",
+        "mammoth": "kimi-k2.6"
+      }
+    },
+    "glm-5.2": {
+      "aliases": ["glm-5.2", "GLM 5.2", "GLM-5", "GLM-5 (high reasoning)"],
+      "provider_ids": {
+        "ollama": "glm-5.2",
+        "mammoth": "glm-5.2"
+      }
+    },
+    "glm-4.6": {
+      "aliases": ["glm-4.6", "GLM-4.6", "GLM 4.6"],
+      "provider_ids": {
+        "ollama": "glm-4.6"
+      }
+    },
+    "deepseek-v4-pro": {
+      "aliases": ["deepseek-v4-pro", "DeepSeek V4 Pro", "deepseek/deepseek-v4-pro"],
+      "provider_ids": {
+        "ollama": "deepseek-v4-pro",
+        "openrouter": "deepseek/deepseek-v4-pro"
+      }
+    },
+    "deepseek-v4-flash": {
+      "aliases": ["deepseek-v4-flash", "DeepSeek V4 Flash", "deepseek/deepseek-v4-flash"],
+      "provider_ids": {
+        "ollama": "deepseek-v4-flash",
+        "openrouter": "deepseek/deepseek-v4-flash"
+      }
+    },
+    "deepseek-v3.2": {
+      "aliases": [
+        "deepseek-v3.2-exp",
+        "DeepSeek-V3.2-Exp",
+        "DeepSeek V3.2 Exp",
+        "DeepSeek V3.2",
+        "DeepSeek V3.2 (high reasoning)",
+        "deepseek/deepseek-v3.2-exp"
+      ],
+      "provider_ids": {
+        "openrouter": "deepseek/deepseek-v3.2-exp"
+      }
+    },
+    "minimax-m3": {
+      "aliases": [
+        "MiniMax-M3",
+        "minimax-m3",
+        "MiniMax M3",
+        "MiniMax M2.5",
+        "MiniMax M2.5 (high reasoning)"
+      ],
+      "provider_ids": {
+        "ollama": "minimax-m3",
+        "minimax": "MiniMax-M3"
+      }
+    },
+    "mistral-large-3": {
+      "aliases": [
+        "mistral-large-3:675b",
+        "mistralai/mistral-large-latest",
+        "Mistral Large 3",
+        "mistral-large-2411",
+        "Mistral-Large-2411"
+      ],
+      "provider_ids": {
+        "ollama": "mistral-large-3:675b",
+        "openrouter": "mistralai/mistral-large-latest"
+      }
+    },
+    "qwen3.5": {
+      "aliases": [
+        "qwen3.5:397b",
+        "Qwen 3.5 397B",
+        "qwen/qwen3.5-397b"
+      ],
+      "provider_ids": {
+        "ollama": "qwen3.5:397b",
+        "openrouter": "qwen/qwen3.5-397b"
+      }
+    },
+    "qwen3-235b": {
+      "aliases": [
+        "qwen3-235b-a22b-instruct-2507",
+        "Qwen3-235B-A22B-Instruct-2507",
+        "Qwen 3 235B"
+      ],
+      "provider_ids": {
+        "openrouter": "qwen/qwen3-235b-a22b-instruct-2507"
+      }
+    },
+    "gemini-2.5-pro": {
+      "aliases": ["google/gemini-2.5-pro", "Gemini 2.5 Pro"],
+      "provider_ids": {
+        "google": "gemini-2.5-pro",
+        "openrouter": "google/gemini-2.5-pro"
+      }
+    },
+    "gemini-2.5-flash": {
+      "aliases": [
+        "google/gemini-2.5-flash",
+        "Gemini 2.5 Flash",
+        "gemini-2.5-flash-lite",
+        "Gemini-2.5-Flash-Lite",
+        "Gemini 2.5 Flash Lite"
+      ],
+      "provider_ids": {
+        "google": "gemini-2.5-flash",
+        "openrouter": "google/gemini-2.5-flash"
+      }
+    },
+    "gemini-3-pro": {
+      "aliases": [
+        "gemini-3-pro-preview",
+        "Gemini-3-Pro-Preview",
+        "Gemini 3 Pro"
+      ],
+      "provider_ids": {
+        "google": "gemini-3-pro-preview",
+        "openrouter": "google/gemini-3-pro-preview"
+      }
+    },
+    "gemini-3-flash": {
+      "aliases": [
+        "gemini-3-flash",
+        "Gemini 3 Flash",
+        "Gemini 3 Flash (high reasoning)"
+      ],
+      "provider_ids": {
+        "google": "gemini-3-flash",
+        "openrouter": "google/gemini-3-flash"
+      }
+    },
+    "grok-4": {
+      "aliases": [
+        "grok-4-0709",
+        "Grok-4-0709",
+        "Grok 4",
+        "grok-4-1-fast-reasoning",
+        "Grok-4-1-fast-reasoning",
+        "grok-4-1-fast-non-reasoning",
+        "Grok-4-1-fast-non-reasoning"
+      ],
+      "provider_ids": {
+        "openrouter": "x-ai/grok-4"
+      }
+    },
+    "llama-3.3-70b": {
+      "aliases": [
+        "meta-llama/llama-3.3-70b-instruct",
+        "llama-3.3-70b-versatile",
+        "Llama 3.3 70B",
+        "llama-3.3-70b-instruct",
+        "Llama-3.3-70B-Instruct"
+      ],
+      "provider_ids": {
+        "groq": "llama-3.3-70b-versatile",
+        "openrouter": "meta-llama/llama-3.3-70b-instruct"
+      }
+    },
+    "llama-4-maverick": {
+      "aliases": [
+        "llama-4-maverick-17b-128e-instruct-fp8",
+        "Llama-4-Maverick-17B-128E-Instruct-FP8",
+        "Llama 4 Maverick"
+      ],
+      "provider_ids": {
+        "openrouter": "meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
+      }
+    },
+    "command-a": {
+      "aliases": [
+        "command-a",
+        "Command A",
+        "command-a-reasoning",
+        "Command A Reasoning"
+      ],
+      "provider_ids": {
+        "openrouter": "cohere/command-a"
+      }
+    },
+    "phi-4": {
+      "aliases": ["phi-4", "Phi-4", "Phi 4"],
+      "provider_ids": {
+        "openrouter": "microsoft/phi-4"
+      }
+    }
+  }
+}

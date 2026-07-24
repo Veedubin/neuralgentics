@@ -1,3 +1,45 @@
+## Model Remodeling
+
+Neuralgentics lets you **dynamically re-pick which LLM model each agent uses** without reinstalling. This is useful when:
+
+- You want to switch providers (e.g., enable Mammoth, disable Kimi)
+- New benchmark rankings favor different models
+- You want to override a specific agent's model
+
+### How It Works
+
+1. **Edit `.opencode/neuralgentics.config.json`** to enable/disable providers and set per-agent overrides.
+2. **Run `npx @veedubin/neuralgentics --remodel`** to re-pick models based on your config and the latest benchmark rankings.
+3. The command patches the `model:` line in each agent's YAML frontmatter — your overrides (body content) are **never touched**.
+
+### Example Workflow
+
+1. Enable Mammoth and disable Kimi in `neuralgentics.config.json`:
+   ```json
+   {
+     "version": "1.0.0",
+     "providers": {
+       "ollama": { "enabled": true },
+       "mammoth": { "enabled": true },
+       "kimi": { "enabled": false }
+     },
+     "overrides": {
+       "coder": { "model": "mammoth/glm-5.2", "provider": "mammoth" }
+     }
+   }
+   ```
+2. Run the remodel command:
+   ```bash
+   npx @veedubin/neuralgentics --remodel
+   ```
+3. Agents now use the best available Mammoth models for their roles, with the `coder` agent explicitly using `mammoth/glm-5.2`.
+
+### Notes
+
+- Benchmark rankings are sourced from `presets.json`, which is auto-updated daily by GitHub Actions.
+- Overrides take priority over benchmark rankings.
+- The `overrides/` directory (body content) is **never modified** by `--remodel`.
+
 ## User Overrides
 
 Neuralgentics supports **user overrides** to personalize agent personas while preserving your customizations across updates.

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.18] - 2026-07-24
+
+### Added
+
+- **Automated model-preset system.** `presets.json` at repo root ranks models per benchmark category (BFCL, SWE-bench, LiveCodeBench, Chatbot Arena, MMLU-Pro); refreshed daily by `.github/workflows/update-presets.yml` via `scripts/update_presets.py` (Playwright-based scraping with API-first strategy; `scripts/model_aliases.json` maps leaderboard display names to canonical models).
+- **`neuralgentics.config.json` + `--remodel`.** New `neuralgentics --remodel` CLI command re-picks the best model for each of the 12 agent roles from the user's enabled providers based on the latest benchmark rankings, and patches the `model:` line in each agent's YAML frontmatter. User overrides in the config always win over rankings.
+- **Interactive `--remodel` TUI.** Built on `@clack/prompts`: accept-all gate, per-role confirm with recommended model + reason hint, numbered alternatives from enabled providers, "I don't see my model" fallback listing all models across all enabled providers, final review table before writing. Non-interactive via `--yes`, non-TTY, or CI env. `.opencode/overrides/` personalizations are untouched (only the frontmatter `model:` line is patched).
+
+### Fixed
+
+- **Flaky test suite under concurrent file execution.** `db-setup.test.ts` asserted `toHaveBeenCalledTimes(1)` on a process-wide shared `execSync` spy; interleaved `db-stack.test.ts` tests polluted the count. Assertions now match the specific command. Also, `db-stack.test.ts` mocked `fs.mkdirSync` but production code uses `fs.promises.mkdir` — tests were really creating/backing-up files in `~/.neuralgentics/`. Mocks corrected; no more real filesystem side effects.
+
 ## [0.15.17] - 2026-07-24
 
 ### Fixed
