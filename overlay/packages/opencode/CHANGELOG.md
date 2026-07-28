@@ -5,6 +5,11 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.15.22 (2026-07-28)
+
+**Changed:**
+- **memini-ai is now the canonical DB identity** — the PostgreSQL database, user, container, stack directory, and env vars are all named after memini-ai (the memory server), not neuralgentics (the orchestrator). `MEMINI_DB_URL` is the canonical env var; `NEURALGENTICS_DB_URL` is kept as a silent legacy fallback. The hardcoded Go backend default is now `postgresql://memini:memini@localhost:5434/memini` (matching the user's existing `memini-postgres` container). Installer prompts say "memini-ai server" instead of "Team server". Stack directory is `~/.memini-ai/` instead of `~/.neuralgentics/`. See HANDOFF.md Session 60e and design doc `docs/design/rename-neuralgentics-db-to-memini.md`.
+
 ## v0.15.21 (2026-07-27)
 
 **Fixed:**
