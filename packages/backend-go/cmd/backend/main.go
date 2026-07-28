@@ -43,6 +43,76 @@ import (
 // Defaults to "dev" for local builds.
 var version = "dev"
 
+// loadEnvFile reads a dotenv-style file (KEY=VALUE lines) and sets the
+// parsed keys on the process env via os.Setenv, but ONLY for keys that are
+// not already present in the process env. This means explicit shell exports
+// always win over the file — the file is purely a fallback for unset keys.
+//
+// The file path is taken from the NEURALGENTICS_ENV_FILE env var if set,
+// otherwise defaults to ".env" in the current working directory.
+//
+// Parsing rules (deliberately minimal — no third-party deps):
+//   - Blank lines are skipped.
+//   - Lines starting with '#' (after optional leading whitespace) are comments.
+//   - Each remaining line must be "KEY=VALUE".
+//   - Surrounding "..." or '...' quotes around VALUE are stripped.
+//   - No ${...} expansion is performed — values are stored verbatim.
+//
+// Missing file is a silent no-op (returns nil) — the dotenv file is
+// optional. Any other I/O or parse error is returned.
+func loadEnvFile() error {
+	path := os.Getenv("NEURALGENTICS_ENV_FILE")
+	if path == "" {
+		path = ".env"
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Optional file — silently skip.
+			return nil
+		}
+		return err
+	}
+
+	var loaded []string
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		key, value, found := strings.Cut(line, "=")
+		if !found {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		// Strip a single pair of matching surrounding quotes.
+		if len(value) >= 2 {
+			if (value[0] == '"' && value[len(value)-1] == '"') ||
+				(value[0] == '\'' && value[len(value)-1] == '\'') {
+				value = value[1 : len(value)-1]
+			}
+		}
+		// Process env wins — never overwrite an already-set key.
+		if _, exists := os.LookupEnv(key); exists {
+			continue
+		}
+		if err := os.Setenv(key, value); err != nil {
+			return err
+		}
+		loaded = append(loaded, key)
+	}
+
+	if len(loaded) > 0 {
+		log.Printf("env: loaded %d key(s) from %s: %s", len(loaded), path, strings.Join(loaded, ", "))
+	}
+	return nil
+}
+
 // ─── Active Peer Context ────────────────────────────────────────────────────
 
 // activePeerContext tracks the currently active peer for multi-peer operations.
@@ -658,6 +728,13 @@ func main() {
 
 	log.SetOutput(os.Stderr)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	// Load .env (if present) so NEURALGENTICS_DB_URL and other config can be
+	// supplied without explicit shell exports. Explicit env exports always
+	// take precedence over the file.
+	if err := loadEnvFile(); err != nil {
+		log.Printf("env: failed to load .env file: %v", err)
+	}
 
 	dbURL := os.Getenv("NEURALGENTICS_DB_URL")
 	if dbURL == "" {
