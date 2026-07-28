@@ -5,6 +5,14 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.15.20 (2026-07-27)
+
+**Fixed:**
+- **`--init-project` re-run corruption** — re-running the installer with new interactive input no longer silently overwrites your working config. The installer now detects existing `.neuralgentics-state.json` and exits cleanly with a clear message unless `--force` is passed. Port input is validated (1-65535), `.env` files are backed up before overwrite, and host/db name inputs get basic sanity checks. See HANDOFF.md Session 60.
+
+**Changed:**
+- New helper `env-file.ts` provides a single `updateEnvFile()` function with backup support. Both `promptTeamConnection` and `promptOllamaApiKey` now use it.
+
 ## [0.15.19] — 2026-07-27
 
 ### Fixed
