@@ -28,6 +28,10 @@ export interface McpServerEntry {
   command: string[];
   env?: Record<string, string>;
   args?: string[];
+  /** Per-server MCP probe timeout in ms. Useful for servers that download
+   *  embedding models on first launch (e.g. memini-ai-dev: MiniLM ~100MB,
+   *  BGE-M3 ~2.3GB) which blow past OpenCode's default MCP probe timeout. */
+  timeout?: number;
 }
 
 /** The shape of the `mcp` block: server-name → server entry. */
@@ -49,7 +53,11 @@ export const HOMEDIR_MCP_TEMPLATES: McpBlock = {
   "memini-ai-dev": {
     type: "local",
     enabled: true,
-    command: ["uvx", "--from", "memini-ai-dev", "memini-ai"],
+    command: ["uvx", "--from", "memini-ai-dev", "memini-ai", "--stdio"],
+    // First-ever launch downloads embedding models (MiniLM ~100MB or BGE-M3
+    // ~2.3GB) and blows past OpenCode's default MCP probe timeout. 120s
+    // matches the known workaround documented in the memini-ai release notes.
+    timeout: 120000,
     env: {
       MEMINI_DB_URL: "pgembed",
       MEMINI_VECTOR_BACKEND: "pgembed",
@@ -135,7 +143,11 @@ export const PROJECT_MCP_TEMPLATES: McpBlock = {
   "memini-ai-dev": {
     type: "local",
     enabled: true,
-    command: ["uvx", "--from", "memini-ai-dev", "memini-ai"],
+    command: ["uvx", "--from", "memini-ai-dev", "memini-ai", "--stdio"],
+    // First-ever launch downloads embedding models (MiniLM ~100MB or BGE-M3
+    // ~2.3GB) and blows past OpenCode's default MCP probe timeout. 120s
+    // matches the known workaround documented in the memini-ai release notes.
+    timeout: 120000,
     env: {
       MEMINI_DB_URL: "pgembed",
       MEMINI_VECTOR_BACKEND: "pgembed",

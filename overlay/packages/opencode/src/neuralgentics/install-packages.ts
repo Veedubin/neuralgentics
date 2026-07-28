@@ -46,7 +46,7 @@ function buildPreDownloadCommand(entry: McpServerEntry): { cmd: string; via: "uv
   const [runner, ...rest] = entry.command;
   if (runner === "uvx") {
     // Forms seen in mcp-templates.ts:
-    //   ["uvx", "--from", "memini-ai-dev", "memini-ai"]  →  uvx --from memini-ai-dev memini-ai --help
+    //   ["uvx", "--from", "memini-ai-dev", "memini-ai", "--stdio"]  →  uvx --from memini-ai-dev memini-ai --stdio --help
     //   ["uvx", "videre-mcp[vision]"]                   →  uvx videre-mcp[vision] --help
     //   ["uvx", "markitdown-mcp"]                       →  uvx markitdown-mcp --help
     //   ["uvx", "mcp-server-motherduck"]                →  uvx mcp-server-motherduck --help

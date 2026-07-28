@@ -5,6 +5,11 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.15.23 (2026-07-28)
+
+**Fixed:**
+- **memini-ai-dev MCP template missing `--stdio`** — `mcp-templates.ts` generated `command: ["uvx","--from","memini-ai-dev","memini-ai"]` for both `HOMEDIR_MCP_TEMPLATES` and `PROJECT_MCP_TEMPLATES`. Since memini-ai v1.0.0, bare `memini-ai` defaults to streamable-http transport; OpenCode local MCP speaks stdio JSON-RPC, so every project installed via `neuralgentics --init-project` got `"server unavailable"` for `memini-ai-dev`. Fixed by appending `"--stdio"` to both templates. Added `timeout?: number` to the `McpServerEntry` interface and set `timeout: 120000` on the memini-ai-dev entries (first-ever launch downloads the embedding model — MiniLM ~100MB or BGE-M3 ~2.3GB — and blows past OpenCode's default MCP probe timeout). Comment in `install-packages.ts` updated to match the new command shape. New `mcp-templates.test.ts` (12 tests) asserts the `--stdio` regression can never recur.
+
 ## v0.15.22 (2026-07-28)
 
 **Changed:**
