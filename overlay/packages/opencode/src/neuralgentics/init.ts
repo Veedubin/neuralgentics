@@ -1433,13 +1433,13 @@ export function buildProjectOpencodeJson(promptConfig: PromptConfig): Record<str
     const env = { ...entry.env };
     if (name === "memini-ai-dev") {
       env.MEMINI_EMBEDDING_DIM = promptConfig.embedding === "gpu" ? "1024" : "384";
-      // Apply team server settings if team mode was chosen
+      // Apply memini-ai server settings if team mode was chosen
       if (promptConfig.backend === "team") {
         const host = promptConfig.teamHost ?? "localhost";
-        const port = promptConfig.teamPort ?? "6200";
-        const db = promptConfig.teamDatabase ?? "neuralgentics";
-        const user = promptConfig.teamUser ?? "neuralgentics";
-        const password = promptConfig.teamPassword ?? "neuralgentics";
+        const port = promptConfig.teamPort ?? "5434";
+        const db = promptConfig.teamDatabase ?? "memini";
+        const user = promptConfig.teamUser ?? "memini";
+        const password = promptConfig.teamPassword ?? "memini";
         // Fix 4 — re-validate the port before building the DSN. Even though
         // the interactive prompt validates, a programmatic caller could set
         // an invalid value (e.g. the "5" corruption case). Throw loudly

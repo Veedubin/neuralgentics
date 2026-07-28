@@ -1,8 +1,8 @@
-# docker-compose.yml — Neuralgentics PostgreSQL stack
+# docker-compose.yml — memini-ai PostgreSQL stack
 #
 # Shipped inside the @veedubin/neuralgentics npm package.
 # Brought up by `neuralgentics --db-start` (writes this file to
-# ~/.neuralgentics/ if absent, then runs compose up -d).
+# ~/.memini-ai/ if absent, then runs compose up -d).
 #
 # Compatible with both `docker compose` (v2.38+) and `podman-compose` (v1.x).
 # Usage:
@@ -17,15 +17,15 @@
 # out below — uncomment when you need them and have the images available.
 #
 # ── Multi-instance (run several stacks side by side) ──────────────────────
-# Every resource is parameterised by ${NEURALGENTICS_STACK_NAME:-neuralgentics}:
+# Every resource is parameterised by ${MEMINI_STACK_NAME:-memini}:
 #   - container_name: ${STACK}-db
 #   - volume name:    ${STACK}-db  (via the `name:` property of the volume)
 #   - network name:   ${STACK}-net
 # So you can run a second stack alongside the first by setting a different
 # stack name AND a different port:
 #   cp compose.example.env .env.proj2
-#   # edit .env.proj2: NEURALGENTICS_STACK_NAME=neuralgentics-proj2
-#   #                  NEURALGENTICS_DB_PORT=6300
+#   # edit .env.proj2: MEMINI_STACK_NAME=memini-proj2
+#   #                  MEMINI_DB_PORT=5435
 #   podman-compose --env-file .env.proj2 up -d
 # Both stacks share the same compose file — only the env file differs.
 #
@@ -34,20 +34,20 @@
 
 services:
   # ── PostgreSQL 18 + pgvector + TimescaleDB ────────────────────────────────
-  # The memory database. All neuralgentics memories live here.
-  # Default credentials: user/db = neuralgentics, password = neuralgentics.
+  # The memory database. All memini-ai memories live here.
+  # Default credentials: user/db = memini, password = memini.
   # CHANGE THE PASSWORD for any non-local deployment.
   # After the stack is up, `neuralgentics --db-start` offers to create your
   # FIRST database user (recommended — don't share the superuser account).
   db-server:
     image: ghcr.io/veedubin/neuralgentics-postgres:${NEURALGENTICS_VERSION:-latest}
-    container_name: ${NEURALGENTICS_STACK_NAME:-neuralgentics}-db
+    container_name: ${MEMINI_STACK_NAME:-memini}-db
     ports:
-      - "${NEURALGENTICS_DB_PORT:-6200}:5432"
+      - "${MEMINI_DB_PORT:-5434}:5432"
     environment:
-      POSTGRES_USER: ${NEURALGENTICS_DB_USER:-neuralgentics}
-      POSTGRES_PASSWORD: ${NEURALGENTICS_DB_PASSWORD:-neuralgentics}
-      POSTGRES_DB: ${NEURALGENTICS_DB_NAME:-neuralgentics}
+      POSTGRES_USER: ${MEMINI_DB_USER:-memini}
+      POSTGRES_PASSWORD: ${MEMINI_DB_PASSWORD:-memini}
+      POSTGRES_DB: ${MEMINI_DB_NAME:-memini}
     volumes:
       # PostgreSQL 18+ Docker images expect a single mount at /var/lib/postgresql
       # and place data in /var/lib/postgresql/18/docker inside it. Mounting at
@@ -56,9 +56,9 @@ services:
       #   "in 18+, these Docker images are configured to store database data in
       #    a format which is compatible with pg_ctlcluster ... Counter to that,
       #    there appears to be PostgreSQL data in /var/lib/postgresql/data".
-      - neuralgentics-db:/var/lib/postgresql
+      - memini-db:/var/lib/postgresql
     networks:
-      - neuralgentics-net
+      - memini-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -74,7 +74,7 @@ services:
   #
   # db-sidecar:
   #   image: ghcr.io/veedubin/neuralgentics-sidecar:${NEURALGENTICS_VERSION:-latest}
-  #   container_name: ${NEURALGENTICS_STACK_NAME:-neuralgentics}-sidecar
+  #   container_name: ${MEMINI_STACK_NAME:-memini}-sidecar
   #   ports:
   #     - "${NEURALGENTICS_SIDECAR_STATUS_PORT:-50052}:50052"
   #   environment:
@@ -86,7 +86,7 @@ services:
   #   volumes:
   #     - sidecar-cache:/root/.cache/huggingface
   #   networks:
-  #     - neuralgentics-net
+  #     - memini-net
   #   depends_on:
   #     db-server:
   #       condition: service_healthy
@@ -99,16 +99,15 @@ services:
   #
   # db-backend:
   #   image: ghcr.io/veedubin/neuralgentics-backend:${NEURALGENTICS_VERSION:-latest}
-  #   container_name: ${NEURALGENTICS_STACK_NAME:-neuralgentics}-backend
+  #   container_name: ${MEMINI_STACK_NAME:-memini}-backend
   #   environment:
-  #     NEURALGENTICS_DB_URL: postgresql://${NEURALGENTICS_DB_USER:-neuralgentics}:${NEURALGENTICS_DB_PASSWORD:-neuralgentics}@db-server:5432/${NEURALGENTICS_DB_NAME:-neuralgentics}
-  #     NEURALGENTICS_DB_PORT: "5432"
+  #     MEMINI_DB_URL: postgresql://${MEMINI_DB_USER:-memini}:${MEMINI_DB_PASSWORD:-memini}@db-server:5432/${MEMINI_DB_NAME:-memini}
   #     MEMINI_TRUST_ENGINE: "true"
   #     MEMINI_MEMORY_GRAPH: "true"
   #     MEMINI_KG_ENABLED: "true"
   #     THOUGHT_CHAINS: "true"
   #   networks:
-  #     - neuralgentics-net
+  #     - memini-net
   #   depends_on:
   #     db-server:
   #       condition: service_healthy
@@ -119,12 +118,12 @@ volumes:
   # runtimes (podman-compose 1.x, docker compose v2+). The top-level key
   # itself cannot use interpolation on every runtime, so we keep a fixed
   # key and set the actual volume name via `name:`.
-  neuralgentics-db:
-    name: ${NEURALGENTICS_STACK_NAME:-neuralgentics}-db
+  memini-db:
+    name: ${MEMINI_STACK_NAME:-memini}-db
   # sidecar-cache:
 
 networks:
   # Named per-stack so multiple stacks don't share a bridge.
-  neuralgentics-net:
-    name: ${NEURALGENTICS_STACK_NAME:-neuralgentics}-net
+  memini-net:
+    name: ${MEMINI_STACK_NAME:-memini}-net
     driver: bridge

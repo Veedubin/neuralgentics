@@ -13,9 +13,9 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 
 // DB URL: we do NOT override the Go backend's built-in default
-// (neuralgentics:neuralgentics@localhost:6200/neuralgentics), which matches
-// the `neuralgentics-postgres` compose-stack container. If the user has
-// explicitly set `NEURALGENTICS_DB_URL` in their environment, it is passed
+// (memini:memini@localhost:5434/memini), which matches
+// the `memini-postgres` podman container. If the user has
+// explicitly set `MEMINI_DB_URL` in their environment, it is passed
 // through automatically via the `process.env` spread below — otherwise the
 // Go binary uses its own sensible default.
 
@@ -285,10 +285,13 @@ export class GoBackendClient {
       //      "pgembed" and "" are skipped — they mean memini-ai is running in
       //      embedded mode, not against an external Postgres the Go backend
       //      could share.
+      //   3. process.env.MEMINI_DB_URL (the canonical memini-ai env var).
       if (!childEnv.NEURALGENTICS_DB_URL) {
         const meminiUrl = resolveMeminiDbUrl(loadedConfig);
         if (meminiUrl !== undefined) {
           childEnv.NEURALGENTICS_DB_URL = meminiUrl;
+        } else if (process.env.MEMINI_DB_URL) {
+          childEnv.NEURALGENTICS_DB_URL = process.env.MEMINI_DB_URL;
         }
       }
 

@@ -216,15 +216,15 @@ export async function promptTeamConnection(
   user: string;
   password: string;
 }> {
-  process.stdout.write("\n  Team server setup — connect to an existing PostgreSQL server.\n");
+  process.stdout.write("\n  memini-ai server setup — connect to an existing PostgreSQL server.\n");
   process.stdout.write("  (Don't have one yet? Run `neuralgentics --db-start` first.)\n");
 
   const host = await askValidated(session, "\n  Server IP or hostname [localhost]: ", validateHost, "localhost");
-  const port = await askValidated(session, "  Port [6200]: ", validatePort, "6200");
-  const database = await askValidated(session, "  Database name [neuralgentics]: ", validateDatabase, "neuralgentics");
+  const port = await askValidated(session, "  Port [5434]: ", validatePort, "5434");
+  const database = await askValidated(session, "  Database name [memini]: ", validateDatabase, "memini");
 
   process.stdout.write("\n  Database credentials:\n");
-  const user = (await session.ask("  Username [neuralgentics]: ")).trim() || "neuralgentics";
+  const user = (await session.ask("  Username [memini]: ")).trim() || "memini";
   const password = (await session.ask("  Password: ")).trim();
 
   // Offer to save credentials to .env

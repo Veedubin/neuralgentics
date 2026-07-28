@@ -770,32 +770,25 @@ func main() {
 	log.SetOutput(os.Stderr)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	// Load .env (if present) so NEURALGENTICS_DB_URL and other config can be
+	// Load .env (if present) so MEMINI_DB_URL and other config can be
 	// supplied without explicit shell exports. Explicit env exports always
 	// take precedence over the file.
 	if err := loadEnvFile(); err != nil {
 		log.Printf("env: failed to load .env file: %v", err)
 	}
 
-	dbURL := os.Getenv("NEURALGENTICS_DB_URL")
+	// MEMINI_DB_URL is the canonical env var (memini-ai owns the DB).
+	dbURL := os.Getenv("MEMINI_DB_URL")
 	if dbURL == "" {
-		// The installer and opencode plugin historically use MEMINI_DB_URL
-		// (the memini-ai naming). When the Go binary loads .env directly
-		// (e.g. via the .opencode/.env fallback), MEMINI_DB_URL is set but
-		// NEURALGENTICS_DB_URL is not. Promote it here so the binary
-		// connects to the right database instead of falling back to the
-		// hardcoded default.
-		if meminiURL := os.Getenv("MEMINI_DB_URL"); meminiURL != "" {
-			dbURL = meminiURL
-			log.Printf("env: promoted MEMINI_DB_URL -> NEURALGENTICS_DB_URL")
-		}
+		// NEURALGENTICS_DB_URL is a legacy fallback for existing users.
+		dbURL = os.Getenv("NEURALGENTICS_DB_URL")
 	}
 	if dbURL == "" {
-		// Default matches the running `neuralgentics-postgres` podman container
-		// (localhost:6000, user/db `neuralgentics`, password `neuralgentics`).
-		// The compose-stack default is 6200 but the user's container maps to 6000.
-		// Override via NEURALGENTICS_DB_URL env var if needed.
-		dbURL = "postgresql://neuralgentics:neuralgentics@localhost:6000/neuralgentics"
+		// Default matches the running `memini-postgres` podman container
+		// (localhost:5434, user/db `memini`, password `memini`).
+		// This is the memini-ai database, NOT a neuralgentics-owned DB.
+		// Override via MEMINI_DB_URL env var if needed.
+		dbURL = "postgresql://memini:memini@localhost:5434/memini"
 	}
 
 	// Read embedding config from env. Defaults: noop embedder, cpu mode.

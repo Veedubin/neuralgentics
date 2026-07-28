@@ -193,8 +193,8 @@ describe("promptTeamConnection", () => {
     const result = await promptTeamConnection(session, configDir);
     expect(result.host).toBe("localhost");
     expect(result.port).toBe("5434");
-    expect(result.database).toBe("neuralgentics");
-    expect(result.user).toBe("neuralgentics");
+    expect(result.database).toBe("memini");
+    expect(result.user).toBe("memini");
     expect(result.password).toBe("pw");
     // The port prompt should have been asked twice (once for "abc", once for
     // "5434").
@@ -213,9 +213,9 @@ describe("promptTeamConnection", () => {
     const configDir = await makeTmpDir();
     const result = await promptTeamConnection(session, configDir);
     expect(result.host).toBe("localhost");
-    expect(result.port).toBe("6200");
-    expect(result.database).toBe("neuralgentics");
-    expect(result.user).toBe("neuralgentics");
+    expect(result.port).toBe("5434");
+    expect(result.database).toBe("memini");
+    expect(result.user).toBe("memini");
     expect(result.password).toBe("");
     // Empty password means no save-creds prompt.
     expect(session.prompts.some((p) => p.includes("[Y/n]"))).toBe(false);
@@ -563,7 +563,7 @@ describe("promptTeamConnection dual .env write (Fix 5)", () => {
     // Both files must have identical content.
     expect(opencodeContent).toBe(projectContent);
     // Both must contain the DB URL.
-    expect(opencodeContent).toContain("MEMINI_DB_URL=postgresql://neuralgentics:pw@localhost:6200/neuralgentics");
+    expect(opencodeContent).toContain("MEMINI_DB_URL=postgresql://memini:pw@localhost:5434/memini");
     expect(opencodeContent).toContain("MEMINI_VECTOR_BACKEND=postgres-external");
   });
 
@@ -587,7 +587,7 @@ describe("promptTeamConnection dual .env write (Fix 5)", () => {
 
     // The new .env should have the merged content.
     const content = await fs.readFile(projectEnv, "utf-8");
-    expect(content).toContain("localhost:6200/neuralgentics");
+    expect(content).toContain("localhost:5434/memini");
     expect(content).not.toContain("localhost:5/old");
     // A backup file should exist in the project root.
     const entries = await fs.readdir(projectRoot);

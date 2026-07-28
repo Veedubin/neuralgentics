@@ -163,7 +163,7 @@ async function server(input: PluginInput): Promise<Hooks> {
   // auto-promote it to `NEURALGENTICS_DB_URL` in the child env. If we spawned
   // here (eager), `loadedConfig` would still be null and the auto-promotion
   // would silently no-op — the backend would fall back to its hardcoded
-  // `localhost:6200/neuralgentics` default instead of the user's memini-ai
+  // `localhost:5434/memini` default instead of the user's memini-ai
   // DSN. See v0.15.19 → v0.15.20 ordering bug fix.
   const binaryPath = resolveBinaryPath();
   backend = new GoBackendClient(binaryPath, { lazy: true });

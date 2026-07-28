@@ -138,27 +138,27 @@ describe("detectComposeRuntime", () => {
 // ============================================================================
 
 describe("DEFAULT_DSN", () => {
-  it("uses the canonical port 6200", () => {
-    expect(DEFAULT_DSN).toContain(":6200");
+  it("uses the canonical port 5434", () => {
+    expect(DEFAULT_DSN).toContain(":5434");
   });
 
-  it("uses neuralgentics as user, password, and database", () => {
+  it("uses memini as user, password, and database", () => {
     expect(DEFAULT_DSN).toBe(
-      "postgresql://neuralgentics:neuralgentics@localhost:6200/neuralgentics",
+      "postgresql://memini:memini@localhost:5434/memini",
     );
   });
 });
 
 // ============================================================================
-// stackDir resolves to ~/.neuralgentics
+// stackDir resolves to ~/.memini-ai
 // ============================================================================
 
 describe("stackDir", () => {
-  it("returns ~/.neuralgentics", () => {
+  it("returns ~/.memini-ai", () => {
     const spy = spyOn(os, "homedir");
     spy.mockImplementation(() => "/tmp/fake-home");
     try {
-      expect(stackDir()).toContain(".neuralgentics");
+      expect(stackDir()).toContain(".memini-ai");
     } finally {
       spy.mockRestore();
     }
@@ -246,6 +246,11 @@ describe("resolveStackConfig", () => {
     readSpy.mockRestore();
     // Clean up any env vars we set.
     for (const k of [
+      "MEMINI_STACK_NAME",
+      "MEMINI_DB_PORT",
+      "MEMINI_DB_USER",
+      "MEMINI_DB_PASSWORD",
+      "MEMINI_DB_NAME",
       "NEURALGENTICS_STACK_NAME",
       "NEURALGENTICS_DB_PORT",
       "NEURALGENTICS_DB_USER",
@@ -259,21 +264,21 @@ describe("resolveStackConfig", () => {
   it("uses defaults when .env is absent and no env vars are set", () => {
     existsSpy.mockImplementation(() => false);
     const cfg = resolveStackConfig("/nonexistent/.env");
-    expect(cfg.stackName).toBe("neuralgentics");
-    expect(cfg.dbPort).toBe("6200");
-    expect(cfg.adminUser).toBe("neuralgentics");
-    expect(cfg.adminPassword).toBe("neuralgentics");
-    expect(cfg.adminDb).toBe("neuralgentics");
+    expect(cfg.stackName).toBe("memini");
+    expect(cfg.dbPort).toBe("5434");
+    expect(cfg.adminUser).toBe("memini");
+    expect(cfg.adminPassword).toBe("memini");
+    expect(cfg.adminDb).toBe("memini");
   });
 
   it("reads values from the .env file", () => {
     existsSpy.mockImplementation(() => true);
     readSpy.mockImplementation(() =>
-      "NEURALGENTICS_STACK_NAME=mystack\n" +
-      "NEURALGENTICS_DB_PORT=6300\n" +
-      "NEURALGENTICS_DB_USER=admin\n" +
-      "NEURALGENTICS_DB_PASSWORD=s3cret\n" +
-      "NEURALGENTICS_DB_NAME=mydb\n",
+      "MEMINI_STACK_NAME=mystack\n" +
+      "MEMINI_DB_PORT=6300\n" +
+      "MEMINI_DB_USER=admin\n" +
+      "MEMINI_DB_PASSWORD=s3cret\n" +
+      "MEMINI_DB_NAME=mydb\n",
     );
     const cfg = resolveStackConfig("/fake/.env");
     expect(cfg.stackName).toBe("mystack");
@@ -286,10 +291,10 @@ describe("resolveStackConfig", () => {
   it("process.env overrides .env file", () => {
     existsSpy.mockImplementation(() => true);
     readSpy.mockImplementation(() =>
-      "NEURALGENTICS_STACK_NAME=filestack\nNEURALGENTICS_DB_PORT=6300\n",
+      "MEMINI_STACK_NAME=filestack\nMEMINI_DB_PORT=6300\n",
     );
-    process.env.NEURALGENTICS_STACK_NAME = "envstack";
-    process.env.NEURALGENTICS_DB_PORT = "6400";
+    process.env.MEMINI_STACK_NAME = "envstack";
+    process.env.MEMINI_DB_PORT = "6400";
     const cfg = resolveStackConfig("/fake/.env");
     expect(cfg.stackName).toBe("envstack");
     expect(cfg.dbPort).toBe("6400");
@@ -324,21 +329,21 @@ describe("escapeSqlPassword", () => {
 
 describe("buildUserDSN", () => {
   it("URL-encodes special characters in password", () => {
-    const dsn = buildUserDSN("alice", "p@ss:word/with%special", "6200", "neuralgentics");
+    const dsn = buildUserDSN("alice", "p@ss:word/with%special", "5434", "memini");
     // % => %25, @ => %40, : => %3A, / => %2F
     expect(dsn).toBe(
-      "postgresql://alice:p%40ss%3Aword%2Fwith%25special@localhost:6200/neuralgentics",
+      "postgresql://alice:p%40ss%3Aword%2Fwith%25special@localhost:5434/memini",
     );
   });
 
   it("uses the configured port (stack-name interpolation)", () => {
-    const dsn = buildUserDSN("bob", "secret", "6300", "neuralgentics");
-    expect(dsn).toBe("postgresql://bob:secret@localhost:6300/neuralgentics");
+    const dsn = buildUserDSN("bob", "secret", "6300", "memini");
+    expect(dsn).toBe("postgresql://bob:secret@localhost:6300/memini");
   });
 
   it("uses the configured database name", () => {
-    const dsn = buildUserDSN("carol", "pw", "6200", "myproject");
-    expect(dsn).toBe("postgresql://carol:pw@localhost:6200/myproject");
+    const dsn = buildUserDSN("carol", "pw", "5434", "myproject");
+    expect(dsn).toBe("postgresql://carol:pw@localhost:5434/myproject");
   });
 });
 
@@ -347,11 +352,11 @@ describe("buildUserDSN", () => {
 // ============================================================================
 
 const defaultCfg: StackConfig = {
-  stackName: "neuralgentics",
-  dbPort: "6200",
-  adminUser: "neuralgentics",
-  adminPassword: "neuralgentics",
-  adminDb: "neuralgentics",
+  stackName: "memini",
+  dbPort: "5434",
+  adminUser: "memini",
+  adminPassword: "memini",
+  adminDb: "memini",
 };
 
 describe("createFirstUser", () => {
@@ -362,11 +367,11 @@ describe("createFirstUser", () => {
   it("targets the ${STACK}-db container (db-server service, stack-named container)", () => {
     execSpy().mockImplementation((cmd: string) => {
       // Assert the exec target is "db-server" (the compose service) NOT
-      // "neuralgentics-postgres" (the old service name).
+      // "memini-postgres" (the old service name).
       expect(cmd).toContain("exec -T db-server");
       // Should use the admin user/db from cfg.
-      expect(cmd).toContain("-U neuralgentics");
-      expect(cmd).toContain("-d neuralgentics");
+      expect(cmd).toContain("-U memini");
+      expect(cmd).toContain("-d memini");
       return Buffer.from("CREATE ROLE\nGRANT\n");
     });
     const result = createFirstUser("podman-compose", "/fake/compose.yml", defaultCfg, "alice", "secret");
@@ -422,7 +427,7 @@ describe("createFirstUser", () => {
   it("returns created=false on a real error (not already-exists)", () => {
     execSpy().mockImplementation(() => {
       throw Object.assign(new Error("psql: FATAL: password authentication failed"), {
-        stderr: Buffer.from("FATAL:  password authentication failed for user \"neuralgentics\"\n"),
+        stderr: Buffer.from("FATAL:  password authentication failed for user \"memini\"\n"),
       });
     });
     const result = createFirstUser("podman-compose", "/fake/compose.yml", defaultCfg, "alice", "secret");
@@ -519,7 +524,7 @@ describe("dbStart first-user bootstrap", () => {
     copyFileSpy = spyOn(fs.promises, "copyFile").mockImplementation(async () => undefined);
     readSpy = spyOn(fs, "readFileSync").mockImplementation(
       (() =>
-        "NEURALGENTICS_STACK_NAME=neuralgentics\nNEURALGENTICS_DB_PORT=6200\n") as unknown as typeof fs.readFileSync,
+        "MEMINI_STACK_NAME=memini\nMEMINI_DB_PORT=5434\n") as unknown as typeof fs.readFileSync,
     );
     stdoutSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
     stderrSpy = spyOn(process.stderr, "write").mockImplementation(() => true);
@@ -535,7 +540,7 @@ describe("dbStart first-user bootstrap", () => {
     stdoutSpy.mockRestore();
     stderrSpy.mockRestore();
     rlCreateSpy.mockRestore();
-    for (const k of ["USER", "NEURALGENTICS_STACK_NAME", "NEURALGENTICS_DB_PORT"]) {
+    for (const k of ["USER", "MEMINI_STACK_NAME", "MEMINI_DB_PORT", "MEMINI_DB_USER", "MEMINI_DB_PASSWORD", "MEMINI_DB_NAME"]) {
       delete process.env[k];
     }
   });
@@ -572,7 +577,7 @@ describe("dbStart first-user bootstrap", () => {
     expect(result.exitCode).toBe(0);
     // The stdout should contain the created user's DSN with URL-encoded password.
     const allOutput = (stdoutSpy.mock.calls as unknown as [string][]).map((c) => c[0]).join("");
-    expect(allOutput).toContain("postgresql://alice:s3cret@localhost:6200/neuralgentics");
+    expect(allOutput).toContain("postgresql://alice:s3cret@localhost:5434/memini");
   });
 
   it("--db-user with special-char password URL-encodes the DSN", async () => {
@@ -580,7 +585,7 @@ describe("dbStart first-user bootstrap", () => {
     const result = await dbStart({ dbUser: "bob", dbPassword: "p@ss" });
     expect(result.success).toBe(true);
     const allOutput = (stdoutSpy.mock.calls as unknown as [string][]).map((c) => c[0]).join("");
-    expect(allOutput).toContain("postgresql://bob:p%40ss@localhost:6200/neuralgentics");
+    expect(allOutput).toContain("postgresql://bob:p%40ss@localhost:5434/memini");
   });
 
   it("--db-user without --db-password returns a warning and does NOT create a user", async () => {
@@ -627,7 +632,7 @@ describe("dbStart first-user bootstrap", () => {
     const allOutput = (stdoutSpy.mock.calls as unknown as [string][]).map((c) => c[0]).join("");
     // The created user's DSN is printed regardless of whether the user
     // pre-existed (already-exists is treated as success).
-    expect(allOutput).toContain("postgresql://alice:pw@localhost:6200/neuralgentics");
+    expect(allOutput).toContain("postgresql://alice:pw@localhost:5434/memini");
     expect(allOutput).toContain("your new user");
   });
 
@@ -647,13 +652,13 @@ describe("dbStart first-user bootstrap", () => {
     // Override the .env content to use a custom stack + port.
     readSpy.mockImplementation(
       (() =>
-        "NEURALGENTICS_STACK_NAME=teststack\nNEURALGENTICS_DB_PORT=6300\n") as unknown as typeof fs.readFileSync,
+        "MEMINI_STACK_NAME=teststack\nMEMINI_DB_PORT=6300\n") as unknown as typeof fs.readFileSync,
     );
     const result = await dbStart({ dbUser: "alice", dbPassword: "pw" });
     expect(result.success).toBe(true);
     const allOutput = (stdoutSpy.mock.calls as unknown as [string][]).map((c) => c[0]).join("");
     // DSN should use port 6300 (from the custom .env).
-    expect(allOutput).toContain("postgresql://alice:pw@localhost:6300/neuralgentics");
+    expect(allOutput).toContain("postgresql://alice:pw@localhost:6300/memini");
     // Container name should be teststack-db (from the custom stack name).
     expect(allOutput).toContain("teststack-db");
   });
@@ -729,7 +734,7 @@ describe("dbStart first-user bootstrap", () => {
     expect(result.success).toBe(true);
     const allOutput = (stdoutSpy.mock.calls as unknown as [string][]).map((c) => c[0]).join("");
     expect(allOutput).toContain("Created database user");
-    expect(allOutput).toContain("postgresql://alice:s3cret@localhost:6200/neuralgentics");
+    expect(allOutput).toContain("postgresql://alice:s3cret@localhost:5434/memini");
   });
 
   it("dry-run does not start the stack and does not create a user", async () => {
@@ -783,7 +788,7 @@ describe("dbStart first-user bootstrap", () => {
       expect(result.message).toContain("60s");
       expect(result.message).toContain("logs db-server"); // compose logs command
       expect(result.message).toContain("podman logs"); // container logs fallback
-      expect(result.message).toContain("neuralgentics-db"); // stack-name-derived container
+      expect(result.message).toContain("memini-db"); // stack-name-derived container
     } finally {
       (Date.now as unknown as { mockRestore: () => void }).mockRestore();
       void realNow;

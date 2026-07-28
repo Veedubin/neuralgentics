@@ -58,14 +58,14 @@ export interface CreateUserResult {
 
 /** The canonical DSN the user should paste into --init-project. */
 export const DEFAULT_DSN =
-  "postgresql://neuralgentics:neuralgentics@localhost:6200/neuralgentics";
+  "postgresql://memini:memini@localhost:5434/memini";
 
 /** Username must match this safe identifier regex (no quotes, no dashes). */
 const USERNAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
-/** Where the bundled stack lives (~/.neuralgentics/). */
+/** Where the bundled stack lives (~/.memini-ai/). */
 export function stackDir(): string {
-  return path.join(os.homedir(), ".neuralgentics");
+  return path.join(os.homedir(), ".memini-ai");
 }
 
 /**
@@ -180,11 +180,11 @@ export function resolveStackConfig(envPath: string): StackConfig {
   const get = (key: string, fallback: string): string =>
     process.env[key] ?? fileEnv[key] ?? fallback;
   return {
-    stackName: get("NEURALGENTICS_STACK_NAME", "neuralgentics"),
-    dbPort: get("NEURALGENTICS_DB_PORT", "6200"),
-    adminUser: get("NEURALGENTICS_DB_USER", "neuralgentics"),
-    adminPassword: get("NEURALGENTICS_DB_PASSWORD", "neuralgentics"),
-    adminDb: get("NEURALGENTICS_DB_NAME", "neuralgentics"),
+    stackName: get("MEMINI_STACK_NAME", "memini"),
+    dbPort: get("MEMINI_DB_PORT", "5434"),
+    adminUser: get("MEMINI_DB_USER", "memini"),
+    adminPassword: get("MEMINI_DB_PASSWORD", "memini"),
+    adminDb: get("MEMINI_DB_NAME", "memini"),
   };
 }
 
