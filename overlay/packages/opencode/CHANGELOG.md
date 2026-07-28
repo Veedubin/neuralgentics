@@ -5,6 +5,17 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.15.24 (2026-07-28)
+
+**Fixed:**
+- **`--init-project` AGENTS.md bootstrap now lands where OpenCode looks for it** — `init.ts copyStaticAssets` was writing the shipped `AGENTS.md` to `<project>/.opencode/AGENTS.md`, but the generated `opencode.json` declared `instructions: ["AGENTS.md"]` (project-root-relative). The file OpenCode actually loaded never existed, so fresh installs got the literal default doc and never saw the agent roster, mandatory memini-ai protocol, or first-session quickstart. AGENTS.md now writes to the project root, never overwrites an existing user `AGENTS.md`, and `--update` stays idempotent.
+- **Shipped `.opencode/AGENTS.md` content reset to a proper generic bootstrap** — the file shipped since v0.15.18 was the "--remodel" WIP doc (remodel documentation already lives in the README). Replaced with a self-contained generic bootstrap (project intro, mandatory memini-ai protocol, 12-agent roster, 7 slash commands, house rules, first-session quickstart) that is correct for every fresh install.
+
+**Tests:**
+- New `src/neuralgentics/init-assets.test.ts` — 7 `bun:test` cases asserting path resolution (root, not `.opencode/`), no-overwrite guard, idempotent `--update`, and content correctness.
+- New `e2e_init_assets.mjs` — temp-dir end-to-end run of the bootstrap pipeline to catch any drift between the unit tests and the real `init.ts` codepath.
+- Full suite: **188 pass** (1 pre-existing flaky `prompts.test.ts` interactive-timeout failure, unrelated to this change). `tsc --noEmit` clean.
+
 ## v0.15.23 (2026-07-28)
 
 **Fixed:**

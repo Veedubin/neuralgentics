@@ -50,16 +50,24 @@ import { bootstrapDatabase, type BootstrapResult } from "./db-setup.js";
  * The npm package ships `.opencode/agents/`, `.opencode/skills/`,
  * `.opencode/commands/`, and `.opencode/AGENTS.md` alongside `dist/`. When
  * the CLI runs via `npx`, `__dirname` points to `dist/` inside the extracted
- * package, so `path.join(__dirname, "..", ".opencode")` finds the bundled
+ * package, so `path.join(__dirname, "..", "..", ".opencode")` finds the bundled
  * assets.
  *
  * Files are copied with SHA-256 idempotency — existing files with
  * identical content are skipped (no backup created). Modified files
  * are backed up before overwrite.
  *
+ * AGENTS.md is special: it is copied to the PROJECT ROOT (the parent of
+ * `targetDir`), NOT into `.opencode/`. This is because opencode.json has
+ * `instructions: ["AGENTS.md"]` which opencode resolves at the project root.
+ * An existing root AGENTS.md is NEVER overwritten — the user's file is
+ * sacred. (Bug fix T-INIT-AGENTS-001.)
+ *
  * Returns the count of agents, skills, commands, and AGENTS.md status.
+ *
+ * Exported for unit testing (T-INIT-AGENTS-001).
  */
-async function copyStaticAssets(
+export async function copyStaticAssets(
   targetDir: string,
   dryRun: boolean,
 ): Promise<{ agents: number; skills: number; commands: number; agentsMd: boolean }> {
@@ -170,11 +178,24 @@ async function copyStaticAssets(
     }
   }
 
-  // Copy AGENTS.md (only if it doesn't exist — don't overwrite user's)
+  // Copy AGENTS.md to the PROJECT ROOT (parent of the .opencode/ config dir).
+  //
+  // Bug fix (T-INIT-AGENTS-001): opencode.json has `instructions: ["AGENTS.md"]`
+  // which resolves at the PROJECT ROOT, not inside `.opencode/`. Previously
+  // this wrote to `.opencode/AGENTS.md` — a path opencode never looks at — so
+  // fresh installs had zero bootstrap guidance. Now we write to the parent
+  // directory (the actual project root).
+  //
+  // NEVER overwrite an existing root AGENTS.md. The user's file is sacred;
+  // `--update` must stay idempotent and must never clobber user content. If a
+  // root AGENTS.md already exists, we skip silently (no backup, no warning —
+  // the user chose to keep their own).
   if (existsSync(bundledAgentsMd)) {
-    const destAgentsMd = path.join(targetDir, "AGENTS.md");
+    const projectRoot = path.dirname(targetDir);
+    const destAgentsMd = path.join(projectRoot, "AGENTS.md");
     if (!existsSync(destAgentsMd)) {
       if (!dryRun) {
+        await fs.mkdir(projectRoot, { recursive: true });
         await fs.copyFile(bundledAgentsMd, destAgentsMd);
       }
       agentsMdCopied = true;

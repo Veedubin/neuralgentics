@@ -1,99 +1,99 @@
-## Model Remodeling
+# AGENTS.md
 
-Neuralgentics lets you **dynamically re-pick which LLM model each agent uses** without reinstalling. This is useful when:
+This project is bootstrapped with **neuralgentics** — an OpenCode plugin
+that adds a 12-agent roster, memory (via memini-ai), routing enforcement,
+and slash commands. This file is the bootstrap guide OpenCode loads via
+`instructions: ["AGENTS.md"]` in `.opencode/opencode.json`.
 
-- You want to switch providers (e.g., enable Mammoth, disable Kimi)
-- New benchmark rankings favor different models
-- You want to override a specific agent's model
+## What neuralgentics installed
 
-### How It Works
+- `.opencode/opencode.json` — OpenCode config: provider (Ollama Cloud by
+  default), MCP servers (memini-ai-dev, etc.), LSP, formatter, plugin entry.
+- `.opencode/agents/` — 12 agent personas (see roster below).
+- `.opencode/skills/` — 7 skills (orchestrator, handoff, kanban-board-manager,
+  skill-self-audit, todo-list-updater, update-gh-docs, external-skills-fetcher).
+- `.opencode/commands/` — 7 slash commands (`/handoff`, `/orchestrator`,
+  `/kanban-board-manager`, `/skill-self-audit`, `/todo-list-updater`,
+  `/update-gh-docs`, `/external-skills-fetcher`).
+- `AGENTS.md` — this file (project root).
+- `docker-compose.yml` + `docker/*.Dockerfile` — optional container stack
+  for the memory backend (PostgreSQL + pgvector + embedding sidecar).
 
-1. **Edit `.opencode/neuralgentics.config.json`** to enable/disable providers and set per-agent overrides.
-2. **Run `npx @veedubin/neuralgentics --remodel`** to re-pick models based on your config and the latest benchmark rankings.
-3. The command patches the `model:` line in each agent's YAML frontmatter — your overrides (body content) are **never touched**.
+## Mandatory memini-ai memory protocol
 
-### Example Workflow
+All agents **MUST** use memini-ai at every step. Memory is the source of
+truth; without it, agents lose context across sessions and duplicate work.
 
-1. Enable Mammoth and disable Kimi in `neuralgentics.config.json`:
-   ```json
-   {
-     "version": "1.0.0",
-     "providers": {
-       "ollama": { "enabled": true },
-       "mammoth": { "enabled": true },
-       "kimi": { "enabled": false }
-     },
-     "overrides": {
-       "coder": { "model": "mammoth/glm-5.2", "provider": "mammoth" }
-     }
-   }
-   ```
-2. Run the remodel command:
-   ```bash
-   npx @veedubin/neuralgentics --remodel
-   ```
-3. Agents now use the best available Mammoth models for their roles, with the `coder` agent explicitly using `mammoth/glm-5.2`.
+1. **Query FIRST** — Before starting any task, call `memini-ai-dev_query_memories`
+   with a descriptive query (e.g. `"user auth implementation patterns"`).
+2. **Save AFTER** — When a task completes, call `memini-ai-dev_add_memory`
+   with a concise summary. For high-value work (verified bug fixes,
+   architectural decisions, session outcomes), include a `project` tag in
+   the metadata.
+3. **Trust signals** — If a memory was helpful, call
+   `memini-ai-dev_adjust_trust` with `signal: "agent_used"` (+0.05). If it
+   was wrong, use `signal: "user_corrected"` (-0.10).
 
-### Notes
+## Agent roster
 
-- Benchmark rankings are sourced from `presets.json`, which is auto-updated daily by GitHub Actions.
-- Overrides take priority over benchmark rankings.
-- The `overrides/` directory (body content) is **never modified** by `--remodel`.
+Neuralgentics ships 12 specialized agents. The orchestrator routes tasks
+to the right specialist based on the mandatory routing matrix.
 
-## User Overrides
+| Agent | Role |
+|-------|------|
+| orchestrator | Main coordinator, delegates to sub-agents |
+| architect | System design, trade-off analysis, research |
+| coder | Fast code generation, bug fixes |
+| explorer | Codebase exploration, file finding |
+| tester | Test writing, test execution |
+| reviewer | Code review: logic, security, consistency |
+| linter | Mechanical linting: ESLint, Ruff, mypy, tsc |
+| git | Version control: commits, branches, tags |
+| writer | Documentation, markdown |
+| researcher | Web research, data gathering, scraping |
+| release | Version bumps, changelogs, tagging |
+| agent-builder | Pattern detection, skill/agent creation |
 
-Neuralgentics supports **user overrides** to personalize agent personas while preserving your customizations across updates.
+## Slash commands
 
-### How Overrides Work
+- `/handoff` — Wrap up a session cleanly; save context for next session.
+- `/orchestrator` — Run the full orchestrator cycle (plan → dispatch → audit).
+- `/kanban-board-manager` — Manage the kanban board in TASKS.md.
+- `/skill-self-audit` — End-of-cycle audit; create skills for repeated processes.
+- `/todo-list-updater` — Refresh the project todo list.
+- `/update-gh-docs` — Update GitHub docs (README, CHANGELOG, mkdocs).
+- `/external-skills-fetcher` — Fetch external skills from a registry.
 
-- **Directory**: `.opencode/overrides/`
-- **File Naming**: Create a file with the same name as an agent (e.g., `overrides/coder.md` for `agents/coder.md`).
-- **Behavior**: On `--init` or `--update`, the content of your override file is appended to the bottom of the default agent file.
-- **Frontmatter**: YAML frontmatter in override files is stripped — only the markdown body is appended.
-- **Preservation**: The `overrides/` directory is never modified by Neuralgentics updates.
-- **Idempotent**: Re-running `--init` or `--update` does not double-append your overrides.
+## House rules
 
-### Example
+- **No secrets** — never paste real API keys, tokens, or passwords into
+  source, docs, tests, or examples. Use placeholders like
+  `YOUR_API_KEY` or `{env:OLLAMA_API_KEY}`.
+- **Never overwrite user files** — `--init` and `--update` never clobber
+  an existing root `AGENTS.md`. Your customizations are preserved.
+- **Use overrides for personalization** — drop a `.md` file named after an
+  agent into `.opencode/overrides/` (e.g. `overrides/coder.md`) and its body
+  is appended to the default agent on the next `--init`/`--update`. The
+  `overrides/` directory is never modified by neuralgentics.
+- **Re-pick models without reinstalling** — edit
+  `.opencode/neuralgentics.config.json` and run
+  `npx @veedubin/neuralgentics --remodel` to patch the `model:` line in each
+  agent's frontmatter. Your overrides (body content) are never touched.
 
-Create `.opencode/overrides/writer.md` to customize documentation standards:
+## Your first session (5-step quickstart)
 
-```markdown
-## Project Documentation Standards
+1. **Confirm the install** — `opencode` should launch with the neuralgentics
+   plugin loaded. You should see the agent roster in `.opencode/agents/`.
+2. **Set your provider** — if you're not on Ollama Cloud, edit
+   `.opencode/opencode.json` `provider` block. See the workspace
+   `docs/providers.md` for switching recipes (local Ollama, Docker Model
+   Runner, OpenAI, Anthropic, Google, OpenRouter).
+3. **Start the memory backend** (optional for pgembed / built-in mode; required
+   for team mode) — `docker compose up -d` or `neuralgentics --db-start`.
+4. **Ask the orchestrator** — type your request; the orchestrator will
+   query memini-ai, plan, and dispatch the right specialist agent(s).
+5. **Wrap up** — run `/handoff` at the end of your session to save context
+   for next time. The handoff updates TASKS.md, AGENTS.md (project-specific
+   notes), and stores a summary memory in memini-ai.
 
-- Use **sentence case** for all headings.
-- Include a "How It Works" section in every feature doc.
-- Link to relevant ADRs (Architecture Decision Records) where applicable.
-- Run `markdownlint` before committing.
-```
-
-After running `npx @veedubin/neuralgentics --update`, the `writer.md` agent file will include your custom standards at the bottom.
-
-### Notes
-
-- Orphaned overrides (no matching agent) produce a warning but are preserved.
-- Overrides are **user-owned** — they persist across updates and are never overwritten.
-
-## Team Mode Database (config-only install)
-
-The `--init-project` / `--init-homedir` installer **never touches the team
-database**. For team mode:
-
-- **No probe** — the installer does not run `psql` or any connection test.
-- **No migration** — the installer does not run `memini-ai init` against the
-  team server.
-- **No pass/fail block** — the install summary shows a neutral
-  `Database: skipped (team mode — tables auto-create on first launch)` line
-  instead of a scary red ✗ `Cannot connect` block.
-
-memini-ai auto-creates its schema (`CREATE EXTENSION/TABLE IF NOT EXISTS`) on
-first MCP launch against the external postgres, so install-time migration is
-unnecessary. The installer just writes the config (DSN in `.env`) and prints an
-informational note.
-
-**Make sure PostgreSQL is running before launching opencode.** If you need a
-local server, run `neuralgentics --db-start` — it ships a compose file, brings
-the stack up, and offers to create your first database user.
-
-The pgembed (built-in) path is different: the installer DOES call
-`bootstrapDatabase()` for pgembed because the embedded init is harmless and
-makes first launch fast.
+For full docs: https://github.com/Veedubin/neuralgentics#readme
