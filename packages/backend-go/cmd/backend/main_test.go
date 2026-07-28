@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -1278,4 +1280,157 @@ func TestOrchestratorHandlerParamsValidation_Route(t *testing.T) {
 			t.Errorf("error code: got %d, want %d", resp.Error.Code, -32602)
 		}
 	})
+}
+
+// ─── loadEnvFile tests ────────────────────────────────────────────────────────
+
+// writeEnvHelper writes the given content to a file named ".env" in a fresh
+// temp directory and returns that directory path. The caller is expected to
+// chdir into it (and restore the cwd via t.Cleanup).
+func writeEnvHelper(t *testing.T, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(content), 0o600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+	return dir
+}
+
+// chdirHelper changes into dir for the duration of the test and restores
+// the original working directory on cleanup.
+func chdirHelper(t *testing.T, dir string) {
+	t.Helper()
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+}
+
+// unsetEnvHelper unsets the given keys for the duration of the test and
+// restores their original values on cleanup.
+func unsetEnvHelper(t *testing.T, keys ...string) {
+	t.Helper()
+	orig := make(map[string]string, len(keys))
+	for _, k := range keys {
+		if v, ok := os.LookupEnv(k); ok {
+			orig[k] = v
+		}
+		_ = os.Unsetenv(k)
+	}
+	t.Cleanup(func() {
+		for _, k := range keys {
+			if v, ok := orig[k]; ok {
+				_ = os.Setenv(k, v)
+			} else {
+				_ = os.Unsetenv(k)
+			}
+		}
+	})
+}
+
+// TestLoadEnvFile_Basic verifies that KEY=VALUE lines get loaded into the
+// process env when those keys are not already set.
+func TestLoadEnvFile_Basic(t *testing.T) {
+	unsetEnvHelper(t, "NG_TEST_ALPHA", "NG_TEST_BETA")
+	dir := writeEnvHelper(t, "NG_TEST_ALPHA=one\nNG_TEST_BETA=two\n")
+	chdirHelper(t, dir)
+
+	if err := loadEnvFile(); err != nil {
+		t.Fatalf("loadEnvFile: %v", err)
+	}
+	if got := os.Getenv("NG_TEST_ALPHA"); got != "one" {
+		t.Errorf("NG_TEST_ALPHA: got %q, want %q", got, "one")
+	}
+	if got := os.Getenv("NG_TEST_BETA"); got != "two" {
+		t.Errorf("NG_TEST_BETA: got %q, want %q", got, "two")
+	}
+}
+
+// TestLoadEnvFile_ProcessEnvWins verifies that pre-set env values are NOT
+// overwritten by the .env file — explicit shell exports take precedence.
+func TestLoadEnvFile_ProcessEnvWins(t *testing.T) {
+	unsetEnvHelper(t, "NG_TEST_OVERRIDE")
+	_ = os.Setenv("NG_TEST_OVERRIDE", "from-shell")
+	dir := writeEnvHelper(t, "NG_TEST_OVERRIDE=from-file\n")
+	chdirHelper(t, dir)
+
+	if err := loadEnvFile(); err != nil {
+		t.Fatalf("loadEnvFile: %v", err)
+	}
+	if got := os.Getenv("NG_TEST_OVERRIDE"); got != "from-shell" {
+		t.Errorf("process env should win: got %q, want %q", got, "from-shell")
+	}
+}
+
+// TestLoadEnvFile_CommentsAndBlanks verifies that '#' comments, blank lines,
+// and lines without '=' are all ignored without affecting the parsed keys.
+func TestLoadEnvFile_CommentsAndBlanks(t *testing.T) {
+	unsetEnvHelper(t, "NG_TEST_NOEQ", "NG_TEST_REAL", "NG_TEST_HASHPREFIX")
+	content := strings.Join([]string{
+		"# This is a comment",
+		"",
+		"NG_TEST_NOEQ has no equals sign",
+		"NG_TEST_REAL=yes",
+		"# trailing comment",
+		"NG_TEST_HASHPREFIX=value-with-#-in-it",
+		"",
+	}, "\n")
+	dir := writeEnvHelper(t, content)
+	chdirHelper(t, dir)
+
+	if err := loadEnvFile(); err != nil {
+		t.Fatalf("loadEnvFile: %v", err)
+	}
+	// NG_TEST_NOEQ line has no '=' so it's skipped by the parser.
+	if got, ok := os.LookupEnv("NG_TEST_NOEQ"); ok {
+		t.Errorf("line without '=' should be skipped, but env was set to %q", got)
+	}
+	if got := os.Getenv("NG_TEST_REAL"); got != "yes" {
+		t.Errorf("NG_TEST_REAL: got %q, want %q", got, "yes")
+	}
+	// A '#' mid-value is NOT a comment — only lines whose first
+	// non-whitespace char is '#' are comments. The value is preserved verbatim.
+	if got := os.Getenv("NG_TEST_HASHPREFIX"); got != "value-with-#-in-it" {
+		t.Errorf("NG_TEST_HASHPREFIX: got %q, want %q", got, "value-with-#-in-it")
+	}
+}
+
+// TestLoadEnvFile_MissingFile verifies that a missing .env file is a silent
+// no-op (returns nil, sets nothing).
+func TestLoadEnvFile_MissingFile(t *testing.T) {
+	unsetEnvHelper(t, "NG_TEST_MISSING")
+	chdirHelper(t, t.TempDir()) // empty dir, no .env
+
+	if err := loadEnvFile(); err != nil {
+		t.Fatalf("missing file should return nil, got: %v", err)
+	}
+	if _, ok := os.LookupEnv("NG_TEST_MISSING"); ok {
+		t.Errorf("nothing should have been set from a missing file")
+	}
+}
+
+// TestLoadEnvFile_QuotedValues verifies that surrounding "..." or '...' are
+// stripped from values (allowing values to contain spaces).
+func TestLoadEnvFile_QuotedValues(t *testing.T) {
+	unsetEnvHelper(t, "NG_TEST_DQ", "NG_TEST_SQ", "NG_TEST_NQ")
+	content := "NG_TEST_DQ=\"value with spaces\"\nNG_TEST_SQ='single quoted value'\nNG_TEST_NQ=plain\n"
+	dir := writeEnvHelper(t, content)
+	chdirHelper(t, dir)
+
+	if err := loadEnvFile(); err != nil {
+		t.Fatalf("loadEnvFile: %v", err)
+	}
+	if got := os.Getenv("NG_TEST_DQ"); got != "value with spaces" {
+		t.Errorf("double-quoted: got %q, want %q", got, "value with spaces")
+	}
+	if got := os.Getenv("NG_TEST_SQ"); got != "single quoted value" {
+		t.Errorf("single-quoted: got %q, want %q", got, "single quoted value")
+	}
+	if got := os.Getenv("NG_TEST_NQ"); got != "plain" {
+		t.Errorf("unquoted: got %q, want %q", got, "plain")
+	}
 }

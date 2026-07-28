@@ -127,6 +127,52 @@ interface PendingCall {
   timer: ReturnType<typeof setTimeout>;
 }
 
+// ---------------------------------------------------------------------------
+// Loaded OpenCode config (set by the server.ts config hook)
+// ---------------------------------------------------------------------------
+//
+// The plugin's `config` hook in server.ts receives the fully-merged opencode
+// config object. We stash it here so GoBackendClient can read the
+// `mcp["memini-ai-dev"].env.MEMINI_DB_URL` value and inject it as
+// `NEURALGENTICS_DB_URL` into the child env — so the Go backend picks up the
+// same DSN the memini-ai MCP server is using, with no extra env gymnastics.
+
+let loadedConfig: Record<string, unknown> | null = null;
+
+/**
+ * Stash the opencode config object so the GoBackendClient can resolve
+ * NEURALGENTICS_DB_URL from the memini-ai MCP server's env block.
+ * Called by the `config` hook in server.ts.
+ */
+export function setLoadedConfig(cfg: Record<string, unknown>): void {
+  loadedConfig = cfg;
+}
+
+/**
+ * Resolve a usable Postgres DSN from the memini-ai MCP server's env block
+ * in the loaded opencode config. Returns `undefined` if no usable DSN is
+ * found (config not loaded, memini-ai block missing, MEMINI_DB_URL unset,
+ * or MEMINI_DB_URL is the sentinel "pgembed"/"" meaning embedded mode).
+ *
+ * This is a pure data-narrowing helper — no `any`, just `unknown` + type
+ * guards — so it survives `tsc --noEmit` under strict mode.
+ */
+function resolveMeminiDbUrl(
+  cfg: Record<string, unknown> | null,
+): string | undefined {
+  if (cfg == null) return undefined;
+  const mcp = cfg.mcp;
+  if (typeof mcp !== "object" || mcp == null) return undefined;
+  const meminiEntry = (mcp as Record<string, unknown>)["memini-ai-dev"];
+  if (typeof meminiEntry !== "object" || meminiEntry == null) return undefined;
+  const env = (meminiEntry as Record<string, unknown>).env;
+  if (typeof env !== "object" || env == null) return undefined;
+  const url = (env as Record<string, unknown>).MEMINI_DB_URL;
+  if (typeof url !== "string") return undefined;
+  if (url === "" || url === "pgembed") return undefined;
+  return url;
+}
+
 /**
  * JSON-RPC 2.0 client that talks to the Go backend over stdio.
  *
@@ -162,6 +208,22 @@ export class GoBackendClient {
     // it is already in childEnv via the spread and will override the Go
     // binary's default. Otherwise the binary uses its own default.
     const childEnv = { ...process.env };
+
+    // Precedence resolution for NEURALGENTICS_DB_URL:
+    //   1. Explicit process.env.NEURALGENTICS_DB_URL (already in childEnv) — wins.
+    //   2. The memini-ai MCP server's MEMINI_DB_URL from the loaded opencode
+    //      config (set by the config hook in server.ts). This lets the Go
+    //      backend reuse the same DSN as the sibling memini-ai server with
+    //      no extra configuration from the user. The sentinel values
+    //      "pgembed" and "" are skipped — they mean memini-ai is running in
+    //      embedded mode, not against an external Postgres the Go backend
+    //      could share.
+    if (!childEnv.NEURALGENTICS_DB_URL) {
+      const meminiUrl = resolveMeminiDbUrl(loadedConfig);
+      if (meminiUrl !== undefined) {
+        childEnv.NEURALGENTICS_DB_URL = meminiUrl;
+      }
+    }
 
     this.process = spawn(binaryPath, [], {
       stdio: ["pipe", "pipe", "inherit"],

@@ -15,7 +15,7 @@
 
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { GoBackendClient } from "./neuralgentics/go-backend-client.js";
+import { GoBackendClient, setLoadedConfig } from "./neuralgentics/go-backend-client.js";
 
 // ============================================================================
 // Inline OpenCode type stubs (structural match — runtime validated by OpenCode)
@@ -449,6 +449,9 @@ async function server(input: PluginInput): Promise<Hooks> {
   // Config Merger
   // --------------------------------------------------------------------------
   const config = async (cfg: Record<string, unknown>): Promise<void> => {
+    // Stash the config so the GoBackendClient can resolve
+    // NEURALGENTICS_DB_URL from the memini-ai MCP server's env block.
+    setLoadedConfig(cfg);
     (cfg as Record<string, unknown>).neuralgentics = {
       version: VERSION,
       backendBinary: binaryPath,
