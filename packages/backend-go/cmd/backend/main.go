@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -43,13 +44,53 @@ import (
 // Defaults to "dev" for local builds.
 var version = "dev"
 
+// resolveEnvPath determines which .env file to load, using the documented
+// precedence chain:
+//  1. NEURALGENTICS_ENV_FILE env var (explicit override — used as-is even
+//     if the file does not exist, so a missing-file error surfaces clearly)
+//  2. ".env" in CWD
+//  3. ".opencode/.env" in CWD
+//  4. ".opencode/.env" one directory up from CWD
+//
+// Returns "" when no candidate path exists (the caller treats this as a
+// silent no-op — the dotenv file is optional).
+func resolveEnvPath() string {
+	if p := os.Getenv("NEURALGENTICS_ENV_FILE"); p != "" {
+		return p
+	}
+	candidates := []string{".env", ".opencode/.env"}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	// Candidate 4: ".opencode/.env" one directory up from CWD.
+	wd, err := os.Getwd()
+	if err == nil {
+		parent := filepath.Dir(wd)
+		up := filepath.Join(parent, ".opencode", ".env")
+		if _, err := os.Stat(up); err == nil {
+			return up
+		}
+	}
+	return ""
+}
+
 // loadEnvFile reads a dotenv-style file (KEY=VALUE lines) and sets the
 // parsed keys on the process env via os.Setenv, but ONLY for keys that are
 // not already present in the process env. This means explicit shell exports
 // always win over the file — the file is purely a fallback for unset keys.
 //
-// The file path is taken from the NEURALGENTICS_ENV_FILE env var if set,
-// otherwise defaults to ".env" in the current working directory.
+// The file path is resolved with the following precedence:
+//  1. NEURALGENTICS_ENV_FILE env var (if set and non-empty)
+//  2. ".env" in the current working directory
+//  3. ".opencode/.env" in the current working directory
+//  4. ".opencode/.env" one directory UP from CWD (covers the case where
+//     the binary's CWD is <project>/.opencode)
+//
+// The first path that exists is used. This fallback chain fixes the bug
+// where the installer writes .env to .opencode/.env but the Go binary is
+// spawned with CWD = project root and could not find it.
 //
 // Parsing rules (deliberately minimal — no third-party deps):
 //   - Blank lines are skipped.
@@ -61,9 +102,9 @@ var version = "dev"
 // Missing file is a silent no-op (returns nil) — the dotenv file is
 // optional. Any other I/O or parse error is returned.
 func loadEnvFile() error {
-	path := os.Getenv("NEURALGENTICS_ENV_FILE")
+	path := resolveEnvPath()
 	if path == "" {
-		path = ".env"
+		return nil
 	}
 
 	data, err := os.ReadFile(path)
@@ -737,6 +778,18 @@ func main() {
 	}
 
 	dbURL := os.Getenv("NEURALGENTICS_DB_URL")
+	if dbURL == "" {
+		// The installer and opencode plugin historically use MEMINI_DB_URL
+		// (the memini-ai naming). When the Go binary loads .env directly
+		// (e.g. via the .opencode/.env fallback), MEMINI_DB_URL is set but
+		// NEURALGENTICS_DB_URL is not. Promote it here so the binary
+		// connects to the right database instead of falling back to the
+		// hardcoded default.
+		if meminiURL := os.Getenv("MEMINI_DB_URL"); meminiURL != "" {
+			dbURL = meminiURL
+			log.Printf("env: promoted MEMINI_DB_URL -> NEURALGENTICS_DB_URL")
+		}
+	}
 	if dbURL == "" {
 		// Default matches the running `neuralgentics-postgres` podman container
 		// (localhost:6000, user/db `neuralgentics`, password `neuralgentics`).
