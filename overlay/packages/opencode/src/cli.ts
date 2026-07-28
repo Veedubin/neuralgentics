@@ -36,6 +36,7 @@ interface ParsedArgs {
   remodel: boolean;
   dbStart: boolean;
   dbStop: boolean;
+  dbNoTls: boolean;
   embedded: boolean;
   team: boolean;
   cpuEmbed: boolean;
@@ -77,6 +78,7 @@ function parseArgv(argv: string[]): ParsedArgs {
       "init-project": { type: "boolean", default: false },
       "db-start": { type: "boolean", default: false },
       "db-stop": { type: "boolean", default: false },
+      "db-no-tls": { type: "boolean", default: false },
       update: { type: "boolean", default: false },
       "update-project": { type: "boolean", default: false },
       "update-homedir": { type: "boolean", default: false },
@@ -122,7 +124,7 @@ function parseArgv(argv: string[]): ParsedArgs {
   const positionals: string[] = [];
   const knownFlags = new Set([
     "--init", "--init-homedir", "--init-project",
-    "--db-start", "--db-stop",
+    "--db-start", "--db-stop", "--db-no-tls",
     "--update", "--update-project", "--update-homedir", "--remodel",
     "--embedded", "--team",
     "--CPU-Embed", "--Auto-Embed", "--GPU-Embed",
@@ -154,6 +156,7 @@ function parseArgv(argv: string[]): ParsedArgs {
     initProject: values["init-project"] === true,
     dbStart: values["db-start"] === true,
     dbStop: values["db-stop"] === true,
+    dbNoTls: values["db-no-tls"] === true,
     update: values.update === true,
     updateProject: values["update-project"] === true,
     updateHomedir: values["update-homedir"] === true,
@@ -210,7 +213,8 @@ function printHelp(): void {
       `                       agent persona. The \`overrides/\` directory is not touched.\n` +
       `\n` +
       `Database stack helpers:\n` +
-      `  --db-start           Start the bundled PostgreSQL stack (writes docker-compose.yml + .env to ~/.neuralgentics/, runs compose up -d, waits for ready, offers to create your first database user).\n` +
+      `  --db-start           Start the bundled PostgreSQL stack (writes docker-compose.yml + .env to ~/.memini-ai/, runs compose up -d, waits for ready, offers to create your first database user).\n` +
+      `  --db-no-tls          Generate the plaintext (no-TLS) stack instead of the TLS-by-default stack. By default --db-start generates self-signed certs and uses sslmode=verify-full.\n` +
       `  --db-stop            Stop the bundled PostgreSQL stack (volumes are NEVER deleted — data is preserved).\n` +
       `  --db-user NAME       (with --db-start) Non-interactive first-user creation. Skips the interactive offer.\n` +
       `  --db-password PW     (with --db-start) Password for the user created via --db-user. Required when --db-user is set.\n` +
@@ -319,6 +323,7 @@ async function main(argv: string[]): Promise<number> {
         dbUser: parsed.dbUser,
         dbPassword: parsed.dbPassword,
         yes: parsed.yes,
+        noTls: parsed.dbNoTls,
       });
       if (!result.success) process.stderr.write(`[ERROR] ${result.message}\n`);
       else process.stdout.write(`${result.message}\n`);

@@ -145,20 +145,51 @@ Start the bundled stack (recommended):
 ```bash
 npx @veedubin/neuralgentics --db-start
 ```
-This writes `docker-compose.yml` + `.env` to `~/.neuralgentics/`, runs
-`compose up -d`, waits for `pg_isready`, then **offers to create your first
-database user** (recommended — don't share the default `neuralgentics`
-superuser). After a user is created it prints that user's DSN to paste into
+This writes `docker-compose.yml` + `.env` to `~/.memini-ai/`, generates a
+self-signed CA + server certificate for TLS, runs `compose up -d`, waits for
+`pg_isready`, then **offers to create your first database user** (recommended
+— don't share the default `memini` superuser). After a user is created it
+prints that user's DSN (with `sslmode=verify-full`) to paste into
 `--init-project`:
 ```
-postgresql://<your-user>:<your-password>@localhost:6200/neuralgentics
+postgresql://<your-user>:<your-password>@localhost:5434/memini?sslmode=verify-full&sslrootcert=~/.memini-ai/certs/ca.crt
 ```
+
+**TLS is enabled by default.** The generated stack runs PostgreSQL with
+`ssl=on` and mounts the generated certs. The DSN uses `sslmode=verify-full`
+with `sslrootcert` pointing at the generated CA certificate, so connections
+are encrypted and authenticated. The server cert includes SANs for
+`localhost`, `127.0.0.1`, and the host's LAN IP (if detectable), so
+`verify-full` works when connecting via `localhost` (the default DSN host).
+
+Certificates are stored under `~/.memini-ai/certs/`:
+- `ca.crt` — CA certificate (used as `sslrootcert` on the client side)
+- `server.crt` — server certificate signed by the CA
+- `server.key` — server private key (0600 permissions)
+- `ca.key` — CA private key (0600 permissions, kept for future re-signing)
+
+Re-running `--db-start` on an existing stack does NOT regenerate or clobber
+existing certificates (idempotent). Cert generation requires `openssl` on
+the system PATH (available by default on Mac and Linux). If `openssl` is not
+found, `--db-start` falls back to plaintext mode with a warning.
+
+**Opt out of TLS** with `--db-no-tls`:
+```bash
+npx @veedubin/neuralgentics --db-start --db-no-tls
+```
+This generates the old plaintext stack (no certs, no `ssl=on`, DSN without
+`sslmode`). Use this only if you have a specific reason to avoid TLS (e.g.
+debugging, or a reverse proxy that handles TLS termination). Existing
+no-TLS stacks are never retrofitted with TLS — `--db-start` respects what's
+already there.
 
 Non-interactive (for scripts / CI):
 ```bash
 npx @veedubin/neuralgentics --db-start --db-user alice --db-password 's3cret'
 # or skip user creation entirely:
 npx @veedubin/neuralgentics --db-start --yes
+# plaintext mode (no TLS):
+npx @veedubin/neuralgentics --db-start --db-no-tls --yes
 ```
 
 Stop the stack (volumes are preserved):

@@ -29,6 +29,7 @@ import * as readline from "node:readline";
 import {
   detectComposeRuntime,
   DEFAULT_DSN,
+  DEFAULT_TLS_DSN_TEMPLATE,
   stackDir,
   parseEnvFile,
   resolveStackConfig,
@@ -793,5 +794,248 @@ describe("dbStart first-user bootstrap", () => {
       (Date.now as unknown as { mockRestore: () => void }).mockRestore();
       void realNow;
     }
+  });
+});
+
+// ============================================================================
+// TLS-by-default tests (T-TLS-001)
+// ============================================================================
+
+describe("buildUserDSN with TLS", () => {
+  it("includes sslmode=verify-full and sslrootcert when tlsCertPath is provided", () => {
+    const dsn = buildUserDSN("alice", "s3cret", "5434", "memini", "/home/user/.memini-ai/certs/ca.crt");
+    expect(dsn).toContain("sslmode=verify-full");
+    expect(dsn).toContain("sslrootcert=/home/user/.memini-ai/certs/ca.crt");
+    expect(dsn).toBe(
+      "postgresql://alice:s3cret@localhost:5434/memini?sslmode=verify-full&sslrootcert=/home/user/.memini-ai/certs/ca.crt",
+    );
+  });
+
+  it("does NOT include sslmode when tlsCertPath is omitted (plaintext mode)", () => {
+    const dsn = buildUserDSN("alice", "s3cret", "5434", "memini");
+    expect(dsn).not.toContain("sslmode");
+    expect(dsn).not.toContain("sslrootcert");
+    expect(dsn).toBe("postgresql://alice:s3cret@localhost:5434/memini");
+  });
+});
+
+describe("DEFAULT_TLS_DSN_TEMPLATE", () => {
+  it("contains sslmode=verify-full", () => {
+    expect(DEFAULT_TLS_DSN_TEMPLATE).toContain("sslmode=verify-full");
+  });
+
+  it("contains sslrootcert placeholder", () => {
+    expect(DEFAULT_TLS_DSN_TEMPLATE).toContain("sslrootcert=__CERTS_DIR__/ca.crt");
+  });
+
+  it("uses localhost as the host (matches SANs)", () => {
+    expect(DEFAULT_TLS_DSN_TEMPLATE).toContain("@localhost:");
+  });
+});
+
+describe("dbStart --db-no-tls produces plaintext output", () => {
+  let existsSpy: ReturnType<typeof spyOn>;
+  let mkdirSpy: ReturnType<typeof spyOn>;
+  let copyFileSpy: ReturnType<typeof spyOn>;
+  let readSpy: ReturnType<typeof spyOn>;
+  let stdoutSpy: ReturnType<typeof spyOn>;
+  let stderrSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    execSpy().mockReset();
+    existsSpy = spyOn(fs, "existsSync");
+    mkdirSpy = spyOn(fs.promises, "mkdir");
+    copyFileSpy = spyOn(fs.promises, "copyFile").mockImplementation(async () => undefined);
+    readSpy = spyOn(fs, "readFileSync").mockImplementation(
+      (() =>
+        "MEMINI_STACK_NAME=memini\nMEMINI_DB_PORT=5434\n") as unknown as typeof fs.readFileSync,
+    );
+    stdoutSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
+    stderrSpy = spyOn(process.stderr, "write").mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    existsSpy.mockRestore();
+    mkdirSpy.mockRestore();
+    copyFileSpy.mockRestore();
+    readSpy.mockRestore();
+    stdoutSpy.mockRestore();
+    stderrSpy.mockRestore();
+  });
+
+  it("--db-no-tls prints 'TLS: disabled' and does not mention verify-full", async () => {
+    // Mock: podman-compose available, stack comes up, pg_isready succeeds.
+    execSpy().mockImplementation((cmd: string) => {
+      if (cmd === "command -v podman-compose") return Buffer.from("/usr/bin/podman-compose");
+      if (cmd === "podman-compose --version") return Buffer.from("podman-compose version 1.6.0");
+      if (cmd.includes("up -d")) return Buffer.from("");
+      if (cmd.includes("pg_isready")) return Buffer.from("accepting connections");
+      if (cmd.startsWith("sleep")) return Buffer.from("");
+      // openssl should NOT be called when noTls=true
+      if (cmd === "openssl version") throw new Error("should not be called");
+      throw new Error(`unexpected exec: ${cmd}`);
+    });
+    existsSpy.mockImplementation((p: fs.PathLike) => {
+      const ps = String(p);
+      if (ps.endsWith("docker-compose.yml")) return true;
+      if (ps.endsWith("docker-compose.tls.yml")) return true;
+      if (ps.endsWith(".env")) return true;
+      if (ps.endsWith("compose.example.env")) return true;
+      return false;
+    });
+    mkdirSpy.mockImplementation(async () => undefined);
+
+    const result = await dbStart({ noTls: true, yes: true });
+    expect(result.success).toBe(true);
+    const allOutput = (stdoutSpy.mock.calls as unknown as [string][]).map((c) => c[0]).join("");
+    expect(allOutput).toContain("TLS:             disabled (--db-no-tls)");
+    expect(allOutput).not.toContain("verify-full");
+    // Should print the plaintext DEFAULT_DSN (no sslmode).
+    expect(allOutput).toContain(DEFAULT_DSN);
+  });
+});
+
+describe("dbStart TLS-by-default (with mocked openssl)", () => {
+  let existsSpy: ReturnType<typeof spyOn>;
+  let mkdirSpy: ReturnType<typeof spyOn>;
+  let copyFileSpy: ReturnType<typeof spyOn>;
+  let readSpy: ReturnType<typeof spyOn>;
+  let stdoutSpy: ReturnType<typeof spyOn>;
+  let stderrSpy: ReturnType<typeof spyOn>;
+  let chmodSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    execSpy().mockReset();
+    existsSpy = spyOn(fs, "existsSync");
+    mkdirSpy = spyOn(fs.promises, "mkdir");
+    copyFileSpy = spyOn(fs.promises, "copyFile").mockImplementation(async () => undefined);
+    readSpy = spyOn(fs, "readFileSync").mockImplementation(
+      (() =>
+        "MEMINI_STACK_NAME=memini\nMEMINI_DB_PORT=5434\n") as unknown as typeof fs.readFileSync,
+    );
+    stdoutSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
+    stderrSpy = spyOn(process.stderr, "write").mockImplementation(() => true);
+    // Mock chmodSync to avoid touching real files.
+    chmodSpy = spyOn(fs, "chmodSync").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    existsSpy.mockRestore();
+    mkdirSpy.mockRestore();
+    copyFileSpy.mockRestore();
+    readSpy.mockRestore();
+    stdoutSpy.mockRestore();
+    stderrSpy.mockRestore();
+    chmodSpy.mockRestore();
+  });
+
+  it("TLS-by-default prints 'TLS: enabled' and verify-full DSN when openssl is available", async () => {
+    // Mock: podman-compose available, openssl available, stack comes up.
+    execSpy().mockImplementation((cmd: string) => {
+      if (cmd === "command -v podman-compose") return Buffer.from("/usr/bin/podman-compose");
+      if (cmd === "podman-compose --version") return Buffer.from("podman-compose version 1.6.0");
+      if (cmd === "openssl version") return Buffer.from("OpenSSL 3.6.3");
+      // Cert generation commands — succeed.
+      if (cmd.startsWith("openssl req")) return Buffer.from("");
+      if (cmd.startsWith("openssl x509")) return Buffer.from("");
+      if (cmd.includes("up -d")) return Buffer.from("");
+      if (cmd.includes("pg_isready")) return Buffer.from("accepting connections");
+      if (cmd.startsWith("sleep")) return Buffer.from("");
+      throw new Error(`unexpected exec: ${cmd}`);
+    });
+    // Mock fs: TLS compose exists, certs don't exist yet.
+    const writeFileSyncSpy = spyOn(fs, "writeFileSync").mockImplementation(() => undefined);
+    const unlinkSyncSpy = spyOn(fs, "unlinkSync").mockImplementation(() => undefined);
+    const statSyncSpy = spyOn(fs, "statSync").mockImplementation(() => ({ mode: 0o600 }) as any);
+
+    existsSpy.mockImplementation((p: fs.PathLike) => {
+      const ps = String(p);
+      // TLS compose file exists.
+      if (ps.endsWith("docker-compose.tls.yml")) return true;
+      if (ps.endsWith("docker-compose.yml")) return true;
+      if (ps.endsWith(".env")) return true;
+      if (ps.endsWith("compose.example.env")) return true;
+      // Certs don't exist yet (first run).
+      if (ps.endsWith("certs/ca.crt")) return false;
+      if (ps.endsWith("certs/server.crt")) return false;
+      if (ps.endsWith("certs/server.key")) return false;
+      return false;
+    });
+    mkdirSpy.mockImplementation(async () => undefined);
+
+    try {
+      const result = await dbStart({ yes: true });
+      expect(result.success).toBe(true);
+      const allOutput = (stdoutSpy.mock.calls as unknown as [string][]).map((c) => c[0]).join("");
+      // Should print TLS enabled.
+      expect(allOutput).toContain("TLS:");
+      expect(allOutput).toContain("verify-full");
+      // The default DSN should include sslrootcert.
+      expect(allOutput).toContain("sslrootcert=");
+    } finally {
+      writeFileSyncSpy.mockRestore();
+      unlinkSyncSpy.mockRestore();
+      statSyncSpy.mockRestore();
+    }
+  });
+
+  it("re-run on existing stack with certs is a no-op (certs not regenerated)", async () => {
+    execSpy().mockImplementation((cmd: string) => {
+      if (cmd === "command -v podman-compose") return Buffer.from("/usr/bin/podman-compose");
+      if (cmd === "podman-compose --version") return Buffer.from("podman-compose version 1.6.0");
+      if (cmd === "openssl version") return Buffer.from("OpenSSL 3.6.3");
+      if (cmd.includes("up -d")) return Buffer.from("");
+      if (cmd.includes("pg_isready")) return Buffer.from("accepting connections");
+      if (cmd.startsWith("sleep")) return Buffer.from("");
+      // Cert generation commands should NOT be called (idempotent).
+      if (cmd.startsWith("openssl req")) {
+        throw new Error("cert generation should not be called — certs already exist");
+      }
+      if (cmd.startsWith("openssl x509")) {
+        throw new Error("cert signing should not be called — certs already exist");
+      }
+      throw new Error(`unexpected exec: ${cmd}`);
+    });
+    // Certs already exist.
+    existsSpy.mockImplementation((p: fs.PathLike) => {
+      const ps = String(p);
+      if (ps.endsWith("docker-compose.tls.yml")) return true;
+      if (ps.endsWith("docker-compose.yml")) return true;
+      if (ps.endsWith(".env")) return true;
+      if (ps.endsWith("compose.example.env")) return true;
+      // Certs already exist.
+      if (ps.endsWith("certs/ca.crt")) return true;
+      if (ps.endsWith("certs/server.crt")) return true;
+      if (ps.endsWith("certs/server.key")) return true;
+      return false;
+    });
+    mkdirSpy.mockImplementation(async () => undefined);
+
+    const result = await dbStart({ yes: true });
+    expect(result.success).toBe(true);
+    // The output should say "already exist" (idempotent skip message).
+    const allOutput = (stdoutSpy.mock.calls as unknown as [string][]).map((c) => c[0]).join("");
+    expect(allOutput).toContain("verify-full");
+  });
+});
+
+describe("docker-compose.tls.yml contains TLS configuration", () => {
+  it("contains ssl=on in the command section", async () => {
+    const content = await fs.promises.readFile(
+      path.join(import.meta.dir, "..", "..", "docker-compose.tls.yml"),
+      "utf-8",
+    );
+    expect(content).toContain("ssl=on");
+    expect(content).toContain("ssl_cert_file=/certs/server.crt");
+    expect(content).toContain("ssl_key_file=/certs/server.key");
+    expect(content).toContain("ssl_ca_file=/certs/ca.crt");
+  });
+
+  it("mounts certs as a read-only volume", async () => {
+    const content = await fs.promises.readFile(
+      path.join(import.meta.dir, "..", "..", "docker-compose.tls.yml"),
+      "utf-8",
+    );
+    expect(content).toContain("/certs:ro");
   });
 });

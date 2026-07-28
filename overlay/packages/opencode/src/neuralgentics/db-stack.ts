@@ -27,6 +27,7 @@ import * as os from "node:os";
 import { promises as fs } from "node:fs";
 import * as readline from "node:readline";
 import { fileURLToPath } from "node:url";
+import { generateCerts, certsExist, certPaths, hasOpenSSL, type CertGenResult } from "./tls.js";
 
 /** Result of a db-start or db-stop operation. */
 export interface DbStackResult {
@@ -45,6 +46,12 @@ export interface DbStartOptions {
   dbPassword?: string;
   /** `--yes` — accept defaults / skip confirmations. */
   yes?: boolean;
+  /**
+   * `--db-no-tls` — generate the plaintext (no-TLS) stack instead of the
+   * TLS-by-default stack. When false (default), --db-start generates
+   * self-signed certs and writes a verify-full DSN.
+   */
+  noTls?: boolean;
 }
 
 /** Result of the first-user bootstrap. */
@@ -56,9 +63,23 @@ export interface CreateUserResult {
   message: string;
 }
 
-/** The canonical DSN the user should paste into --init-project. */
+/**
+ * The canonical plaintext DSN the user should paste into --init-project.
+ * Used when `--db-no-tls` is passed or TLS cert generation fails.
+ */
 export const DEFAULT_DSN =
   "postgresql://memini:memini@localhost:5434/memini";
+
+/**
+ * The canonical TLS DSN template. The `__CERTS_DIR__` placeholder is
+ * replaced with the actual certs directory path at runtime.
+ *
+ * verify-full requires the client to connect via a hostname present in
+ * the server cert's SANs. The default DSN uses `localhost` which is always
+ * in the SANs, so verify-full works out of the box.
+ */
+export const DEFAULT_TLS_DSN_TEMPLATE =
+  "postgresql://memini:memini@localhost:5434/memini?sslmode=verify-full&sslrootcert=__CERTS_DIR__/ca.crt";
 
 /** Username must match this safe identifier regex (no quotes, no dashes). */
 const USERNAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -113,14 +134,16 @@ export function detectComposeRuntime(): { command: string; version: string } | n
 /**
  * Locate the docker-compose.yml and compose.example.env shipped in the
  * npm package (sibling of dist/, two levels up from this compiled file).
+ * Also locates the TLS variant of the compose file.
  */
-function bundledStackFiles(): { compose: string; envExample: string } {
+function bundledStackFiles(): { compose: string; composeTls: string; envExample: string } {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
   // dist/neuralgentics/db-stack.js -> ../../docker-compose.yml
   const pkgRoot = path.join(__dirname, "..", "..");
   return {
     compose: path.join(pkgRoot, "docker-compose.yml"),
+    composeTls: path.join(pkgRoot, "docker-compose.tls.yml"),
     envExample: path.join(pkgRoot, "compose.example.env"),
   };
 }
@@ -189,26 +212,38 @@ export function resolveStackConfig(envPath: string): StackConfig {
 }
 
 /**
- * Write the shipped compose + env files to ~/.neuralgentics/ if absent.
+ * Write the shipped compose + env files to ~/.memini-ai/ if absent.
  * NEVER overwrite an existing file — back up with a timestamp first.
+ *
+ * When `noTls` is false (default), writes the TLS-enabled compose file
+ * (docker-compose.tls.yml) as docker-compose.yml. When `noTls` is true,
+ * writes the plaintext compose file (docker-compose.yml).
+ *
+ * IMPORTANT: If a docker-compose.yml already exists, it is backed up and
+ * overwritten with the latest shipped version matching the noTls flag.
+ * However, if certs already exist, they are NEVER regenerated (handled
+ * separately in dbStart).
  *
  * Returns the paths to the compose file and .env.
  */
-export async function ensureStackFiles(): Promise<{ composePath: string; envPath: string; backedUp: string[] }> {
+export async function ensureStackFiles(noTls = false): Promise<{ composePath: string; envPath: string; backedUp: string[] }> {
   const dir = stackDir();
   const composePath = path.join(dir, "docker-compose.yml");
   const envPath = path.join(dir, ".env");
   const backedUp: string[] = [];
-  const { compose: bundledCompose, envExample: bundledEnvExample } = bundledStackFiles();
+  const { compose: bundledCompose, composeTls: bundledComposeTls, envExample: bundledEnvExample } = bundledStackFiles();
 
   await fs.mkdir(dir, { recursive: true });
 
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
 
-  // compose file
-  if (!existsSync(bundledCompose)) {
+  // Choose the source compose file based on TLS mode.
+  const sourceCompose = noTls ? bundledCompose : bundledComposeTls;
+  const sourceLabel = noTls ? "plaintext" : "TLS";
+
+  if (!existsSync(sourceCompose)) {
     throw new Error(
-      `Bundled docker-compose.yml not found at ${bundledCompose}. ` +
+      `Bundled ${sourceLabel} docker-compose.yml not found at ${sourceCompose}. ` +
         `This should ship with @veedubin/neuralgentics — report a bug.`,
     );
   }
@@ -218,9 +253,9 @@ export async function ensureStackFiles(): Promise<{ composePath: string; envPath
     await fs.copyFile(composePath, backup);
     backedUp.push(backup);
     // Always write the latest shipped version (user keeps their .env for customisation)
-    await fs.copyFile(bundledCompose, composePath);
+    await fs.copyFile(sourceCompose, composePath);
   } else {
-    await fs.copyFile(bundledCompose, composePath);
+    await fs.copyFile(sourceCompose, composePath);
   }
 
   // .env — only seed if absent, never overwrite
@@ -264,11 +299,17 @@ export function escapeSqlPassword(pw: string): string {
 }
 
 /** Build a URL-encoded DSN for a created user. */
-export function buildUserDSN(username: string, password: string, port: string, database: string): string {
-  return (
+export function buildUserDSN(username: string, password: string, port: string, database: string, tlsCertPath?: string): string {
+  const base =
     `postgresql://${encodeURIComponent(username)}:` +
-    `${encodeURIComponent(password)}@localhost:${port}/${database}`
-  );
+    `${encodeURIComponent(password)}@localhost:${port}/${database}`;
+  if (tlsCertPath) {
+    // sslmode=verify-full requires the client to connect via a hostname
+    // present in the server cert's SANs. The DSN uses `localhost` which is
+    // always in the SANs, so verify-full works out of the box.
+    return `${base}?sslmode=verify-full&sslrootcert=${tlsCertPath}`;
+  }
+  return base;
 }
 
 /**
@@ -343,12 +384,16 @@ function printLaterCommand(cfg: StackConfig, composeFile: string): void {
 /**
  * Interactive first-user bootstrap. Returns the DSN of the created user,
  * or an empty string if the user declined.
+ *
+ * When `tlsCertPath` is provided, the DSN includes `sslmode=verify-full`
+ * and `sslrootcert=<path>`.
  */
 async function offerFirstUser(
   composeCmd: string,
   composeFile: string,
   cfg: StackConfig,
   opts: DbStartOptions,
+  tlsCertPath?: string,
 ): Promise<CreateUserResult> {
   // Non-interactive path: --db-user provided.
   if (opts.dbUser !== undefined) {
@@ -383,7 +428,7 @@ async function offerFirstUser(
         message: `Failed to create user "${opts.dbUser}": ${result.error ?? "unknown error"}`,
       };
     }
-    const dsn = buildUserDSN(opts.dbUser, password, cfg.dbPort, cfg.adminDb);
+    const dsn = buildUserDSN(opts.dbUser, password, cfg.dbPort, cfg.adminDb, tlsCertPath);
     const note = result.alreadyExisted ? " (user already existed — treated as success)" : "";
     return {
       created: true,
@@ -466,7 +511,7 @@ async function offerFirstUser(
         message: `Failed to create user "${username}": ${result.error ?? "unknown error"}`,
       };
     }
-    const dsn = buildUserDSN(username, password, cfg.dbPort, cfg.adminDb);
+    const dsn = buildUserDSN(username, password, cfg.dbPort, cfg.adminDb, tlsCertPath);
     const note = result.alreadyExisted ? " (user already existed — treated as success)" : "";
     process.stdout.write(`  OK Created database user "${username}"${note}.\n`);
     return {
@@ -485,16 +530,21 @@ async function offerFirstUser(
  *
  * Steps:
  *   1. Detect compose runtime (podman-compose / podman compose / docker compose).
- *   2. Write shipped docker-compose.yml + compose.example.env to ~/.neuralgentics/.
- *   3. Run `up -d`.
- *   4. Wait for pg_isready (60s max — first-boot initdb on a fresh volume
+ *   2. Write shipped docker-compose.yml (TLS or plaintext) + compose.example.env
+ *      to ~/.memini-ai/.
+ *   3. If TLS mode (default): generate self-signed CA + server cert (if not
+ *      already present — idempotent). Requires `openssl` on PATH.
+ *   4. Run `up -d`.
+ *   5. Wait for pg_isready (60s max — first-boot initdb on a fresh volume
  *      plus a freshly-pulled image can exceed 30s on slower machines).
- *   5. Offer to create the user's first database user (interactive, or
+ *   6. Offer to create the user's first database user (interactive, or
  *      non-interactive via --db-user/--db-password).
- *   6. Print the DSN to paste into --init-project.
+ *   7. Print the DSN (with sslmode=verify-full + sslrootcert when TLS) to
+ *      paste into --init-project.
  */
 export async function dbStart(opts: DbStartOptions = {}): Promise<DbStackResult> {
   const dryRun = opts.dryRun ?? false;
+  const noTls = opts.noTls ?? false;
   const shell = process.env.SHELL ?? "bash";
 
   const runtime = detectComposeRuntime();
@@ -513,10 +563,21 @@ export async function dbStart(opts: DbStartOptions = {}): Promise<DbStackResult>
 
   process.stdout.write(`Using compose runtime: ${runtime.command} (${runtime.version})\n`);
 
+  // TLS mode requires openssl for cert generation.
+  let tlsCertPath: string | undefined;
+  if (!noTls) {
+    if (!hasOpenSSL()) {
+      process.stderr.write(
+        "[WARN] openssl not found — falling back to plaintext (no-TLS) mode.\n" +
+          "  Install openssl to enable TLS-by-default, or pass --db-no-tls to silence this.\n",
+      );
+    }
+  }
+
   let composePath: string;
   let envPath: string;
   try {
-    const result = await ensureStackFiles();
+    const result = await ensureStackFiles(noTls || (!hasOpenSSL() && !noTls));
     composePath = result.composePath;
     envPath = result.envPath;
     if (result.backedUp.length > 0) {
@@ -527,6 +588,24 @@ export async function dbStart(opts: DbStartOptions = {}): Promise<DbStackResult>
   } catch (exc) {
     const msg = exc instanceof Error ? exc.message : String(exc);
     return { success: false, message: msg, exitCode: 1 };
+  }
+
+  // Generate TLS certs if TLS mode is active and openssl is available.
+  // Idempotent: does NOT regenerate if certs already exist.
+  if (!noTls && hasOpenSSL()) {
+    const certResult = generateCerts(stackDir());
+    if (certResult.success) {
+      tlsCertPath = certResult.paths.caCert;
+      process.stdout.write(`TLS:             enabled (verify-full)\n`);
+      process.stdout.write(`Certs dir:        ${certResult.paths.certsDir}\n`);
+    } else {
+      process.stderr.write(
+        `[WARN] TLS cert generation failed: ${certResult.message}\n` +
+          `  Falling back to plaintext mode. Pass --db-no-tls to skip cert generation.\n`,
+      );
+    }
+  } else if (noTls) {
+    process.stdout.write(`TLS:             disabled (--db-no-tls)\n`);
   }
 
   const cfg = resolveStackConfig(envPath);
@@ -584,7 +663,12 @@ export async function dbStart(opts: DbStartOptions = {}): Promise<DbStackResult>
   process.stdout.write("\nOK PostgreSQL stack is running.\n\n");
 
   // ── First-user bootstrap ────────────────────────────────────────────────
-  const userResult = await offerFirstUser(runtime.command, composePath, cfg, opts);
+  const userResult = await offerFirstUser(runtime.command, composePath, cfg, opts, tlsCertPath);
+
+  // Build the default DSN (TLS or plaintext).
+  const defaultDsn = tlsCertPath
+    ? DEFAULT_TLS_DSN_TEMPLATE.replace("__CERTS_DIR__", path.dirname(tlsCertPath))
+    : DEFAULT_DSN;
 
   // Final output: the DSN to paste into --init-project.
   process.stdout.write("\nNext step — run:\n");
@@ -595,7 +679,7 @@ export async function dbStart(opts: DbStartOptions = {}): Promise<DbStackResult>
     process.stdout.write(`    ${userResult.dsn}\n`);
     process.stdout.write(`  (your new user "${userResult.username}")\n`);
   } else {
-    process.stdout.write(`    ${DEFAULT_DSN}\n`);
+    process.stdout.write(`    ${defaultDsn}\n`);
     process.stdout.write("(or just accept the defaults — they match the bundled stack)\n");
   }
   process.stdout.write("\n");
