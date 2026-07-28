@@ -526,3 +526,107 @@ describe("buildProjectOpencodeJson port validation (Fix 4)", () => {
     ).not.toThrow();
   });
 });
+
+// ===========================================================================
+// Fix 5 — promptTeamConnection writes .env to BOTH .opencode/ and project root
+// ===========================================================================
+
+describe("promptTeamConnection dual .env write (Fix 5)", () => {
+  it("writes .env to BOTH .opencode/ and project root with identical content", async () => {
+    // Answers: host=default, port=default, db=default, user=default,
+    // password="pw", saveCreds="y".
+    const session = new FakeSession([
+      "",   // host -> default localhost
+      "",   // port -> default 6200
+      "",   // database -> default neuralgentics
+      "",   // user -> default neuralgentics
+      "pw", // password
+      "y",  // save creds? yes
+    ]);
+    // configDir simulates <projectRoot>/.opencode — the project root is
+    // its parent directory. promptTeamConnection should write to both
+    // <configDir>/.env AND <parent>/.env.
+    const projectRoot = await makeTmpDir();
+    const configDir = path.join(projectRoot, ".opencode");
+    await fs.mkdir(configDir, { recursive: true });
+
+    const result = await promptTeamConnection(session, configDir);
+    expect(result.password).toBe("pw");
+
+    const opencodeEnv = path.join(configDir, ".env");
+    const projectEnv = path.join(projectRoot, ".env");
+    expect(existsSync(opencodeEnv)).toBe(true);
+    expect(existsSync(projectEnv)).toBe(true);
+
+    const opencodeContent = await fs.readFile(opencodeEnv, "utf-8");
+    const projectContent = await fs.readFile(projectEnv, "utf-8");
+    // Both files must have identical content.
+    expect(opencodeContent).toBe(projectContent);
+    // Both must contain the DB URL.
+    expect(opencodeContent).toContain("MEMINI_DB_URL=postgresql://neuralgentics:pw@localhost:6200/neuralgentics");
+    expect(opencodeContent).toContain("MEMINI_VECTOR_BACKEND=postgres-external");
+  });
+
+  it("backs up the project-root .env on overwrite", async () => {
+    const session = new FakeSession([
+      "",   // host default
+      "",   // port default
+      "",   // db default
+      "",   // user default
+      "pw", // password
+      "y",  // save creds? yes
+    ]);
+    const projectRoot = await makeTmpDir();
+    const configDir = path.join(projectRoot, ".opencode");
+    await fs.mkdir(configDir, { recursive: true });
+    // Pre-create a project-root .env with an old value that should be backed up.
+    const projectEnv = path.join(projectRoot, ".env");
+    await fs.writeFile(projectEnv, "MEMINI_DB_URL=postgresql://old:old@localhost:5/old\n", "utf-8");
+
+    await promptTeamConnection(session, configDir);
+
+    // The new .env should have the merged content.
+    const content = await fs.readFile(projectEnv, "utf-8");
+    expect(content).toContain("localhost:6200/neuralgentics");
+    expect(content).not.toContain("localhost:5/old");
+    // A backup file should exist in the project root.
+    const entries = await fs.readdir(projectRoot);
+    const backups = entries.filter((e) => e.endsWith(".env.bak"));
+    expect(backups.length).toBeGreaterThanOrEqual(1);
+    const backupContent = await fs.readFile(path.join(projectRoot, backups[0]!), "utf-8");
+    expect(backupContent).toContain("localhost:5/old");
+  });
+
+  it("both .opencode/.env and project-root/.env have identical content after the call", async () => {
+    // Separate test that also checks the opencode-side backup so we have
+    // explicit coverage of the .opencode/ backup path too.
+    const session = new FakeSession([
+      "",   // host
+      "",   // port
+      "",   // db
+      "",   // user
+      "secret", // password
+      "y",  // save creds
+    ]);
+    const projectRoot = await makeTmpDir();
+    const configDir = path.join(projectRoot, ".opencode");
+    await fs.mkdir(configDir, { recursive: true });
+    // Pre-create BOTH .env files with identical old content so the merge
+    // applies the same transformation to both and they stay identical.
+    const oldContent = "MEMINI_DB_URL=postgresql://old:old@localhost:5/old\n";
+    await fs.writeFile(path.join(configDir, ".env"), oldContent, "utf-8");
+    await fs.writeFile(path.join(projectRoot, ".env"), oldContent, "utf-8");
+
+    await promptTeamConnection(session, configDir);
+
+    const opencodeContent = await fs.readFile(path.join(configDir, ".env"), "utf-8");
+    const projectContent = await fs.readFile(path.join(projectRoot, ".env"), "utf-8");
+    expect(opencodeContent).toBe(projectContent);
+    expect(opencodeContent).toContain("secret");
+    // Both backups should exist.
+    const ocEntries = await fs.readdir(configDir);
+    expect(ocEntries.some((e) => e.endsWith(".env.bak"))).toBe(true);
+    const prEntries = await fs.readdir(projectRoot);
+    expect(prEntries.some((e) => e.endsWith(".env.bak"))).toBe(true);
+  });
+});

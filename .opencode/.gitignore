@@ -1,2 +1,10 @@
 node_modules
 bun.lock
+
+# Never commit secrets / env files.
+# The installer writes .env to both .opencode/.env and <project-root>/.env.
+.env
+.env.*
+.opencode/.env
+.opencode/.env.*
+!.env.example

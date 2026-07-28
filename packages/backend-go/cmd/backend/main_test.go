@@ -1434,3 +1434,81 @@ func TestLoadEnvFile_QuotedValues(t *testing.T) {
 		t.Errorf("unquoted: got %q, want %q", got, "plain")
 	}
 }
+
+// TestLoadEnvFile_OpencodeFallback verifies that when ".env" is NOT present
+// in CWD but ".opencode/.env" IS present, the binary falls back to the
+// .opencode/ location. This is the core fix for the env-location bug where
+// the installer writes to .opencode/.env but the Go binary is spawned with
+// CWD = project root.
+func TestLoadEnvFile_OpencodeFallback(t *testing.T) {
+	unsetEnvHelper(t, "NG_TEST_OCDIR")
+	dir := t.TempDir()
+	opencodeDir := filepath.Join(dir, ".opencode")
+	if err := os.Mkdir(opencodeDir, 0o755); err != nil {
+		t.Fatalf("mkdir .opencode: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(opencodeDir, ".env"), []byte("NG_TEST_OCDIR=from-opencode\n"), 0o600); err != nil {
+		t.Fatalf("write .opencode/.env: %v", err)
+	}
+	chdirHelper(t, dir) // CWD = project root, no .env here
+
+	if err := loadEnvFile(); err != nil {
+		t.Fatalf("loadEnvFile: %v", err)
+	}
+	if got := os.Getenv("NG_TEST_OCDIR"); got != "from-opencode" {
+		t.Errorf("NG_TEST_OCDIR: got %q, want %q (should have loaded .opencode/.env)", got, "from-opencode")
+	}
+}
+
+// TestLoadEnvFile_CwdEnvPrecedence verifies that a ".env" in CWD takes
+// precedence over ".opencode/.env" — the binary must prefer the
+// project-root .env when both exist.
+func TestLoadEnvFile_CwdEnvPrecedence(t *testing.T) {
+	unsetEnvHelper(t, "NG_TEST_PREC")
+	dir := t.TempDir()
+	// Write BOTH .env (CWD) and .opencode/.env with different values.
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("NG_TEST_PREC=from-cwd\n"), 0o600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+	opencodeDir := filepath.Join(dir, ".opencode")
+	if err := os.Mkdir(opencodeDir, 0o755); err != nil {
+		t.Fatalf("mkdir .opencode: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(opencodeDir, ".env"), []byte("NG_TEST_PREC=from-opencode\n"), 0o600); err != nil {
+		t.Fatalf("write .opencode/.env: %v", err)
+	}
+	chdirHelper(t, dir)
+
+	if err := loadEnvFile(); err != nil {
+		t.Fatalf("loadEnvFile: %v", err)
+	}
+	if got := os.Getenv("NG_TEST_PREC"); got != "from-cwd" {
+		t.Errorf("NG_TEST_PREC: got %q, want %q (.env in CWD must win over .opencode/.env)", got, "from-cwd")
+	}
+}
+
+// TestLoadEnvFile_ExplicitEnvFilePrecedence verifies that the
+// NEURALGENTICS_ENV_FILE env var takes precedence over both the CWD .env
+// and the .opencode/.env fallback.
+func TestLoadEnvFile_ExplicitEnvFilePrecedence(t *testing.T) {
+	unsetEnvHelper(t, "NG_TEST_EXPLICIT", "NEURALGENTICS_ENV_FILE")
+	dir := t.TempDir()
+	// CWD .env (should be ignored in favour of the explicit path).
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("NG_TEST_EXPLICIT=from-cwd\n"), 0o600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+	// Explicit file with a different value.
+	explicitPath := filepath.Join(dir, "custom-env")
+	if err := os.WriteFile(explicitPath, []byte("NG_TEST_EXPLICIT=from-explicit\n"), 0o600); err != nil {
+		t.Fatalf("write custom-env: %v", err)
+	}
+	chdirHelper(t, dir)
+	t.Setenv("NEURALGENTICS_ENV_FILE", explicitPath)
+
+	if err := loadEnvFile(); err != nil {
+		t.Fatalf("loadEnvFile: %v", err)
+	}
+	if got := os.Getenv("NG_TEST_EXPLICIT"); got != "from-explicit" {
+		t.Errorf("NG_TEST_EXPLICIT: got %q, want %q (NEURALGENTICS_ENV_FILE must win)", got, "from-explicit")
+	}
+}

@@ -233,16 +233,28 @@ export async function promptTeamConnection(
     process.stdout.write("  Save credentials to .env so you don't have to re-enter them?\n");
     const saveCreds = (await session.ask("  [Y/n]: ")).trim().toLowerCase();
     if (!saveCreds.startsWith("n")) {
-      const envPath = path.join(configDir, ".env");
       const dbUrl = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
       const envLines = [
         `MEMINI_DB_URL=${dbUrl}`,
         `MEMINI_VECTOR_BACKEND=postgres-external`,
       ];
-      const backupPath = await updateEnvFile(envPath, envLines);
-      process.stdout.write(`  ✓ Saved to ${envPath}\n`);
-      if (backupPath) {
-        process.stdout.write(`  ✓ Backed up existing .env to ${backupPath}\n`);
+      // Write to BOTH .opencode/.env (for the opencode plugin config dir)
+      // AND <projectRoot>/.env (one directory up — where the Go backend
+      // binary looks when spawned with CWD = project root).
+      // The updateEnvFile helper backs up any existing file before merge,
+      // so both locations are safe to overwrite.
+      const opencodeEnvPath = path.join(configDir, ".env");
+      const projectRoot = path.dirname(configDir);
+      const projectEnvPath = path.join(projectRoot, ".env");
+      const backupPath1 = await updateEnvFile(opencodeEnvPath, envLines);
+      process.stdout.write(`  ✓ Saved to ${opencodeEnvPath}\n`);
+      if (backupPath1) {
+        process.stdout.write(`  ✓ Backed up existing .env to ${backupPath1}\n`);
+      }
+      const backupPath2 = await updateEnvFile(projectEnvPath, envLines);
+      process.stdout.write(`  ✓ Saved to ${projectEnvPath}\n`);
+      if (backupPath2) {
+        process.stdout.write(`  ✓ Backed up existing .env to ${backupPath2}\n`);
       }
       process.stdout.write("  WARNING: Do NOT commit .env to git. Add .env to .gitignore.\n");
     }
@@ -353,13 +365,23 @@ async function promptOllamaApiKey(
     return undefined;
   }
 
-  // Write to .env file in config dir.
-  const envPath = path.join(configDir, ".env");
+  // Write to .env file in BOTH the config dir (.opencode/) AND the project
+  // root (one directory up). The Go backend binary is spawned with CWD =
+  // project root, so it finds <projectRoot>/.env via its fallback chain.
+  // The updateEnvFile helper backs up any existing file before merge.
+  const opencodeEnvPath = path.join(configDir, ".env");
+  const projectRoot = path.dirname(configDir);
+  const projectEnvPath = path.join(projectRoot, ".env");
   const envLines = [`OLLAMA_API_KEY=${key}`];
-  const backupPath = await updateEnvFile(envPath, envLines);
-  process.stdout.write(`  ✓ Saved to ${envPath}\n`);
-  if (backupPath) {
-    process.stdout.write(`  ✓ Backed up existing .env to ${backupPath}\n`);
+  const backupPath1 = await updateEnvFile(opencodeEnvPath, envLines);
+  process.stdout.write(`  ✓ Saved to ${opencodeEnvPath}\n`);
+  if (backupPath1) {
+    process.stdout.write(`  ✓ Backed up existing .env to ${backupPath1}\n`);
+  }
+  const backupPath2 = await updateEnvFile(projectEnvPath, envLines);
+  process.stdout.write(`  ✓ Saved to ${projectEnvPath}\n`);
+  if (backupPath2) {
+    process.stdout.write(`  ✓ Backed up existing .env to ${backupPath2}\n`);
   }
   process.stdout.write(
     "\n  WARNING: Do NOT commit the .env file to git. Add .env to your .gitignore.\n\n",
