@@ -5,6 +5,11 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.15.21 (2026-07-27)
+
+**Fixed:**
+- **Plugin auto-promotion of `MEMINI_DB_URL` now actually works** — the v0.15.19 fix was a no-op because the Go backend child process was spawned inside `server()` BEFORE the `config` hook ever fired. `GoBackendClient` now supports a `{ lazy: true }` mode that defers the spawn until the config hook calls `setLoadedConfig(cfg)` then `backend.start()`. The Go backend now correctly picks up `NEURALGENTICS_DB_URL` from the loaded opencode config, eliminating the `main.go:771: failed to initialize` error when running against a non-default PostgreSQL DSN. See HANDOFF.md Session 60.
+
 ## v0.15.20 (2026-07-27)
 
 **Fixed:**
