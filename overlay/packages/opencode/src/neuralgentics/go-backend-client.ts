@@ -176,16 +176,43 @@ function resolveMeminiDbUrl(
 /**
  * JSON-RPC 2.0 client that talks to the Go backend over stdio.
  *
- * Usage:
+ * Supports two construction modes:
+ *  - **Eager (default):** spawns the binary immediately in the constructor.
+ *    Use when `loadedConfig` is already populated (e.g. tests, standalone use).
+ *  - **Lazy (`{ lazy: true }`):** defers spawn until `start()` / `waitForReady()`
+ *    / `call()` is first invoked. Use in the OpenCode plugin `server()` so the
+ *    spawn happens AFTER the `config` hook has called `setLoadedConfig(cfg)`,
+ *    allowing `NEURALGENTICS_DB_URL` to be auto-promoted from
+ *    `mcp["memini-ai-dev"].env.MEMINI_DB_URL`.
+ *
+ * Usage (eager):
  * ```ts
  * const backend = new GoBackendClient("neuralgentics-backend");
  * await backend.waitForReady();
  * const result = await backend.call("memory.add", { content: "hello" });
  * await backend.shutdown();
  * ```
+ *
+ * Usage (lazy — OpenCode plugin):
+ * ```ts
+ * const backend = new GoBackendClient(binaryPath, { lazy: true });
+ * // ... later, in the config hook:
+ * setLoadedConfig(cfg);
+ * await backend.start();
+ * ```
  */
 export class GoBackendClient {
-  private process: ChildProcess;
+  /** The spawned child process (null until `start()` runs, or after shutdown). */
+  private process: ChildProcess | null = null;
+  /** Remembered binary path — used by `start()` when lazy. */
+  private readonly binaryPath: string;
+  /** Has `start()` successfully spawned the process? */
+  started = false;
+  /** Is `start()` currently in progress? (Used for diagnostics only.) */
+  starting = false;
+  /** Dedupe concurrent `start()` calls — all callers share the same promise. */
+  private startPromise: Promise<void> | null = null;
+
   private nextId = 1;
   private pending = new Map<number, PendingCall>();
   private ready = false;
@@ -194,68 +221,115 @@ export class GoBackendClient {
   private readyReject!: (err: Error) => void;
 
   /**
-   * Spawn the Go backend binary and begin reading its stdout.
+   * Construct the client. By default spawns the binary immediately; pass
+   * `{ lazy: true }` to defer spawn until `start()` is called (e.g. from
+   * the OpenCode plugin config hook, after `setLoadedConfig`).
    *
    * @param binaryPath - Absolute or relative path to the `neuralgentics-backend` binary.
    *                     Falls back to $PATH lookup if just the binary name is given.
+   * @param options.lazy - If true, do NOT spawn in the constructor. The caller
+   *                       MUST call `start()` (or `waitForReady()`/`call()`,
+   *                       which both delegate to `start()`) before the backend
+   *                       can be used.
    */
-  constructor(binaryPath: string) {
-    // Build the child environment from the parent process env. We do NOT
-    // force a NEURALGENTICS_DB_URL here — the Go binary has its own
-    // built-in default (neuralgentics:neuralgentics@localhost:6200/
-    // neuralgentics) which matches the `neuralgentics-postgres` compose
-    // stack. If the user has set NEURALGENTICS_DB_URL in their environment,
-    // it is already in childEnv via the spread and will override the Go
-    // binary's default. Otherwise the binary uses its own default.
-    const childEnv = { ...process.env };
-
-    // Precedence resolution for NEURALGENTICS_DB_URL:
-    //   1. Explicit process.env.NEURALGENTICS_DB_URL (already in childEnv) — wins.
-    //   2. The memini-ai MCP server's MEMINI_DB_URL from the loaded opencode
-    //      config (set by the config hook in server.ts). This lets the Go
-    //      backend reuse the same DSN as the sibling memini-ai server with
-    //      no extra configuration from the user. The sentinel values
-    //      "pgembed" and "" are skipped — they mean memini-ai is running in
-    //      embedded mode, not against an external Postgres the Go backend
-    //      could share.
-    if (!childEnv.NEURALGENTICS_DB_URL) {
-      const meminiUrl = resolveMeminiDbUrl(loadedConfig);
-      if (meminiUrl !== undefined) {
-        childEnv.NEURALGENTICS_DB_URL = meminiUrl;
-      }
-    }
-
-    this.process = spawn(binaryPath, [], {
-      stdio: ["pipe", "pipe", "inherit"],
-      env: childEnv,
-    });
-
+  constructor(binaryPath: string, options: { lazy?: boolean } = {}) {
+    this.binaryPath = binaryPath;
+    // The ready promise is created eagerly so that event handlers wired in
+    // start() can resolve/reject it. It is awaited in waitForReady().
     this.readyPromise = new Promise<void>((resolve, reject) => {
       this.readyResolve = resolve;
       this.readyReject = reject;
     });
 
-    // Read stdout line-by-line and route responses to pending calls.
-    const rl = createInterface({ input: this.process.stdout! });
-    rl.on("line", (line: string) => this.handleLine(line));
-    rl.on("close", () => this.handleClose());
+    if (!options.lazy) {
+      // Eager mode: spawn immediately (legacy behaviour).
+      void this.start();
+    }
+  }
 
-    // Detect binary failure to start.
-    this.process.on("error", (err: Error) => {
-      this.readyReject(err);
-      this.rejectAll(err);
-    });
-    this.process.on("exit", (code: number | null) => {
-      const error = new Error(
-        `Go backend exited with code ${code ?? "unknown"}`,
-      );
-      this.rejectAll(error);
-    });
+  /**
+   * Lazily start the backend. Idempotent — concurrent calls share the same
+   * promise. If the backend has already been started, returns immediately.
+   * If it has been shut down, returns a rejected promise (restart is not
+   * supported — construct a new client instead).
+   *
+   * Builds the child environment with the same precedence as the legacy
+   * eager constructor:
+   *   1. Explicit `process.env.NEURALGENTICS_DB_URL` — wins.
+   *   2. `mcp["memini-ai-dev"].env.MEMINI_DB_URL` from `loadedConfig`
+   *      (set by `setLoadedConfig` in the config hook).
+   *   3. The Go binary's own hardcoded default.
+   *
+   * Sentinel values `""` and `"pgembed"` are skipped (they mean memini-ai
+   * is in embedded mode, not against a shareable external Postgres).
+   */
+  start(): Promise<void> {
+    if (this.started) return Promise.resolve();
+    if (this.startPromise) return this.startPromise;
+    this.starting = true;
+    this.startPromise = (async () => {
+      // Build the child environment from the parent process env. We do NOT
+      // force a NEURALGENTICS_DB_URL here — the Go binary has its own
+      // built-in default which matches the `neuralgentics-postgres` compose
+      // stack. If the user has set NEURALGENTICS_DB_URL in their environment,
+      // it is already in childEnv via the spread and will override the Go
+      // binary's default. Otherwise the binary uses its own default.
+      const childEnv: Record<string, string | undefined> = { ...process.env };
+
+      // Precedence resolution for NEURALGENTICS_DB_URL:
+      //   1. Explicit process.env.NEURALGENTICS_DB_URL (already in childEnv) — wins.
+      //   2. The memini-ai MCP server's MEMINI_DB_URL from the loaded opencode
+      //      config (set by the config hook in server.ts). This lets the Go
+      //      backend reuse the same DSN as the sibling memini-ai server with
+      //      no extra configuration from the user. The sentinel values
+      //      "pgembed" and "" are skipped — they mean memini-ai is running in
+      //      embedded mode, not against an external Postgres the Go backend
+      //      could share.
+      if (!childEnv.NEURALGENTICS_DB_URL) {
+        const meminiUrl = resolveMeminiDbUrl(loadedConfig);
+        if (meminiUrl !== undefined) {
+          childEnv.NEURALGENTICS_DB_URL = meminiUrl;
+        }
+      }
+
+      const child = spawn(this.binaryPath, [], {
+        stdio: ["pipe", "pipe", "inherit"],
+        env: childEnv,
+      });
+      this.process = child;
+
+      // Read stdout line-by-line and route responses to pending calls.
+      const rl = createInterface({ input: child.stdout! });
+      rl.on("line", (line: string) => this.handleLine(line));
+      rl.on("close", () => this.handleClose());
+
+      // Detect binary failure to start.
+      child.on("error", (err: Error) => {
+        this.readyReject(err);
+        this.rejectAll(err);
+      });
+      child.on("exit", (code: number | null) => {
+        const error = new Error(
+          `Go backend exited with code ${code ?? "unknown"}`,
+        );
+        this.rejectAll(error);
+      });
+
+      try {
+        await this.readyPromise;
+        this.started = true;
+      } finally {
+        this.starting = false;
+      }
+    })();
+    return this.startPromise;
   }
 
   /**
    * Wait for the backend to be ready (after first stdout line, which is
    * the {"method":"ready"} notification the backend emits post-init).
+   *
+   * Delegates to `start()` so a lazy client is spawned on first await.
    *
    * @param timeoutMs - Maximum time to wait before giving up (default 10 000).
    *                    If the backend is slow to start (or crashes silently),
@@ -264,9 +338,11 @@ export class GoBackendClient {
    *                    whether to abort or continue with a broken backend.
    */
   async waitForReady(timeoutMs = 10_000): Promise<void> {
+    // Ensure the backend has been spawned (no-op if already started).
+    const startP = this.start();
     if (this.ready) return;
     await Promise.race([
-      this.readyPromise,
+      startP.then(() => this.readyPromise),
       new Promise<void>((_, reject) =>
         setTimeout(
           () =>
@@ -283,6 +359,9 @@ export class GoBackendClient {
 
   /**
    * Send a JSON-RPC request and await the response.
+   *
+   * Lazily starts the backend on first call (if constructed with
+   * `{ lazy: true }`).
    *
    * @param method - JSON-RPC method name (e.g. "memory.add", "thought.startChain").
    * @param params - Request parameters object.
@@ -305,6 +384,13 @@ export class GoBackendClient {
     };
     const body = JSON.stringify(request) + "\n";
 
+    const proc = this.process;
+    if (proc == null || proc.stdin == null) {
+      throw new Error(
+        `GoBackendClient.call(${method}): backend process not running`,
+      );
+    }
+
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
@@ -313,7 +399,7 @@ export class GoBackendClient {
 
       this.pending.set(id, { resolve, reject, timer });
 
-      this.process.stdin!.write(body, (err?: Error | null) => {
+      proc.stdin!.write(body, (err?: Error | null) => {
         if (err) {
           clearTimeout(timer);
           this.pending.delete(id);
@@ -325,14 +411,18 @@ export class GoBackendClient {
     });
   }
 
-  /** Shutdown the backend process gracefully. */
+  /** Shutdown the backend process gracefully. Safe to call multiple times. */
   async shutdown(): Promise<void> {
-    try {
-      await this.call("shutdown", {});
-    } catch {
-      // Ignore errors during shutdown — the process may already be exiting.
+    if (this.process != null) {
+      try {
+        await this.call("shutdown", {});
+      } catch {
+        // Ignore errors during shutdown — the process may already be exiting.
+      }
+      this.process.kill();
+      this.process = null;
     }
-    this.process.kill();
+    this.started = false;
   }
 
   /**

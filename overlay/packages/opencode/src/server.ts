@@ -154,18 +154,19 @@ async function server(input: PluginInput): Promise<Hooks> {
   const directory = input.directory ?? process.cwd();
 
   // --------------------------------------------------------------------------
-  // Initialise GoBackendClient
+  // Initialise GoBackendClient (LAZY mode)
   // --------------------------------------------------------------------------
+  // The client is constructed in lazy mode so the actual spawn is deferred
+  // until the `config` hook fires and `setLoadedConfig(cfg)` has stashed the
+  // merged opencode config. This is critical: the GoBackendClient's `start()`
+  // reads `mcp["memini-ai-dev"].env.MEMINI_DB_URL` from the stashed config to
+  // auto-promote it to `NEURALGENTICS_DB_URL` in the child env. If we spawned
+  // here (eager), `loadedConfig` would still be null and the auto-promotion
+  // would silently no-op — the backend would fall back to its hardcoded
+  // `localhost:6200/neuralgentics` default instead of the user's memini-ai
+  // DSN. See v0.15.19 → v0.15.20 ordering bug fix.
   const binaryPath = resolveBinaryPath();
-  backend = new GoBackendClient(binaryPath);
-  try {
-    await backend.waitForReady();
-    console.error(`[Neuralgentics] Go backend ready (${binaryPath})`);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`[Neuralgentics] Failed to start Go backend: ${message}`);
-    // Continue — tools will return errors until backend is healthy.
-  }
+  backend = new GoBackendClient(binaryPath, { lazy: true });
 
   // --------------------------------------------------------------------------
   // Register Tools
@@ -451,11 +452,27 @@ async function server(input: PluginInput): Promise<Hooks> {
   const config = async (cfg: Record<string, unknown>): Promise<void> => {
     // Stash the config so the GoBackendClient can resolve
     // NEURALGENTICS_DB_URL from the memini-ai MCP server's env block.
+    // MUST happen before backend.start() — start() reads loadedConfig.
     setLoadedConfig(cfg);
+
+    // Now that the config is loaded, start the backend. This is the
+    // deferred spawn from the lazy constructor above. start() is idempotent
+    // so re-fires of the config hook are safe.
+    if (backend && !backend.started) {
+      try {
+        await backend.start();
+        console.error(`[Neuralgentics] Go backend ready (${binaryPath})`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[Neuralgentics] Failed to start Go backend: ${message}`);
+        // Continue — tools will return errors until backend is healthy.
+      }
+    }
+
     (cfg as Record<string, unknown>).neuralgentics = {
       version: VERSION,
       backendBinary: binaryPath,
-      backendReady: backend !== null,
+      backendReady: backend !== null && backend.started,
       agentsMdLoaded: agentsMdContent !== null,
     };
   };
