@@ -14,7 +14,7 @@
 
 import * as readline from "node:readline";
 import * as path from "node:path";
-import { promises as fs, existsSync } from "node:fs";
+import { updateEnvFile } from "./env-file.js";
 
 /** The backend mode chosen by the user. */
 export type BackendMode = "pgembed" | "team";
@@ -33,6 +33,63 @@ export interface PromptConfig {
   teamPassword?: string;
   embedding: EmbeddingMode;
   ollamaApiKey?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Input validation helpers (Fix 1 — harden promptTeamConnection)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate a port number string. Returns the trimmed input if it's an
+ * integer in `[1, 65535]`, otherwise returns `null`.
+ *
+ * Accepts leading/trailing whitespace (caller should trim before calling,
+ * but the validator is tolerant). Rejects empty, negative, out-of-range,
+ * fractional, and non-numeric strings.
+ *
+ * Exported for unit testing.
+ */
+export function validatePort(input: string): string | null {
+  const trimmed = input.trim();
+  if (trimmed === "") return null;
+  // Must be a pure integer (no sign, no decimal point, no exponent).
+  if (!/^\d+$/.test(trimmed)) return null;
+  const n = Number(trimmed);
+  if (!Number.isInteger(n)) return null;
+  if (n < 1 || n > 65535) return null;
+  return trimmed;
+}
+
+/**
+ * Validate a hostname/IP string. Returns the trimmed input if it's
+ * non-empty, contains no spaces, and contains no `:` (the `:` is rejected
+ * because a DSN port is appended later; IPv6 with brackets is out of scope
+ * for this interactive prompt). Otherwise returns `null`.
+ *
+ * Exported for unit testing.
+ */
+export function validateHost(input: string): string | null {
+  const trimmed = input.trim();
+  if (trimmed === "") return null;
+  if (trimmed.includes(" ")) return null;
+  if (trimmed.includes(":")) return null;
+  return trimmed;
+}
+
+/**
+ * Validate a database name string. Returns the trimmed input if it's
+ * non-empty, contains no spaces, and contains no `/` (the `/` is rejected
+ * because a DSN path separator is appended later). Otherwise returns
+ * `null`.
+ *
+ * Exported for unit testing.
+ */
+export function validateDatabase(input: string): string | null {
+  const trimmed = input.trim();
+  if (trimmed === "") return null;
+  if (trimmed.includes(" ")) return null;
+  if (trimmed.includes("/")) return null;
+  return trimmed;
 }
 
 /** Flags that control which prompts to skip. */
@@ -58,10 +115,21 @@ export const DEFAULT_PROMPT_CONFIG: PromptConfig = {
 };
 
 /**
+ * A function that asks a question and returns the answer. Both the real
+ * `PromptSession` and test fakes implement this.
+ *
+ * Exported so tests can build a fake session without subclassing.
+ */
+export type AskFn = (prompt: string) => Promise<string>;
+
+/**
  * A persistent prompt session using a single readline interface.
  * Create one, ask all questions, then close it.
+ *
+ * Exported so tests can construct a real session (though most tests will
+ * use a fake `AskFn` instead).
  */
-class PromptSession {
+export class PromptSession implements AskSessionLike {
   private rl: readline.Interface;
 
   constructor() {
@@ -84,6 +152,16 @@ class PromptSession {
   close(): void {
     this.rl.close();
   }
+}
+
+/**
+ * Structural interface satisfied by `PromptSession` and any test fake.
+ * `promptTeamConnection` and other prompt functions accept this so tests
+ * can inject a scripted `ask` without touching real stdin.
+ */
+export interface AskSessionLike {
+  ask: AskFn;
+  close?(): void;
 }
 
 /**
@@ -121,9 +199,15 @@ async function promptBackendMode(session: PromptSession, flags: PromptFlags): Pr
  * The user is responsible for starting the server beforehand — see
  * `neuralgentics --db-start` for the bundled compose stack.
  * Offers to save credentials to .env.
+ *
+ * Each of host/port/database is re-asked until the input validates (or the
+ * user accepts the default by pressing Enter). Password accepts any string
+ * (empty is valid for trust auth).
+ *
+ * Exported so tests can call it directly with a fake `AskSessionLike`.
  */
-async function promptTeamConnection(
-  session: PromptSession,
+export async function promptTeamConnection(
+  session: AskSessionLike,
   configDir: string,
 ): Promise<{
   host: string;
@@ -135,9 +219,9 @@ async function promptTeamConnection(
   process.stdout.write("\n  Team server setup — connect to an existing PostgreSQL server.\n");
   process.stdout.write("  (Don't have one yet? Run `neuralgentics --db-start` first.)\n");
 
-  const host = (await session.ask("\n  Server IP or hostname [localhost]: ")).trim() || "localhost";
-  const port = (await session.ask("  Port [6200]: ")).trim() || "6200";
-  const database = (await session.ask("  Database name [neuralgentics]: ")).trim() || "neuralgentics";
+  const host = await askValidated(session, "\n  Server IP or hostname [localhost]: ", validateHost, "localhost");
+  const port = await askValidated(session, "  Port [6200]: ", validatePort, "6200");
+  const database = await askValidated(session, "  Database name [neuralgentics]: ", validateDatabase, "neuralgentics");
 
   process.stdout.write("\n  Database credentials:\n");
   const user = (await session.ask("  Username [neuralgentics]: ")).trim() || "neuralgentics";
@@ -155,43 +239,43 @@ async function promptTeamConnection(
         `MEMINI_DB_URL=${dbUrl}`,
         `MEMINI_VECTOR_BACKEND=postgres-external`,
       ];
-      if (existsSync(envPath)) {
-        const existing = await fs.readFile(envPath, "utf-8");
-        const lines = existing.split("\n");
-        const updated = new Set<string>();
-        const result: string[] = [];
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith("#") || trimmed === "") {
-            result.push(line);
-            continue;
-          }
-          const eqIdx = trimmed.indexOf("=");
-          const k = eqIdx > 0 ? trimmed.slice(0, eqIdx).trim() : "";
-          if (k === "MEMINI_DB_URL" || k === "MEMINI_VECTOR_BACKEND") {
-            const replacement = envLines.find(l => l.startsWith(k + "="));
-            if (replacement) {
-              result.push(replacement);
-              updated.add(k);
-            }
-          } else {
-            result.push(line);
-          }
-        }
-        for (const l of envLines) {
-          const k = l.split("=")[0];
-          if (!updated.has(k)) result.push(l);
-        }
-        await fs.writeFile(envPath, result.join("\n") + "\n", "utf-8");
-      } else {
-        await fs.writeFile(envPath, envLines.join("\n") + "\n", "utf-8");
-      }
+      const backupPath = await updateEnvFile(envPath, envLines);
       process.stdout.write(`  ✓ Saved to ${envPath}\n`);
+      if (backupPath) {
+        process.stdout.write(`  ✓ Backed up existing .env to ${backupPath}\n`);
+      }
       process.stdout.write("  WARNING: Do NOT commit .env to git. Add .env to .gitignore.\n");
     }
   }
 
   return { host, port, database, user, password };
+}
+
+/**
+ * Ask a question, and if the trimmed input is non-empty but fails
+ * `validate`, print a clear error and re-ask until valid input (or the
+ * user accepts the default by pressing Enter).
+ *
+ * @param session the prompt session
+ * @param prompt the prompt string (includes the default hint)
+ * @param validate validator returning the trimmed value or `null`
+ * @param defaultValue returned when the user presses Enter (empty input)
+ */
+async function askValidated(
+  session: AskSessionLike,
+  prompt: string,
+  validate: (input: string) => string | null,
+  defaultValue: string,
+): Promise<string> {
+  while (true) {
+    const answer = (await session.ask(prompt)).trim();
+    if (answer === "") return defaultValue;
+    const validated = validate(answer);
+    if (validated !== null) return validated;
+    process.stdout.write(
+      `    Invalid input. Please try again (or press Enter for the default).\n`,
+    );
+  }
 }
 
 /**
@@ -271,34 +355,12 @@ async function promptOllamaApiKey(
 
   // Write to .env file in config dir.
   const envPath = path.join(configDir, ".env");
-  const envLine = `OLLAMA_API_KEY=${key}\n`;
-  if (existsSync(envPath)) {
-    // Append/update the key in existing .env
-    const existing = await fs.readFile(envPath, "utf-8");
-    const lines = existing.split("\n");
-    const updated = new Set<string>();
-    const result: string[] = [];
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith("#") || trimmed === "") {
-        result.push(line);
-        continue;
-      }
-      const eqIdx = trimmed.indexOf("=");
-      const k = eqIdx > 0 ? trimmed.slice(0, eqIdx).trim() : "";
-      if (k === "OLLAMA_API_KEY") {
-        result.push(envLine.trimEnd());
-        updated.add("OLLAMA_API_KEY");
-      } else {
-        result.push(line);
-      }
-    }
-    if (!updated.has("OLLAMA_API_KEY")) result.push(envLine.trimEnd());
-    await fs.writeFile(envPath, result.join("\n") + "\n", "utf-8");
-  } else {
-    await fs.writeFile(envPath, envLine, "utf-8");
+  const envLines = [`OLLAMA_API_KEY=${key}`];
+  const backupPath = await updateEnvFile(envPath, envLines);
+  process.stdout.write(`  ✓ Saved to ${envPath}\n`);
+  if (backupPath) {
+    process.stdout.write(`  ✓ Backed up existing .env to ${backupPath}\n`);
   }
-
   process.stdout.write(
     "\n  WARNING: Do NOT commit the .env file to git. Add .env to your .gitignore.\n\n",
   );
