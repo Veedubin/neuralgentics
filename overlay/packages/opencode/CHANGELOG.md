@@ -5,6 +5,14 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.16.1 (2026-07-28)
+
+**Fixed:**
+- **Go backend migrator no longer warns "SSL is not enabled on the server" on plaintext DSNs** — `PostgresStore.Initialize()` now normalizes the migrator DSN to `sslmode=disable` ONLY when no `sslmode` query param is present. The golang-migrate postgres driver (lib/pq) defaults to attempting TLS and has no plaintext fallback, so DSNs without an explicit `sslmode` against non-TLS servers failed every migration attempt — cosmetically a red WARN toast in the OpenCode TUI at startup, but latently a correctness hazard: new SQL migrations would have silently never applied. Explicit-TLS DSNs (`require` / `verify-full` / etc.) are untouched and never silently downgraded. 2 new test functions covering the has/with-sslmode edge cases (13 sub-cases including `?sslmode=verify-full`, `?sslmode=require`, `?sslrootcert=...&sslmode=disable`, plain key=value DSNs, and the bug repro: bare DSN with no sslmode param). `go vet` clean, `go test -short` all 18 packages pass; `backend-go` (the dependent module) also builds clean against the patched `packages/memory`.
+
+**Distribution note:**
+- The Go backend (`neuralgentics-backend`) is **not** a downloadable binary in the GitHub release. It ships as a container image: `ghcr.io/veedubin/neuralgentics-backend:v0.16.1`, rebuilt by the `containers` job in `.github/workflows/release.yml` from `docker/backend.Dockerfile` (multi-stage build, distroless static final image). The CI build graph compiles `packages/backend-go` against the patched `packages/memory` via the `go.work` replace directive, so the fix is in the v0.16.1 image without any extra wiring. The npm `@veedubin/neuralgentics@0.16.1` and the `neuralgentics-0.16.1.tar.gz` release assets are unchanged in shape from v0.16.0 (same overlay plugin + .opencode/ config); the Go fix is invisible from those artifacts by design.
+
 ## v0.16.0 (2026-07-28)
 
 **Added:**

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -80,7 +82,26 @@ func (s *PostgresStore) Initialize(ctx context.Context) error {
 
 	s.pool = pool
 
-	if err := s.runMigrations(); err != nil {
+	// The golang-migrate postgres driver (lib/pq) interprets a DSN with no
+	// explicit `sslmode` differently from pgx: it defaults to attempting TLS
+	// and fails outright against a server with TLS disabled, instead of
+	// falling back to plaintext like pgx does. That mismatch produces a
+	// spurious "pq: SSL is not enabled on the server" warning on every start
+	// for users whose DSN omits sslmode (the common case — the plugin
+	// auto-promotes MEMINI_DB_URL verbatim, and the memini-ai MCP server's
+	// `DB_SSLMODE` env is not read by the Go backend).
+	//
+	// Normalise the migrator DSN: when the user has not stated an sslmode
+	// preference, force `sslmode=disable` so lib/pq does not attempt a TLS
+	// handshake that will fail against a plaintext server. A DSN that targets
+	// a TLS-enabled server already carries an explicit sslmode (require /
+	// verify-full / etc.) and is left untouched.
+	migratorDSN := s.config.DatabaseURL
+	if !hasSSLModeParam(s.config.DatabaseURL) {
+		migratorDSN = withSSLModeDisable(s.config.DatabaseURL)
+	}
+
+	if err := s.runMigrationsWith(migratorDSN); err != nil {
 		slog.Warn("migration warning", "error", err)
 	}
 
@@ -167,13 +188,13 @@ func (s *PostgresStore) detectVectorscale(ctx context.Context) bool {
 	return err == nil && exists == 1
 }
 
-func (s *PostgresStore) runMigrations() error {
+func (s *PostgresStore) runMigrationsWith(dsn string) error {
 	source, err := iofs.New(migrationsFS, "migrations/postgres")
 	if err != nil {
 		return fmt.Errorf("create migration source: %w", err)
 	}
 
-	m, err := migrate.NewWithSourceInstance("iofs", source, s.config.DatabaseURL)
+	m, err := migrate.NewWithSourceInstance("iofs", source, dsn)
 	if err != nil {
 		return fmt.Errorf("create migrator: %w", err)
 	}
@@ -184,6 +205,48 @@ func (s *PostgresStore) runMigrations() error {
 	}
 
 	return nil
+}
+
+// runMigrations runs embedded SQL migrations against the configured database
+// using the raw config DSN. Kept for backwards compatibility with callers that
+// do not have a live pool to probe TLS state (e.g. standalone tooling). The
+// store initializer uses runMigrationsWith with a TLS-aware DSN instead.
+func (s *PostgresStore) runMigrations() error {
+	return s.runMigrationsWith(s.config.DatabaseURL)
+}
+
+// hasSSLModeParam reports whether the DSN already carries an explicit sslmode
+// query parameter (case-insensitive). Used to avoid overriding a user's
+// deliberate TLS choice when normalising the migrator DSN.
+func hasSSLModeParam(dsn string) bool {
+	// url.Parse query handling is sufficient; fall back to a substring check
+	// for DSNs that are not strictly RFC-conformant (lib/pq accepts both
+	// `?sslmode=...` and key=value lists, but the URL form is what the plugin
+	// and memini-ai emit).
+	lower := dsn
+	if u, err := url.Parse(dsn); err == nil && u.RawQuery != "" {
+		lower = u.RawQuery
+	}
+	return strings.Contains(strings.ToLower(lower), "sslmode=")
+}
+
+// withSSLModeDisable returns dsn with sslmode=disable appended. It preserves
+// any existing query parameters and is idempotent (callers gate it behind
+// hasSSLModeParam). On any parse error it falls back to a simple string
+// append so the migrator still receives a disable directive.
+func withSSLModeDisable(dsn string) string {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		sep := "?"
+		if strings.Contains(dsn, "?") {
+			sep = "&"
+		}
+		return dsn + sep + "sslmode=disable"
+	}
+	q := u.Query()
+	q.Set("sslmode", "disable")
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // ─── Row Scanning Helpers ────────────────────────────────────────────────────
