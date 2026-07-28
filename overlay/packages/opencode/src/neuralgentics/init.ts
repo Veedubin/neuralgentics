@@ -281,7 +281,7 @@ const PROJECT_MARKERS = [
 ];
 
 /** Name of the state file inside `{target}/.opencode/`. */
-const STATE_FILENAME = ".neuralgentics-state.json";
+export const STATE_FILENAME = ".neuralgentics-state.json";
 
 /** Read chunk size for SHA256 computation (64 KiB). */
 const CHUNK_SIZE = 64 * 1024;
@@ -1420,8 +1420,13 @@ function buildHomedirOpencodeJson(promptConfig: PromptConfig): Record<string, un
  * Build an opencode.json object for the project config.
  *
  * Contains: plugin, instructions, and PROJECT_MCP_TEMPLATES with pgembed env.
+ *
+ * Belt-and-suspenders: re-validates `promptConfig.teamPort` for team mode and
+ * throws a `NeuralgenticsError` if the port is not a valid integer in
+ * `[1, 65535]`. This catches programmatic callers that bypass the
+ * interactive prompts (which already validate).
  */
-function buildProjectOpencodeJson(promptConfig: PromptConfig): Record<string, unknown> {
+export function buildProjectOpencodeJson(promptConfig: PromptConfig): Record<string, unknown> {
   const mcpBlock: Record<string, unknown> = {};
   for (const [name, entry] of Object.entries(PROJECT_MCP_TEMPLATES)) {
     // Apply embedding mode to memini-ai-dev env
@@ -1435,6 +1440,23 @@ function buildProjectOpencodeJson(promptConfig: PromptConfig): Record<string, un
         const db = promptConfig.teamDatabase ?? "neuralgentics";
         const user = promptConfig.teamUser ?? "neuralgentics";
         const password = promptConfig.teamPassword ?? "neuralgentics";
+        // Fix 4 — re-validate the port before building the DSN. Even though
+        // the interactive prompt validates, a programmatic caller could set
+        // an invalid value (e.g. the "5" corruption case). Throw loudly
+        // rather than silently writing a broken MEMINI_DB_URL.
+        if (!/^\d+$/.test(port)) {
+          throw new NeuralgenticsError(
+            `Invalid teamPort: ${JSON.stringify(port)}. Must be a positive integer string.`,
+            "Re-run --init-project and enter a valid port (1-65535), or fix the calling code.",
+          );
+        }
+        const portNum = Number(port);
+        if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+          throw new NeuralgenticsError(
+            `Invalid teamPort: ${JSON.stringify(port)}. Must be an integer in [1, 65535].`,
+            "Re-run --init-project and enter a valid port (1-65535), or fix the calling code.",
+          );
+        }
         env.MEMINI_DB_URL = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${db}`;
         env.MEMINI_VECTOR_BACKEND = "postgres-external";
       }
@@ -1540,7 +1562,7 @@ async function writeTwoInitState(
  *   - Re-run command string for the error message
  *   - DB bootstrap only runs for team server (pgembed manages its own DB)
  */
-interface InstallOptions {
+export interface InstallOptions {
   target: string;
   force: boolean;
   dryRun: boolean;
@@ -1553,7 +1575,7 @@ interface InstallOptions {
   gpuEmbed: boolean;
 }
 
-async function runInstall(
+export async function runInstall(
   args: InstallOptions,
   mode: "homedir" | "project",
 ): Promise<number> {
@@ -1567,6 +1589,29 @@ async function runInstall(
   const rerunCmd = mode === "homedir" ? "--init-homedir" : "--init-project";
 
   process.stdout.write(`\nInstalling ${label} config to: ${configDir}\n`);
+
+  // Fix 3 — Re-install detection: refuse to silently re-run if a prior
+  // install's state file already exists, unless --force is set. This
+  // prevents the corruption seen when a second `--init-project --team`
+  // re-prompted the user and silently overwrote MEMINI_DB_URL.
+  const statePath = path.join(configDir, STATE_FILENAME);
+  if (existsSync(statePath) && !args.force) {
+    process.stdout.write(
+      `\nRe-running ${rerunCmd} detected. Existing config at ${configDir}.\n` +
+        `Use --force to overwrite, or --update to apply updates safely.\n`,
+    );
+    return 0;
+  }
+  // Partial-state recovery: no state file but opencode.json exists (e.g. from
+  // an old install that pre-dates the state file). Warn but proceed — the
+  // SHA-256 idempotency check in writeConfigWithBackup will back up the
+  // existing file before overwriting.
+  if (!existsSync(statePath) && existsSync(path.join(configDir, "opencode.json")) && !args.force) {
+    process.stdout.write(
+      `\n  Warning: existing opencode.json found at ${configDir} without a state file.\n` +
+        `  Proceeding — the existing config will be backed up before overwrite.\n`,
+    );
+  }
 
   // Run interactive prompts unless flags skip them
   const promptFlags: PromptFlags = {
