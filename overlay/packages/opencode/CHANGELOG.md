@@ -5,6 +5,19 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.15.19] — 2026-07-27
+
+### Fixed
+- **`NEURALGENTICS_DB_URL` env loading** — the Go backend now reads
+  `NEURALGENTICS_DB_URL` from `.env` (or `$NEURALGENTICS_ENV_FILE`), and
+  the OpenCode plugin auto-injects it from
+  `opencode.json → mcp.memini-ai-dev.env.MEMINI_DB_URL` if no env var is
+  set. Fixes `--init-project --team` silently falling back to the
+  hardcoded `localhost:6000/neuralgentics` default DSN when the user
+  pointed memini-ai at a different DB (e.g. `localhost:5434/memini`).
+  Precedence: explicit shell env > `.env` > `opencode.json` MCP env
+  block > Go binary hardcoded default.
+
 ## [0.15.15] — 2026-07-23
 
 ### Added
