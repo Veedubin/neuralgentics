@@ -183,7 +183,7 @@ describe("patchModelLine", () => {
       "mode: subagent\n" +
       "---\n\n" +
       "# Body\n";
-    const res = patchModelLine(content, "ollama/kimi-k2.6");
+    const res = patchModelLine(content, "ollama/minimax-m3");
     expect(res.changed).toBe(true);
     expect(res.previous).toBe("ollama/glm-5.2");
   });
@@ -197,14 +197,14 @@ describe("patchModelLine", () => {
 
   it("returns changed=false when there is no frontmatter", () => {
     const content = "# No frontmatter\n\nbody\n";
-    const res = patchModelLine(content, "ollama/kimi-k2.6");
+    const res = patchModelLine(content, "ollama/minimax-m3");
     expect(res.changed).toBe(false);
     expect(res.previous).toBeNull();
   });
 
   it("returns changed=false when frontmatter has no model line", () => {
     const content = "---\ndescription: foo\nmode: subagent\n---\nbody\n";
-    const res = patchModelLine(content, "ollama/kimi-k2.6");
+    const res = patchModelLine(content, "ollama/minimax-m3");
     expect(res.changed).toBe(false);
     expect(res.previous).toBeNull();
   });
@@ -212,7 +212,7 @@ describe("patchModelLine", () => {
   it("ignores indented model: keys (nested)", () => {
     const content =
       "---\nmode: subagent\npermission:\n  model: nested-should-not-match\n---\nbody\n";
-    const res = patchModelLine(content, "ollama/kimi-k2.6");
+    const res = patchModelLine(content, "ollama/minimax-m3");
     expect(res.changed).toBe(false);
   });
 
@@ -246,5 +246,58 @@ describe("patchModelLine", () => {
     expect(patched).toContain("keep me exactly");
     // The frontmatter body keys survive.
     expect(patched).toContain("mode: subagent");
+  });
+});
+
+describe("orchestrator default model (v0.16.2: kimi-k2.6 → minimax-m3)", () => {
+  it("FALLBACK_PRESETS orchestrator model is minimax-m3", () => {
+    const orchestrator = FALLBACK_PRESETS.rankings.ollama?.orchestrator;
+    expect(orchestrator).toBeDefined();
+    expect(orchestrator!.model).toBe("minimax-m3");
+  });
+
+  it("FALLBACK_PRESETS does not contain kimi-k2.6 for any role", () => {
+    for (const [provider, roles] of Object.entries(FALLBACK_PRESETS.rankings)) {
+      for (const [role, entry] of Object.entries(roles)) {
+        expect(entry.model, `${provider}/${role} should not be kimi-k2.6`).not.toBe("kimi-k2.6");
+      }
+    }
+  });
+
+  it("pickModels assigns minimax-m3 to orchestrator with ollama-only config", () => {
+    const out = pickModels(OLLAMA_ONLY, FALLBACK_PRESETS, false);
+    const orchestrator = out.find((a) => a.role === "orchestrator");
+    expect(orchestrator).toBeDefined();
+    expect(orchestrator!.model).toBe("ollama/minimax-m3");
+  });
+});
+
+describe("models registry covers all agent-referenced models", () => {
+  // The models registry written by init.ts buildHomedirOpencodeJson.
+  // This is the canonical list — every model referenced by a shipped agent
+  // MUST appear here so OpenCode can resolve it.
+  const REGISTERED_MODELS = [
+    "glm-5.2",
+    "deepseek-v4-pro",
+    "deepseek-v4-flash",
+    "minimax-m3",
+    "mistral-large-3:675b",
+    "qwen3.5:397b",
+  ];
+
+  it("kimi-k2.6 is NOT in the registered models", () => {
+    expect(REGISTERED_MODELS).not.toContain("kimi-k2.6");
+  });
+
+  it("every FALLBACK_PRESETS model is registered", () => {
+    for (const [, entry] of Object.entries(FALLBACK_PRESETS.rankings.ollama ?? {})) {
+      expect(REGISTERED_MODELS, `missing ${entry.model} in registry`).toContain(entry.model);
+    }
+  });
+
+  it("no FALLBACK_PRESETS model is glm-5.1", () => {
+    for (const [, entry] of Object.entries(FALLBACK_PRESETS.rankings.ollama ?? {})) {
+      expect(entry.model, `should not be glm-5.1`).not.toBe("glm-5.1");
+    }
   });
 });

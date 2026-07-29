@@ -26,7 +26,7 @@ import type { NeuralgenticsConfig, AgentOverride } from "./config.js";
 
 /** A single benchmark ranking entry for a (provider, role) pair. */
 export interface RankingEntry {
-  /** Model name WITHOUT the provider prefix (e.g. "kimi-k2.6"). */
+  /** Model name WITHOUT the provider prefix (e.g. "minimax-m3"). */
   model: string;
   /** Benchmark-normalized score (0.0–1.0); higher is better. */
   score: number;
@@ -53,7 +53,7 @@ export interface PresetsData {
 /** One agent's resolved model assignment. */
 export interface AgentAssignment {
   role: string;
-  /** Full "provider/model" id (e.g. "ollama/kimi-k2.6"). */
+  /** Full "provider/model" id (e.g. "ollama/minimax-m3"). */
   model: string;
   /** Provider id that won (e.g. "ollama"). */
   provider: string;
@@ -89,7 +89,7 @@ export const AGENT_ROLES = [
 export const FALLBACK_PRESETS: PresetsData = {
   rankings: {
     ollama: {
-      orchestrator: { model: "kimi-k2.6", score: 0.85, benchmark: "bfcl", rank: 1 },
+      orchestrator: { model: "minimax-m3", score: 0.68, benchmark: "chatbot_arena", rank: 6 },
       architect: { model: "deepseek-v4-pro", score: 0.72, benchmark: "swe_bench", rank: 1 },
       coder: { model: "glm-5.2", score: 0.7, benchmark: "swe_bench", rank: 2 },
       explorer: { model: "deepseek-v4-flash", score: 0.75, benchmark: "chatbot_arena", rank: 3 },

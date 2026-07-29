@@ -97,3 +97,40 @@ describe("no other template silently launches memini-ai without --stdio", () => 
     }
   });
 });
+
+describe("no template uses a separate args key (regression: OpenCode ignores args on local MCP)", () => {
+  // v0.16.2 fix: OpenCode does not honor `args` on local MCP servers — the
+  // server fails at startup with "server unavailable". All flags must be
+  // folded into the `command` array.
+  it("HOMEDIR templates have no args property", () => {
+    for (const [name, entry] of Object.entries(HOMEDIR_MCP_TEMPLATES)) {
+      expect(entry, `${name} should not have args`).not.toHaveProperty("args");
+    }
+  });
+
+  it("PROJECT templates have no args property", () => {
+    for (const [name, entry] of Object.entries(PROJECT_MCP_TEMPLATES)) {
+      expect(entry, `${name} should not have args`).not.toHaveProperty("args");
+    }
+  });
+
+  it("duckdb command includes all flags inline", () => {
+    const entry = HOMEDIR_MCP_TEMPLATES["duckdb"];
+    expect(entry.command).toEqual([
+      "uvx",
+      "mcp-server-motherduck",
+      "--db-path",
+      ":memory:",
+      "--read-write",
+      "--allow-switch-databases",
+    ]);
+  });
+
+  it("ssh-mcp-server command includes --ssh flag inline", () => {
+    const entry = HOMEDIR_MCP_TEMPLATES["ssh-mcp-server"];
+    expect(entry.command[0]).toBe("npx");
+    expect(entry.command[1]).toBe("-y");
+    expect(entry.command[2]).toBe("@fangjunjie/ssh-mcp-server");
+    expect(entry.command[3]).toContain("--ssh=");
+  });
+});

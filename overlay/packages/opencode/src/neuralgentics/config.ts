@@ -31,7 +31,7 @@ export interface ProviderConfig {
 
 /** A per-agent override that bypasses the benchmark rankings. */
 export interface AgentOverride {
-  /** Full model id in "provider/model" format (e.g. "ollama/kimi-k2.6").
+  /** Full model id in "provider/model" format (e.g. "ollama/minimax-m3").
    *  If set, takes precedence over the `provider` field. */
   model?: string;
   /** Provider id to pin (e.g. "openrouter"). Used only when `model` is unset —

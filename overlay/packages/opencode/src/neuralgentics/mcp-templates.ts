@@ -27,7 +27,6 @@ export interface McpServerEntry {
   enabled: boolean;
   command: string[];
   env?: Record<string, string>;
-  args?: string[];
   /** Per-server MCP probe timeout in ms. Useful for servers that download
    *  embedding models on first launch (e.g. memini-ai-dev: MiniLM ~100MB,
    *  BGE-M3 ~2.3GB) which blow past OpenCode's default MCP probe timeout. */
@@ -89,8 +88,10 @@ export const HOMEDIR_MCP_TEMPLATES: McpBlock = {
   "ssh-mcp-server": {
     type: "local",
     enabled: false,
-    command: ["npx", "-y", "@fangjunjie/ssh-mcp-server"],
-    args: [
+    command: [
+      "npx",
+      "-y",
+      "@fangjunjie/ssh-mcp-server",
       '--ssh={"connections":[{"name":"default","host":"100.75.8.10","port":22,"username":"ubuntu","privateKeyPath":"~/.ssh/id_ed25519-ovh-ubuntu"}],"allowedRemotePaths":["/home/ubuntu/**","/tmp/**"]}',
     ],
   },
@@ -115,8 +116,7 @@ export const HOMEDIR_MCP_TEMPLATES: McpBlock = {
   duckdb: {
     type: "local",
     enabled: false,
-    command: ["uvx", "mcp-server-motherduck"],
-    args: ["--db-path", ":memory:", "--read-write", "--allow-switch-databases"],
+    command: ["uvx", "mcp-server-motherduck", "--db-path", ":memory:", "--read-write", "--allow-switch-databases"],
   },
   searxng: {
     type: "local",

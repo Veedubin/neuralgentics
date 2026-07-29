@@ -66,8 +66,8 @@ const OLLAMA_ONLY = makeConfig({
 
 describe("describeReason", () => {
   it("includes the benchmark, rank, provider, and score when score > 0", () => {
-    const e = entry("kimi-k2.6", 0.85, "bfcl", 1);
-    expect(describeReason(e, "ollama")).toBe("#1 on bfcl (ollama, score 0.85)");
+    const e = entry("minimax-m3", 0.68, "chatbot_arena", 6);
+    expect(describeReason(e, "ollama")).toBe("#6 on chatbot_arena (ollama, score 0.68)");
   });
 
   it("uses the fallback wording when score is 0", () => {

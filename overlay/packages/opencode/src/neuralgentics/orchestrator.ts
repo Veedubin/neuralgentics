@@ -30,9 +30,16 @@ const NEURALGENTICS_IDENTITY =
  */
 const AGENT_DEFINITIONS: AgentDefinition[] = [
   {
+    name: "neuralgentics-orchestrator",
+    description: "Main coordinator, delegates to sub-agents.",
+    model: "minimax-m3",
+    mode: "subagent",
+    steps: 50,
+  },
+  {
     name: "neuralgentics-coder",
     description: "Fast code generation and bug-fix agent.",
-    model: "glm-5.1",
+    model: "glm-5.2",
     mode: "subagent",
     steps: 50,
   },
@@ -58,6 +65,13 @@ const AGENT_DEFINITIONS: AgentDefinition[] = [
     steps: 50,
   },
   {
+    name: "neuralgentics-reviewer",
+    description: "Code review: logic, security, consistency.",
+    model: "deepseek-v4-pro",
+    mode: "subagent",
+    steps: 50,
+  },
+  {
     name: "neuralgentics-linter",
     description: "Linting, formatting, and style enforcement agent.",
     model: "qwen3.5:397b",
@@ -67,21 +81,35 @@ const AGENT_DEFINITIONS: AgentDefinition[] = [
   {
     name: "neuralgentics-git",
     description: "Version control and git operations agent.",
-    model: "minimax-m2.7",
+    model: "minimax-m3",
     mode: "subagent",
     steps: 30,
   },
   {
     name: "neuralgentics-writer",
     description: "Documentation and Markdown writing agent.",
-    model: "gemma4:31b",
+    model: "mistral-large-3:675b",
     mode: "subagent",
     steps: 50,
   },
   {
     name: "neuralgentics-researcher",
     description: "Web research and data extraction agent.",
-    model: "kimi-k2.6",
+    model: "qwen3.5:397b",
+    mode: "subagent",
+    steps: 50,
+  },
+  {
+    name: "neuralgentics-release",
+    description: "Version bumps, changelogs, and tagging agent.",
+    model: "minimax-m3",
+    mode: "subagent",
+    steps: 30,
+  },
+  {
+    name: "neuralgentics-agent-builder",
+    description: "Pattern detection, skill/agent creation agent.",
+    model: "glm-5.2",
     mode: "subagent",
     steps: 50,
   },

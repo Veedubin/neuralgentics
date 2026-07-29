@@ -1,7 +1,7 @@
 ---
 description: "Neuralgentics Orchestrator - Main coordinator using memini-ai-dev for stateless memory-backed context."
 mode: all
-model: ollama/kimi-k2.6
+model: ollama/minimax-m3
 steps: 50
 permission:
   read:

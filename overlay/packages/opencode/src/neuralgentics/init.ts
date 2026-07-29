@@ -1385,7 +1385,6 @@ function buildHomedirOpencodeJson(promptConfig: PromptConfig): Record<string, un
       enabled: entry.enabled,
       command: entry.command,
       ...(entry.env ? { env: entry.env } : {}),
-      ...(entry.args ? { args: entry.args } : {}),
     };
   }
 
@@ -1412,7 +1411,6 @@ function buildHomedirOpencodeJson(promptConfig: PromptConfig): Record<string, un
           "apiKey": "{env:OLLAMA_API_KEY}",
         },
         "models": {
-          "kimi-k2.6": { "name": "kimi-k2.6" },
           "glm-5.2": { "name": "glm-5.2" },
           "deepseek-v4-pro": { "name": "deepseek-v4-pro" },
           "deepseek-v4-flash": { "name": "deepseek-v4-flash" },
@@ -1487,7 +1485,6 @@ export function buildProjectOpencodeJson(promptConfig: PromptConfig): Record<str
       enabled: entry.enabled,
       command: entry.command,
       env,
-      ...(entry.args ? { args: entry.args } : {}),
     };
   }
 

@@ -445,7 +445,7 @@ async function presentFullModelList(
     // Last resort: free-text entry.
     const custom = await clack.text({
       message: `Enter a full "provider/model" id for ${role}`,
-      placeholder: "ollama/kimi-k2.6",
+      placeholder: "ollama/minimax-m3",
     });
     bailIfCancel(custom);
     return custom as string;
