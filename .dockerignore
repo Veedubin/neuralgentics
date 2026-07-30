@@ -1,0 +1,227 @@
+# .dockerignore — Exclude files from the container build context.
+#
+# Why this exists (T-DOCKER-CTX-001): Without this file, `docker build-push-action`
+# walks the entire repo as the build context and hashes every file when computing
+# the GHA cache key. The repo contains 5+ GB of generated artifacts
+# (.venv, node_modules, __pycache__, .mypy_cache, .ruff_cache, dist, site, etc.)
+# that NO Dockerfile reads. Result: any change anywhere in the repo (even a
+# version bump in package.json files the sidecar never reads) invalidates the
+# cache and triggers a cold rebuild — most painfully, `torch>=2.2` (~800MB)
+# reinstall from PyPI, which adds 10-20 minutes per cold cache miss.
+#
+# This file is independent of .gitignore. Docker does NOT read .gitignore. Every
+# gitignored-but-on-disk file is hashed into the cache key unless also excluded
+# here. Mirror .gitignore's exclusions plus more.
+#
+# The 3 container Dockerfiles (sidecar, postgres, backend) only read:
+#   - sidecar:  packages/memory/cmd/embedding-sidecar/ (full subtree)
+#   - postgres: packages/memory/src/.../migrations/postgres/*.up.sql
+#   - backend:  go.work, go.work.sum, packages/memory/, packages/orchestrator-go/,
+#               packages/broker-go/, packages/backend-go/
+# Everything else in the repo can be safely excluded.
+
+# ─── Git internals ─────────────────────────────────────────────────────────────
+.git/
+.gitignore
+# CI configs — not needed for image build
+.github/
+
+# ─── Dependencies / virtual envs (multi-GB; never used in image build) ────────
+node_modules/
+.venv/
+venv/
+env/
+.secrets-venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.mypy_cache/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.go-build/
+**/.cache/
+**/.npm/
+**/.next/
+
+# ─── Build outputs / dist trees ────────────────────────────────────────────────
+**/dist/
+**/build/
+site/
+**/*.egg-info/
+**/*.tsbuildinfo
+**/*.tar.gz
+**/*.zip
+packages/backend-go/neuralgentics-backend
+packages/backend-go/neuralgentics-backend.exe
+packages/backend-go/backend
+packages/backend-go/backend.exe
+
+# ─── Editor / OS noise ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/*~
+
+# ─── Local-only / runtime data (never in image) ────────────────────────────────
+.neuralgentics/
+certs/
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env.example
+screenshots/
+scripts/screenshots/
+
+# ─── Working tree noise that Docker doesn't need ──────────────────────────────
+HANDOFF.md
+CONTEXT.md
+TASKS.md
+AGENTS.md
+Makefile
+mkdocs.yml
+docker-compose.yml
+podman-compose.yml
+compose.example.env
+presets.json
+agent-skill-scope.yaml
+
+# ─── Docs (the sidecar doesn't read them) ─────────────────────────────────────
+docs/
+README.md
+LICENSE
+assets/
+
+# ─── Internal design notes + session logs (gitignored but worth double-tagging) ─
+**/session-*.md
+docs/design/
+docs/roadmap-*.md
+docs/AGENT_*.md
+docs/ARCHITECTURE_*.md
+docs/BGE_*.md
+docs/DESIGN_*.md
+docs/GO_MEMORY_*.md
+docs/NEURALGENTICS_*.md
+
+# ─── Overlay packages not used by any of the 3 Dockerfiles ────────────────────
+# (The sidecar reads from packages/memory/cmd/embedding-sidecar/ — see
+# the explicit include below. Everything else under packages/ except the Go
+# modules is excluded.)
+overlay/
+.opencode/
+
+# ─── Tests (not needed in image) ──────────────────────────────────────────────
+tests/
+**/tests/
+**/test_*.py
+**/*_test.go
+**/*.test.ts
+**/*.spec.ts
+
+# ─── Patches / vendored sources (not built) ───────────────────────────────────
+patches/
+opencode-base/
+
+# ─── Node/npm scratch ──────────────────────────────────────────────────────────
+bun.lock
+package-lock.json
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+
+# ─── Lock files we don't need at build time ───────────────────────────────────
+uv.lock
+pyproject.toml
+tsconfig.json
+**/*.iml
+
+# ─── The neuralgentics binary (if checked in; .gitignored but on disk) ────────
+neuralgentics
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ORDER MATTERS — exclusion patterns must come AFTER broad re-includes so that
+# subdirectories (like __pycache__/ inside an explicitly-re-included tree) are
+# still excluded. Docker (pathspec) uses last-match-wins semantics.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Sidecar: just the files the Dockerfile actually COPYs ───────────────────
+!packages/memory/cmd/embedding-sidecar/main.py
+!packages/memory/cmd/embedding-sidecar/requirements.txt
+!packages/memory/cmd/embedding-sidecar/embedding_sidecar/
+!packages/memory/cmd/embedding-sidecar/proto/
+
+# ── Postgres: postgres migration SQL files ───────────────────────────────────
+!packages/memory/src/neuralgentics/memory/store/migrations/postgres/
+
+# ── Backend: go workspace + Go modules ───────────────────────────────────────
+!go.work
+!go.work.sum
+!packages/memory/cmd/
+!packages/memory/go.mod
+!packages/memory/go.sum
+!packages/memory/internal/
+!packages/memory/proto/
+!packages/memory/pkg/
+!packages/memory/Makefile
+!packages/orchestrator-go/
+!packages/orchestrator-go/**
+!packages/broker-go/
+!packages/broker-go/**
+!packages/backend-go/
+!packages/backend-go/**
+
+# ── Docker assets themselves (already in docker/, but explicit for clarity) ───
+!docker/
+
+# ── RE-EXCLUDE patterns that must override the broad re-includes above ──────
+# These come AFTER the !-patterns above so that junk inside re-included trees
+# (like __pycache__/ under packages/memory/cmd/embedding-sidecar/) is still
+# excluded. Without this block, pathspec's last-match-wins rule would let
+# everything inside a re-included directory through.
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/dist/
+**/build/
+**/*.egg-info/
+**/.mypy_cache/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.go-build/
+**/.cache/
+**/*.log
+**/.DS_Store
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/*~
+**/.env
+**/.env.local
+**/.env.*.local
+**/*.tar.gz
+**/*.zip
+**/CHANGELOG.md
+**/LICENSE
+**/README.md
+**/README_*.md
+**/*.test
+**/*.test.exe
+**/*.bak
+**/*.tmp
+**/*.orig
+**/*.rej
+**/*.test.ts
+**/*.spec.ts
+**/test_*.py
+**/*_test.go
+**/*_test.py
+**/coverage/
+**/.coverage
+**/htmlcov/
+**/.gradle/
+**/target/
+**/node_modules/
