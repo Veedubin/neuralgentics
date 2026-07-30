@@ -19,7 +19,7 @@
 set -euo pipefail
 
 APP="neuralgentics"
-DEFAULT_VERSION="0.16.4"
+DEFAULT_VERSION="0.16.5"
 REPO="${NEURALGENTICS_REPO:-Veedubin/neuralgentics}"
 GATEWAY_MODULE="github.com/Veedubin/neuralgentics-gateway/cmd/egress"
 GATEWAY_CONFIG_NAME="egress-gateway.yaml"
