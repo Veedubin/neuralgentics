@@ -36,7 +36,7 @@ import {
 } from "./download.js";
 import { getHomedirConfigPath, getProjectConfigPath, getBackupDir, getOverridesDir } from "./paths.js";
 import { mergePersonalizations, type MergeResult } from "./personalizations.js";
-import { HOMEDIR_MCP_TEMPLATES, PROJECT_MCP_TEMPLATES, type McpBlock } from "./mcp-templates.js";
+import { HOMEDIR_MCP_TEMPLATES, PROJECT_MCP_TEMPLATES, type McpBlock, type McpServerEntry } from "./mcp-templates.js";
 import { runAllPrompts, DEFAULT_PROMPT_CONFIG, type PromptFlags, type PromptConfig, type BackendMode, type EmbeddingMode } from "./prompts.js";
 import { backupFile, type BackupRecord } from "./backup.js";
 import { preDownloadPackages, type PreDownloadResult } from "./install-packages.js";
@@ -1370,22 +1370,54 @@ export interface InitProjectOptions {
 }
 
 /**
+ * Convert a single MCP template entry into the opencode.json `mcp[name]`
+ * object, copying EVERY relevant field from the template — not just a
+ * hand-picked subset.
+ *
+ * UNIFICATION (T-INIT-TIMEOUT-001): Previously `buildHomedirOpencodeJson`
+ * and `buildProjectOpencodeJson` each hand-copied {type, enabled, command,
+ * env?} and silently dropped `timeout` (and any future field). That caused
+ * the `--init-project` stanza to miss `timeout: 120000` on memini-ai-dev,
+ * blowing past OpenCode's default MCP probe timeout on first launch when
+ * the embedding model downloads. This shared helper is the single source
+ * of truth for field propagation — both builders call it, so a new field
+ * added to `McpServerEntry` only needs to be copied here.
+ *
+ * `envOverride` lets callers (e.g. buildProjectOpencodeJson's team-mode
+ * MEMINI_DB_URL injection) replace the template's env without duplicating
+ * the spread logic. When undefined, the template's `env` (if any) is used.
+ */
+function applyTemplateEntry(
+  entry: McpServerEntry,
+  envOverride?: Record<string, string>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {
+    type: entry.type,
+    enabled: entry.enabled,
+    command: entry.command,
+  };
+  const env = envOverride ?? entry.env;
+  if (env) {
+    result.env = env;
+  }
+  if (entry.timeout !== undefined) {
+    result.timeout = entry.timeout;
+  }
+  return result;
+}
+
+/**
  * Build an opencode.json object for the homedir config.
  *
  * Contains: provider block with ollama models, LSP, formatter, compaction,
  * tool_output, small_model, server, and HOMEDIR_MCP_TEMPLATES.
  */
-function buildHomedirOpencodeJson(promptConfig: PromptConfig): Record<string, unknown> {
+export function buildHomedirOpencodeJson(promptConfig: PromptConfig): Record<string, unknown> {
   const embeddingDim = promptConfig.embedding === "gpu" ? "1024" : "384";
 
   const mcpBlock: Record<string, unknown> = {};
   for (const [name, entry] of Object.entries(HOMEDIR_MCP_TEMPLATES)) {
-    mcpBlock[name] = {
-      type: entry.type,
-      enabled: entry.enabled,
-      command: entry.command,
-      ...(entry.env ? { env: entry.env } : {}),
-    };
+    mcpBlock[name] = applyTemplateEntry(entry);
   }
 
   return {
@@ -1480,12 +1512,7 @@ export function buildProjectOpencodeJson(promptConfig: PromptConfig): Record<str
         env.MEMINI_VECTOR_BACKEND = "postgres-external";
       }
     }
-    mcpBlock[name] = {
-      type: entry.type,
-      enabled: entry.enabled,
-      command: entry.command,
-      env,
-    };
+    mcpBlock[name] = applyTemplateEntry(entry, env);
   }
 
   return {

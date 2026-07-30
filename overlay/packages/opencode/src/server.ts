@@ -130,6 +130,13 @@ function makeProxyTool(
         return JSON.stringify({ error: "Go backend not initialised" });
       }
       try {
+        // Tolerant aliasing: if the caller passed `text` but the backend
+        // expects `content` (or vice-versa), normalise to `content`.
+        // This lets agents that learned the old `text` form keep working.
+        if ("text" in args && !("content" in args)) {
+          args = { ...args, content: args.text };
+          delete (args as Record<string, unknown>).text;
+        }
         const result = await backend.call(method, args);
         return JSON.stringify({ success: true, result }, null, 2);
       } catch (err) {
@@ -168,6 +175,20 @@ async function server(input: PluginInput): Promise<Hooks> {
   const binaryPath = resolveBinaryPath();
   backend = new GoBackendClient(binaryPath, { lazy: true });
 
+  // Route Go backend stderr by log level (T-LOG-RED-001):
+  //   - INFO lines → neutral plugin log (NOT the TUI red-error path)
+  //   - WARN+ lines → process.stderr (surfaces in TUI as red)
+  // Without this, the Go backend's healthy startup logs (log.Printf to stderr)
+  // would render as red errors in the opencode TUI because the plugin's stderr
+  // is shown in red.
+  backend.onStderrLine = (entry) => {
+    if (entry.level === "warn") {
+      process.stderr.write(`[neuralgentics:backend] ${entry.line}\n`);
+    }
+    // INFO lines are intentionally dropped — they go to the plugin's
+    // internal log, not the TUI. This prevents false-alarm red errors.
+  };
+
   // --------------------------------------------------------------------------
   // Register Tools
   // --------------------------------------------------------------------------
@@ -177,7 +198,7 @@ async function server(input: PluginInput): Promise<Hooks> {
       "memory.add",
       "Add a memory entry to the Neuralgentics database.",
       {
-        text: { type: "string", description: "Memory content text" },
+        content: { type: "string", description: "Memory content text" },
         sourceType: {
           type: "string",
           description: "Source type: session, file, web, project, thought",

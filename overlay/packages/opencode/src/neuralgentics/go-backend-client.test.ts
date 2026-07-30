@@ -110,11 +110,13 @@ function flush(): Promise<void> {
 
 let GoBackendClient: typeof import("./go-backend-client.js").GoBackendClient;
 let setLoadedConfig: typeof import("./go-backend-client.js").setLoadedConfig;
+let classifyStderrLine: typeof import("./go-backend-client.js").classifyStderrLine;
 
 async function importSut(): Promise<void> {
   const mod = await import("./go-backend-client.js");
   GoBackendClient = mod.GoBackendClient;
   setLoadedConfig = mod.setLoadedConfig;
+  classifyStderrLine = mod.classifyStderrLine;
 }
 
 // ---------------------------------------------------------------------------
@@ -239,5 +241,214 @@ describe("GoBackendClient lazy mode + DB URL auto-promotion", () => {
     await client.start();
     await flush();
     expect(capturedCalls[0].env.NEURALGENTICS_DB_URL).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-LOG-RED-001: stderr classification + routing
+// ---------------------------------------------------------------------------
+//
+// The Go backend writes log.Printf output to stderr with no level token.
+// The plugin must classify each line heuristically and route INFO lines to
+// a neutral handler (NOT the TUI red-error path) while surfacing WARN+ lines
+// to the TUI. These tests verify:
+//   1. classifyStderrLine correctly distinguishes INFO vs WARN
+//   2. The stderr line reader invokes onStderrLine with the correct level
+//   3. Default behavior: INFO is NOT written to process.stderr, WARN IS
+
+describe("T-LOG-RED-001: stderr log-level classification + routing", () => {
+  beforeEach(async () => {
+    capturedCalls = [];
+    mockSpawnImpl = null;
+    delete process.env.NEURALGENTICS_DB_URL;
+    await installSpawnMock();
+    await importSut();
+    await flush();
+  });
+
+  afterEach(() => {
+    mock.restore();
+    delete process.env.NEURALGENTICS_DB_URL;
+  });
+
+  // --- classifyStderrLine unit tests ---
+
+  it("classifyStderrLine: healthy INFO lines → 'info'", () => {
+    // Real Go backend log.Printf output (stdlib log format)
+    expect(classifyStderrLine("2026/07/30 12:00:00 env: loaded 3 key(s) from .env")).toBe("info");
+    expect(classifyStderrLine("2026/07/30 12:00:00 received signal interrupt, shutting down...")).toBe("info");
+    expect(classifyStderrLine("backend ready")).toBe("info");
+  });
+
+  it("classifyStderrLine: error/warn lines → 'warn'", () => {
+    expect(classifyStderrLine("2026/07/30 12:00:00 error closing memory system: connection refused")).toBe("warn");
+    expect(classifyStderrLine("2026/07/30 12:00:00 stdin scanner error: EOF")).toBe("warn");
+    expect(classifyStderrLine("2026/07/30 12:00:00 env: failed to load .env file: no such file")).toBe("warn");
+    expect(classifyStderrLine("WARN: TLS connection failed")).toBe("warn");
+    expect(classifyStderrLine("FATAL: database unreachable")).toBe("warn");
+    expect(classifyStderrLine("panic: runtime error: nil pointer dereference")).toBe("warn");
+  });
+
+  // --- stderr routing via onStderrLine callback ---
+
+  it("stderr INFO line does NOT reach TUI as error (onStderrLine receives info)", async () => {
+    const received: { level: string; line: string }[] = [];
+
+    // Custom spawn mock that writes an INFO line to stderr
+    mockSpawnImpl = (...args: unknown[]): ChildProcess => {
+      const stdout = new PassThrough();
+      const stdin = new PassThrough();
+      const stderr = new PassThrough();
+      const fake = Object.assign(new EventEmitter(), {
+        stdout,
+        stdin,
+        stderr,
+        pid: 99998,
+        kill: () => true,
+      }) as unknown as ChildProcess;
+      queueMicrotask(() => {
+        stdout.write('{"jsonrpc":"2.0","method":"ready"}\n');
+        // Write an INFO line to stderr
+        stderr.write("2026/07/30 12:00:00 env: loaded 3 key(s) from .env\n");
+      });
+      stdin.on("data", (chunk: Buffer) => {
+        const lines = chunk.toString().split("\n").filter(Boolean);
+        for (const line of lines) {
+          try {
+            const req = JSON.parse(line) as { id?: number };
+            if (typeof req.id === "number") {
+              stdout.write(JSON.stringify({ jsonrpc: "2.0", id: req.id, result: {} }) + "\n");
+            }
+          } catch {
+            // ignore
+          }
+        }
+      });
+      return fake;
+    };
+
+    const client = new GoBackendClient("neuralgentics-backend", { lazy: true });
+    client.onStderrLine = (entry) => received.push({ level: entry.level, line: entry.line });
+    await client.start();
+    await flush();
+
+    // The INFO line should have been received as "info", NOT "warn"
+    const infoEntries = received.filter((e) => e.level === "info");
+    expect(infoEntries.length).toBeGreaterThanOrEqual(1);
+    expect(infoEntries.some((e) => e.line.includes("env: loaded"))).toBe(true);
+    // No warn entries from the INFO line
+    const warnEntries = received.filter((e) => e.level === "warn");
+    expect(warnEntries.length).toBe(0);
+  });
+
+  it("stderr WARN line DOES reach TUI (onStderrLine receives warn)", async () => {
+    const received: { level: string; line: string }[] = [];
+
+    mockSpawnImpl = (...args: unknown[]): ChildProcess => {
+      const stdout = new PassThrough();
+      const stdin = new PassThrough();
+      const stderr = new PassThrough();
+      const fake = Object.assign(new EventEmitter(), {
+        stdout,
+        stdin,
+        stderr,
+        pid: 99997,
+        kill: () => true,
+      }) as unknown as ChildProcess;
+      queueMicrotask(() => {
+        stdout.write('{"jsonrpc":"2.0","method":"ready"}\n');
+        // Write a WARN line to stderr
+        stderr.write("2026/07/30 12:00:00 error closing memory system: connection refused\n");
+      });
+      stdin.on("data", (chunk: Buffer) => {
+        const lines = chunk.toString().split("\n").filter(Boolean);
+        for (const line of lines) {
+          try {
+            const req = JSON.parse(line) as { id?: number };
+            if (typeof req.id === "number") {
+              stdout.write(JSON.stringify({ jsonrpc: "2.0", id: req.id, result: {} }) + "\n");
+            }
+          } catch {
+            // ignore
+          }
+        }
+      });
+      return fake;
+    };
+
+    const client = new GoBackendClient("neuralgentics-backend", { lazy: true });
+    client.onStderrLine = (entry) => received.push({ level: entry.level, line: entry.line });
+    await client.start();
+    await flush();
+
+    const warnEntries = received.filter((e) => e.level === "warn");
+    expect(warnEntries.length).toBeGreaterThanOrEqual(1);
+    expect(warnEntries.some((e) => e.line.includes("error closing memory"))).toBe(true);
+  });
+
+  it("default handler (no onStderrLine): INFO not written to process.stderr, WARN is", async () => {
+    const stderrWrites: string[] = [];
+    const origWrite = process.stderr.write.bind(process.stderr);
+    const origDescriptor = Object.getOwnPropertyDescriptor(process.stderr, "write");
+    (process.stderr as { write: unknown }).write = (chunk: unknown): boolean => {
+      stderrWrites.push(String(chunk));
+      return true;
+    };
+
+    try {
+      mockSpawnImpl = (...args: unknown[]): ChildProcess => {
+        const stdout = new PassThrough();
+        const stdin = new PassThrough();
+        const stderr = new PassThrough();
+        const fake = Object.assign(new EventEmitter(), {
+          stdout,
+          stdin,
+          stderr,
+          pid: 99996,
+          kill: () => true,
+        }) as unknown as ChildProcess;
+        queueMicrotask(() => {
+          stdout.write('{"jsonrpc":"2.0","method":"ready"}\n');
+          // Write both an INFO and a WARN line
+          stderr.write("2026/07/30 12:00:00 env: loaded 3 key(s)\n");
+          stderr.write("2026/07/30 12:00:00 error closing memory system\n");
+        });
+        stdin.on("data", (chunk: Buffer) => {
+          const lines = chunk.toString().split("\n").filter(Boolean);
+          for (const line of lines) {
+            try {
+              const req = JSON.parse(line) as { id?: number };
+              if (typeof req.id === "number") {
+                stdout.write(JSON.stringify({ jsonrpc: "2.0", id: req.id, result: {} }) + "\n");
+              }
+            } catch {
+              // ignore
+            }
+          }
+        });
+        return fake;
+      };
+
+      const client = new GoBackendClient("neuralgentics-backend", { lazy: true });
+      // Note: NOT setting onStderrLine → default handler is used
+      await client.start();
+      await flush();
+
+      // INFO line should NOT appear in process.stderr writes
+      const infoInStderr = stderrWrites.some((w) => w.includes("env: loaded"));
+      expect(infoInStderr).toBe(false);
+
+      // WARN line SHOULD appear (with the [neuralgentics:backend] prefix)
+      const warnInStderr = stderrWrites.some(
+        (w) => w.includes("error closing memory") && w.includes("[neuralgentics:backend]"),
+      );
+      expect(warnInStderr).toBe(true);
+    } finally {
+      if (origDescriptor) {
+        Object.defineProperty(process.stderr, "write", origDescriptor);
+      } else {
+        (process.stderr as { write: unknown }).write = origWrite;
+      }
+    }
   });
 });

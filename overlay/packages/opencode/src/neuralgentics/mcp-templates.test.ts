@@ -15,6 +15,17 @@
 
 import { describe, it, expect } from "bun:test";
 import { HOMEDIR_MCP_TEMPLATES, PROJECT_MCP_TEMPLATES } from "./mcp-templates.js";
+import { buildHomedirOpencodeJson, buildProjectOpencodeJson } from "./init.js";
+
+/**
+ * Template-parity tests: assert that the GENERATED opencode.json mcp block
+ * preserves fields from the template — specifically `timeout`, which was
+ * silently dropped by both build*OpencodeJson before T-INIT-TIMEOUT-001.
+ *
+ * Regression coverage: the v0.16.x --init-project stanza was missing
+ * `timeout: 120000` on memini-ai-dev, causing first-launch embedding-model
+ * downloads to blow past OpenCode's default MCP probe timeout.
+ */
 
 describe("HOMEDIR_MCP_TEMPLATES.memini-ai-dev", () => {
   const entry = HOMEDIR_MCP_TEMPLATES["memini-ai-dev"];
@@ -132,5 +143,67 @@ describe("no template uses a separate args key (regression: OpenCode ignores arg
     expect(entry.command[1]).toBe("-y");
     expect(entry.command[2]).toBe("@fangjunjie/ssh-mcp-server");
     expect(entry.command[3]).toContain("--ssh=");
+  });
+});
+
+// ===========================================================================
+// Template-parity: generated opencode.json must preserve template fields
+// (T-INIT-TIMEOUT-001)
+// ===========================================================================
+
+describe("generated project config preserves template fields (parity)", () => {
+  const config = buildProjectOpencodeJson({ backend: "pgembed", embedding: "auto" }) as {
+    mcp: Record<string, Record<string, unknown>>;
+  };
+
+  it("memini-ai-dev in project config has timeout: 120000", () => {
+    expect(config.mcp["memini-ai-dev"].timeout).toBe(120000);
+  });
+
+  it("memini-ai-dev in project config preserves type/enabled/command", () => {
+    const entry = config.mcp["memini-ai-dev"];
+    expect(entry.type).toBe("local");
+    expect(entry.enabled).toBe(true);
+    expect(entry.command).toEqual([
+      "uvx",
+      "--from",
+      "memini-ai-dev",
+      "memini-ai",
+      "--stdio",
+    ]);
+  });
+});
+
+describe("generated homedir config preserves template fields (parity)", () => {
+  const config = buildHomedirOpencodeJson({ backend: "pgembed", embedding: "auto" }) as {
+    mcp: Record<string, Record<string, unknown>>;
+  };
+
+  it("memini-ai-dev in homedir config has timeout: 120000", () => {
+    expect(config.mcp["memini-ai-dev"].timeout).toBe(120000);
+  });
+
+  it("memini-ai-dev in homedir config preserves type/enabled/command", () => {
+    const entry = config.mcp["memini-ai-dev"];
+    expect(entry.type).toBe("local");
+    expect(entry.enabled).toBe(true);
+    expect(entry.command).toEqual([
+      "uvx",
+      "--from",
+      "memini-ai-dev",
+      "memini-ai",
+      "--stdio",
+    ]);
+  });
+
+  it("every homedir template entry with a timeout propagates it", () => {
+    for (const [name, template] of Object.entries(HOMEDIR_MCP_TEMPLATES)) {
+      if (template.timeout !== undefined) {
+        expect(
+          config.mcp[name]?.timeout,
+          `${name} template had timeout ${template.timeout} but generated config dropped it`,
+        ).toBe(template.timeout);
+      }
+    }
   });
 });

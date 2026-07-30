@@ -2,8 +2,10 @@
  * GoBackendClient — JSON-RPC 2.0 client over stdio for the Neuralgentics Go backend.
  *
  * Spawns the `neuralgentics-backend` binary as a child process and communicates
- * via newline-delimited JSON-RPC over stdin/stdout. Stderr is inherited so the
- * backend's logs appear in the parent process' console.
+ * via newline-delimited JSON-RPC over stdin/stdout. Stderr is **piped** (not
+ * inherited) and each line is classified by log level: INFO lines are routed to
+ * a neutral handler (NOT the TUI red-error path), while WARN+ lines are surfaced
+ * to the TUI. This prevents healthy startup logs from rendering as red errors.
  *
  * This replaces the previous HTTP transport to the Python memini-core server,
  * achieving sub-millisecond latency on the same machine with zero port management.
@@ -128,6 +130,50 @@ interface PendingCall {
 }
 
 // ---------------------------------------------------------------------------
+// Stderr log-level classification (T-LOG-RED-001)
+// ---------------------------------------------------------------------------
+//
+// The Go backend uses stdlib `log.Printf` which writes to stderr with NO
+// level token — format is `2026/07/30 12:00:00 message`. We classify each
+// line heuristically: lines containing error/warn/fatal/panic/critical/failed
+// (case-insensitive) are treated as WARN+ and surfaced to the TUI; everything
+// else is INFO and routed to a neutral handler.
+
+/** Log level assigned to a stderr line. */
+export type StderrLogLevel = "info" | "warn";
+
+/** A classified stderr line from the Go backend. */
+export interface StderrLogEntry {
+  level: StderrLogLevel;
+  line: string;
+}
+
+/** Callback type for receiving classified stderr lines. */
+export type StderrLineHandler = (entry: StderrLogEntry) => void;
+
+/**
+ * Regex matching warning/error indicators in Go backend log output.
+ * Matches: error, warn, fatal, panic, critical, failed (case-insensitive).
+ */
+const WARN_PATTERN = /\b(?:error|warn|fatal|panic|critical|failed)\b/i;
+
+/**
+ * Classify a stderr line from the Go backend as "info" or "warn".
+ *
+ * The Go backend uses `log.Printf` (stdlib log), which has no structured
+ * level — the format is `2026/07/30 12:00:00 message`. We use a keyword
+ * heuristic: lines containing error/warn/fatal/panic/critical/failed are
+ * classified as "warn" (surfaced to TUI); everything else is "info"
+ * (routed to neutral handler, NOT the red TUI error path).
+ *
+ * @param line - A single stderr line (without trailing newline).
+ * @returns "warn" if the line looks like a warning/error, "info" otherwise.
+ */
+export function classifyStderrLine(line: string): StderrLogLevel {
+  return WARN_PATTERN.test(line) ? "warn" : "info";
+}
+
+// ---------------------------------------------------------------------------
 // Loaded OpenCode config (set by the server.ts config hook)
 // ---------------------------------------------------------------------------
 //
@@ -213,6 +259,18 @@ export class GoBackendClient {
   /** Dedupe concurrent `start()` calls — all callers share the same promise. */
   private startPromise: Promise<void> | null = null;
 
+  /**
+   * Optional handler for classified stderr lines from the Go backend.
+   *
+   * When set, each stderr line is classified via `classifyStderrLine` and
+   * passed to this handler. When not set (null), the default behavior is:
+   *   - INFO lines: silently dropped (not written to stderr → NOT red in TUI)
+   *   - WARN lines: written to `process.stderr` (surfaces in TUI as red)
+   *
+   * Set this from server.ts to integrate with the plugin's logging hooks.
+   */
+  onStderrLine: StderrLineHandler | null = null;
+
   private nextId = 1;
   private pending = new Map<number, PendingCall>();
   private ready = false;
@@ -296,7 +354,7 @@ export class GoBackendClient {
       }
 
       const child = spawn(this.binaryPath, [], {
-        stdio: ["pipe", "pipe", "inherit"],
+        stdio: ["pipe", "pipe", "pipe"],
         env: childEnv,
       });
       this.process = child;
@@ -305,6 +363,26 @@ export class GoBackendClient {
       const rl = createInterface({ input: child.stdout! });
       rl.on("line", (line: string) => this.handleLine(line));
       rl.on("close", () => this.handleClose());
+
+      // Read stderr line-by-line and classify each line by log level.
+      // INFO lines are routed to a neutral handler (NOT the TUI red-error
+      // path); WARN+ lines are surfaced to the TUI. This prevents healthy
+      // Go backend startup logs from rendering as red errors in opencode.
+      // (T-LOG-RED-001)
+      if (child.stderr != null) {
+        const stderrRl = createInterface({ input: child.stderr });
+        stderrRl.on("line", (line: string) => {
+          const level = classifyStderrLine(line);
+          if (this.onStderrLine != null) {
+            this.onStderrLine({ level, line });
+          } else {
+            // Default behavior: INFO → silently dropped, WARN → process.stderr
+            if (level === "warn") {
+              process.stderr.write(`[neuralgentics:backend] ${line}\n`);
+            }
+          }
+        });
+      }
 
       // Detect binary failure to start.
       child.on("error", (err: Error) => {

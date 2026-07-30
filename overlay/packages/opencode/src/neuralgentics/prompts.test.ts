@@ -28,6 +28,7 @@ import {
 import { updateEnvFile } from "./env-file.js";
 import {
   buildProjectOpencodeJson,
+  buildHomedirOpencodeJson,
   NeuralgenticsError,
   runInstall,
   STATE_FILENAME,
@@ -508,12 +509,31 @@ describe("buildProjectOpencodeJson port validation (Fix 4)", () => {
       teamUser: "neuralgentics",
       teamPassword: "neuralgentics",
       embedding: "auto",
-    }) as { mcp: Record<string, { env: Record<string, string> }> };
-    const env = config.mcp["memini-ai-dev"].env;
+    }) as { mcp: Record<string, { env: Record<string, string>; timeout?: number }> };
+    const entry = config.mcp["memini-ai-dev"];
+    const env = entry.env;
     expect(env.MEMINI_DB_URL).toBe(
       "postgresql://neuralgentics:neuralgentics@localhost:5434/memini",
     );
     expect(env.MEMINI_VECTOR_BACKEND).toBe("postgres-external");
+    // T-INIT-TIMEOUT-001: timeout must propagate into the generated config.
+    expect(entry.timeout).toBe(120000);
+  });
+
+  it("project config (pgembed) propagates timeout on memini-ai-dev", () => {
+    const config = buildProjectOpencodeJson({
+      backend: "pgembed",
+      embedding: "auto",
+    }) as { mcp: Record<string, { timeout?: number }> };
+    expect(config.mcp["memini-ai-dev"].timeout).toBe(120000);
+  });
+
+  it("homedir config propagates timeout on memini-ai-dev", () => {
+    const config = buildHomedirOpencodeJson({
+      backend: "pgembed",
+      embedding: "auto",
+    }) as { mcp: Record<string, { timeout?: number }> };
+    expect(config.mcp["memini-ai-dev"].timeout).toBe(120000);
   });
 
   it("does not validate when backend is not 'team'", () => {
