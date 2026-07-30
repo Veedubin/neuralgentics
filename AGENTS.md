@@ -215,39 +215,38 @@ The same rule applies to containers the user previously had running that are cur
 
 **DO NOT `podman rm` either of these containers without explicit user permission.**
 
-## Go Backend Default Connection (as of 2026-06-24)
+## Go Backend Default Connection (as of 2026-07-28, v0.15.22)
 
 The Go backend `packages/backend-go/cmd/backend/main.go` connects to:
 
-| Field     | Value (matches `neuralgentics-postgres` container) |
-|-----------|----------------------------------------------------|
-| Host      | `localhost:6200`                                   |
-| User      | `neuralgentics`                                    |
-| Password  | `neuralgentics`                                    |
-| Database  | `neuralgentics`                                    |
+| Field     | Value (matches `memini-postgres` container) |
+|-----------|----------------------------------------------|
+| Host      | `localhost:5434`                              |
+| User      | `memini`                                      |
+| Password  | `memini`                                      |
+| Database  | `memini`                                      |
 
-**Override at runtime** via the `NEURALGENTICS_DB_URL` env var. Default works
-because the `neuralgentics-postgres` podman container is running with
-`POSTGRES_USER=neuralgentics`, `POSTGRES_PASSWORD=neuralgentics`,
-`POSTGRES_DB=neuralgentics` and exposes 6200 → 5432.
+**Override at runtime** via the `MEMINI_DB_URL` env var (canonical) or `NEURALGENTICS_DB_URL` (legacy fallback). Default works because the `memini-postgres` podman container is running with `POSTGRES_USER=memini`, `POSTGRES_PASSWORD=memini`, `POSTGRES_DB=memini` and exposes 5434 → 5432.
 
-If the backend refuses to start with `failed to initialize memory system` or
-`FATAL: database "neuralgentics" does not exist`:
+If the backend refuses to start with `failed to initialize memory system` or `FATAL: database "memini" does not exist`:
 
-1. Confirm the container is up: `podman ps --filter name=neuralgentics-postgres`
-2. Verify credentials: `podman inspect neuralgentics-postgres --format '{{range .Config.Env}}{{println .}}{{end}}'`
-3. If the DB truly isn't there, the issue is the container, not the binary —
-   do NOT recreate the container without explicit user permission.
-4. Override as a last resort: `NEURALGENTICS_DB_URL="postgresql://user:pass@host:5432/db" ./neuralgentics-backend`
+1. Confirm the container is up: `podman ps --filter name=memini-postgres`
+2. Verify credentials: `podman inspect memini-postgres --format '{{range .Config.Env}}{{println .}}{{end}}'`
+3. If the DB truly isn't there, the issue is the container, not the binary — do NOT recreate the container without explicit user permission.
+4. Override as a last resort: `MEMINI_DB_URL="postgresql://user:pass@host:5432/db" ./neuralgentics-backend`
 
-**Do not change the default URL** in `main.go` without confirming the
-container's actual credentials — the historical wrong default
-(`postgresql://postgres:password@localhost:5434/neuralgentics`) pointed at
-`memini-postgres` instead and caused startup failures.
+**Do not change the default URL** in `main.go` without confirming the container's actual credentials. The historical wrong default (`postgresql://neuralgentics:neuralgentics@localhost:6000/neuralgentics`) pointed at `neuralgentics-postgres` instead of `memini-postgres` and caused startup failures.
 
 ## Release Engineering Notes
 
-- **v0.12.5** is the latest tagged release (2026-07-15). Process-correction patch per AGENTS.md "Never Retag a Public Release" rule — v0.12.4 was already on npm, so a 1-character patch bump (0.12.4 → 0.12.5) was applied to unblock the failed re-publish. No code changes; see HANDOFF.md Session 48.
+- **v0.16.3** (2026-07-30) is the latest tagged release. Three high-UX-impact fixes: T-MEMADD-001 (neuralgentics_memory_add schema now exposes 'content', tolerant of legacy 'text'); T-LOG-RED-001 (Go backend stderr no longer rendered as red TUI errors — INFO routed to plugin logger, WARN+ to TUI with [neuralgentics:backend] prefix); T-INIT-TIMEOUT-001 (--init-project and --init-homedir now propagate entry.timeout, shared applyTemplateEntry() helper extracted, template-parity tests added). validate-release.sh 29 pass / 0 fail. Also closes pre-existing version-drift on root package.json + packages/tui/package.json + install.sh DEFAULT_VERSION (now all 0.16.3 alongside overlay's 0.16.3).
+- **v0.16.2** (2026-07-28) — `fix(overlay): orchestrator default model kimi-k2.6 → minimax-m3 (kimi-k2.6 removed from Ollama Cloud); mcp-templates duckdb + ssh-mcp-server args folded into command array (separate args key not honored by opencode local MCP)`. Partial T-INIT-TIMEOUT-001 work — `--init-project` still missing `timeout: 120000` in generated config (closed in v0.16.3).
+- **v0.15.22** (2026-07-28) — Architectural rename: memini-ai is now the canonical DB identity. Go backend default: `postgresql://memini:memini@localhost:5434/memini`. `MEMINI_DB_URL` is canonical, `NEURALGENTICS_DB_URL` is legacy fallback. Installer prompts say "memini-ai server", stack dir is `~/.memini-ai/`. See HANDOFF.md Session 60d and design doc `docs/design/rename-neuralgentics-db-to-memini.md`.
+- **v0.15.21** (2026-07-27) — Plugin lazy-spawn fix: `GoBackendClient` now spawns AFTER the config hook loads `opencode.json`. Fixes v0.15.19 ordering bug. See HANDOFF.md Session 60c.
+- **v0.15.20** (2026-07-27) — `--init-project` hardening: re-install guard, port validation, `.env` backup. See HANDOFF.md Session 60b.
+- **v0.15.19** (2026-07-27) — Go backend `loadEnvFile()` + plugin auto-promotion of `MEMINI_DB_URL` → `NEURALGENTICS_DB_URL`. **Fully working as of v0.15.21.** See HANDOFF.md Session 60a.
+- **Recent releases**: v0.16.3 (`871a08d`, 3 UX fixes + version-drift cleanup), v0.16.2 (`868e382`, mcp-templates args + orchestrator model), v0.16.1 (`db37d2f`, migrator DSN sslmode), v0.16.0 (`706b00a`, TLS-by-default for --db-start), v0.15.22 (`516315f`, memini-ai rename), v0.15.21 (`3a74eba`, lazy spawn), v0.15.20 (`4eb6a49`, init hardening), v0.15.19 (`7155b21`, env fix), v0.15.18 (`51b4558`, model-preset + --remodel), v0.15.17 (`4b04e4f`, pg18 volume + pgvector preload fix), v0.15.16 (`abe49ea`, team-mode install no DB touch), v0.15.15 (`f7e9386`, `.opencode/overrides/` feature). v0.12.5 mentioned below is HISTORICAL — superseded by v0.15.x.
+- **v0.12.5** (2026-07-15, HISTORICAL) — Process-correction patch per AGENTS.md "Never Retag a Public Release" rule — v0.12.4 was already on npm, so a 1-character patch bump (0.12.4 → 0.12.5) was applied to unblock the failed re-publish. No code changes; see HANDOFF.md Session 48.
 - **Release workflow**: Single job compiles the overlay plugin (`npx tsc`), bundles `.opencode/` config, and publishes the `@veedubin/neuralgentics` npm package. Container job builds and pushes postgres/sidecar/backend to ghcr.io.
 - **Install flow**: Users run `npx @veedubin/neuralgentics --init` to bootstrap their project. The old curl-bash installer is deprecated.
 - **Pre-release validation**: `scripts/validate-release.sh` — 8 checks (shell syntax, YAML, JSON, version consistency, file existence, TypeScript typecheck, Go vet, git status). Run before every `git tag`.
