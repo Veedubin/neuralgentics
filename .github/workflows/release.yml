@@ -251,7 +251,19 @@ jobs:
           fi
           echo "Build output verified"
 
+      - name: Check if version already published
+        id: check_pub
+        run: |
+          if npm view "@veedubin/neuralgentics@${{ env.VERSION }}" version >/dev/null 2>&1; then
+            echo "::notice::Version ${{ env.VERSION }} already published to npm — skipping publish step"
+            echo "already=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version ${{ env.VERSION }} not yet published — will publish"
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish to NPM with provenance
+        if: steps.check_pub.outputs.already != 'true'
         working-directory: overlay/packages/opencode
         run: npm publish --access public --provenance
         env:
