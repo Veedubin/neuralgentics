@@ -1,9 +1,9 @@
 {
-  "version": "2026-07-29",
-  "generated_at": "2026-07-29T08:19:32Z",
+  "version": "2026-07-30",
+  "generated_at": "2026-07-30T08:07:27Z",
   "benchmarks": {
     "bfcl": {
-      "fetched_at": "2026-07-29T08:18:17Z",
+      "fetched_at": "2026-07-30T08:06:13Z",
       "stale": false,
       "source_url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
       "top_models": [
@@ -115,7 +115,7 @@
       ]
     },
     "swe_bench": {
-      "fetched_at": "2026-07-29T08:18:24Z",
+      "fetched_at": "2026-07-30T08:06:20Z",
       "stale": false,
       "source_url": "https://www.swebench.com/",
       "top_models": [
@@ -177,7 +177,7 @@
       ]
     },
     "live_code_bench": {
-      "fetched_at": "2026-07-29T08:18:39Z",
+      "fetched_at": "2026-07-30T08:06:35Z",
       "stale": false,
       "source_url": "https://livecodebench-leaderboard.static.hf.space/index.html",
       "top_models": [
@@ -189,7 +189,7 @@
       ]
     },
     "chatbot_arena": {
-      "fetched_at": "2026-07-29T08:18:53Z",
+      "fetched_at": "2026-07-30T08:06:49Z",
       "stale": false,
       "source_url": "https://lmarena.ai/leaderboard",
       "top_models": [
