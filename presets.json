@@ -1,9 +1,9 @@
 {
-  "version": "2026-08-06",
-  "generated_at": "2026-08-06T08:14:49Z",
+  "version": "2026-08-07",
+  "generated_at": "2026-08-07T07:00:32Z",
   "benchmarks": {
     "bfcl": {
-      "fetched_at": "2026-08-06T08:13:35Z",
+      "fetched_at": "2026-08-07T06:59:17Z",
       "stale": false,
       "source_url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
       "top_models": [
@@ -115,7 +115,7 @@
       ]
     },
     "swe_bench": {
-      "fetched_at": "2026-08-06T08:13:43Z",
+      "fetched_at": "2026-08-07T06:59:25Z",
       "stale": false,
       "source_url": "https://www.swebench.com/",
       "top_models": [
@@ -177,7 +177,7 @@
       ]
     },
     "live_code_bench": {
-      "fetched_at": "2026-08-06T08:13:57Z",
+      "fetched_at": "2026-08-07T06:59:39Z",
       "stale": false,
       "source_url": "https://livecodebench-leaderboard.static.hf.space/index.html",
       "top_models": [
@@ -189,7 +189,7 @@
       ]
     },
     "chatbot_arena": {
-      "fetched_at": "2026-08-06T08:14:11Z",
+      "fetched_at": "2026-08-07T06:59:54Z",
       "stale": false,
       "source_url": "https://lmarena.ai/leaderboard",
       "top_models": [
@@ -201,12 +201,12 @@
         {
           "model": "gemini-3-flash",
           "raw_name": "gemini-3-flash",
-          "score": 652.0
+          "score": 653.0
         },
         {
           "model": "claude-sonnet-4",
           "raw_name": "claude-sonnet-4-6",
-          "score": 649.0
+          "score": 650.0
         },
         {
           "model": "claude-opus-4.5",
@@ -221,12 +221,12 @@
         {
           "model": "deepseek-v4-pro",
           "raw_name": "deepseek-v4-pro",
-          "score": 631.0
+          "score": 630.0
         },
         {
           "model": "glm-5.2",
           "raw_name": "glm-5",
-          "score": 630.0
+          "score": 629.0
         },
         {
           "model": "claude-sonnet-4.5",
@@ -241,7 +241,7 @@
         {
           "model": "minimax-m3",
           "raw_name": "minimax-m3",
-          "score": 611.0
+          "score": 610.0
         },
         {
           "model": "deepseek-v4-flash",
@@ -281,7 +281,7 @@
         {
           "model": "mistral-large-3",
           "raw_name": "mistral-large-3",
-          "score": 564.0
+          "score": 563.0
         },
         {
           "model": "gpt-4.1",
@@ -316,7 +316,7 @@
         {
           "model": "gpt-4o",
           "raw_name": "gpt-4o-2024-05-13",
-          "score": 480.0
+          "score": 479.0
         },
         {
           "model": "llama-3.3-70b",
@@ -464,7 +464,7 @@
       "explorer": {
         "model": "claude-sonnet-4",
         "provider_model_id": "anthropic/claude-sonnet-4",
-        "score": 389.4,
+        "score": 390.0,
         "benchmark": "chatbot_arena",
         "rank": 3,
         "fallback": false
@@ -488,7 +488,7 @@
       "linter": {
         "model": "claude-sonnet-4",
         "provider_model_id": "anthropic/claude-sonnet-4",
-        "score": 649.0,
+        "score": 650.0,
         "benchmark": "chatbot_arena",
         "rank": 3,
         "fallback": false
@@ -496,7 +496,7 @@
       "git": {
         "model": "claude-sonnet-4",
         "provider_model_id": "anthropic/claude-sonnet-4",
-        "score": 649.0,
+        "score": 650.0,
         "benchmark": "chatbot_arena",
         "rank": 3,
         "fallback": false
@@ -504,7 +504,7 @@
       "writer": {
         "model": "claude-sonnet-4",
         "provider_model_id": "anthropic/claude-sonnet-4",
-        "score": 389.4,
+        "score": 390.0,
         "benchmark": "chatbot_arena",
         "rank": 3,
         "fallback": false
@@ -512,7 +512,7 @@
       "researcher": {
         "model": "claude-sonnet-4",
         "provider_model_id": "anthropic/claude-sonnet-4",
-        "score": 259.6,
+        "score": 260.0,
         "benchmark": "mmlu_pro",
         "rank": 0,
         "fallback": false
@@ -520,7 +520,7 @@
       "release": {
         "model": "claude-sonnet-4",
         "provider_model_id": "anthropic/claude-sonnet-4",
-        "score": 649.0,
+        "score": 650.0,
         "benchmark": "chatbot_arena",
         "rank": 3,
         "fallback": false
