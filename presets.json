@@ -1,9 +1,9 @@
 {
-  "version": "2026-08-09",
-  "generated_at": "2026-08-09T06:38:00Z",
+  "version": "2026-08-10",
+  "generated_at": "2026-08-10T07:09:27Z",
   "benchmarks": {
     "bfcl": {
-      "fetched_at": "2026-08-09T06:36:49Z",
+      "fetched_at": "2026-08-10T07:08:12Z",
       "stale": false,
       "source_url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
       "top_models": [
@@ -115,69 +115,13 @@
       ]
     },
     "swe_bench": {
-      "fetched_at": "2026-08-09T06:36:56Z",
-      "stale": false,
+      "fetched_at": null,
+      "stale": true,
       "source_url": "https://www.swebench.com/",
-      "top_models": [
-        {
-          "model": "claude-opus-4.5",
-          "raw_name": "Claude 4.5 Opus (high reasoning)",
-          "score": 76.8
-        },
-        {
-          "model": "gemini-3-flash",
-          "raw_name": "Gemini 3 Flash (high reasoning)",
-          "score": 75.8
-        },
-        {
-          "model": "minimax-m3",
-          "raw_name": "MiniMax M2.5 (high reasoning)",
-          "score": 75.8
-        },
-        {
-          "model": "gpt-5.2",
-          "raw_name": "GPT-5-2 Codex",
-          "score": 72.8
-        },
-        {
-          "model": "glm-5.2",
-          "raw_name": "GLM-5 (high reasoning)",
-          "score": 72.8
-        },
-        {
-          "model": "claude-sonnet-4.5",
-          "raw_name": "Claude 4.5 Sonnet (high reasoning)",
-          "score": 71.4
-        },
-        {
-          "model": "kimi-k2.6",
-          "raw_name": "Kimi K2.5 (high reasoning)",
-          "score": 70.8
-        },
-        {
-          "model": "deepseek-v3.2",
-          "raw_name": "DeepSeek V3.2 (high reasoning)",
-          "score": 70.0
-        },
-        {
-          "model": "gemini-3-pro",
-          "raw_name": "Gemini 3 Pro",
-          "score": 69.6
-        },
-        {
-          "model": "claude-haiku-4.5",
-          "raw_name": "Claude 4.5 Haiku (high reasoning)",
-          "score": 66.6
-        },
-        {
-          "model": "gpt-5-mini",
-          "raw_name": "GPT-5 Mini",
-          "score": 56.2
-        }
-      ]
+      "top_models": []
     },
     "live_code_bench": {
-      "fetched_at": "2026-08-09T06:37:11Z",
+      "fetched_at": "2026-08-10T07:08:36Z",
       "stale": false,
       "source_url": "https://livecodebench-leaderboard.static.hf.space/index.html",
       "top_models": [
@@ -189,7 +133,7 @@
       ]
     },
     "chatbot_arena": {
-      "fetched_at": "2026-08-09T06:37:22Z",
+      "fetched_at": "2026-08-10T07:08:50Z",
       "stale": false,
       "source_url": "https://lmarena.ai/leaderboard",
       "top_models": [
@@ -348,20 +292,20 @@
         "fallback": false
       },
       "architect": {
-        "model": "minimax-m3",
-        "provider_model_id": "minimax-m3",
-        "score": 45.48,
+        "model": "deepseek-v4-pro",
+        "provider_model_id": "deepseek-v4-pro",
+        "score": 0.0,
         "benchmark": "swe_bench",
-        "rank": 3,
-        "fallback": false
+        "rank": 0,
+        "fallback": true
       },
       "coder": {
-        "model": "minimax-m3",
-        "provider_model_id": "minimax-m3",
-        "score": 45.48,
+        "model": "glm-5.2",
+        "provider_model_id": "glm-5.2",
+        "score": 0.0,
         "benchmark": "swe_bench",
-        "rank": 3,
-        "fallback": false
+        "rank": 0,
+        "fallback": true
       },
       "explorer": {
         "model": "kimi-k2.6",
@@ -372,20 +316,20 @@
         "fallback": false
       },
       "tester": {
-        "model": "minimax-m3",
-        "provider_model_id": "minimax-m3",
-        "score": 45.48,
+        "model": "deepseek-v4-flash",
+        "provider_model_id": "deepseek-v4-flash:0731",
+        "score": 0.0,
         "benchmark": "swe_bench",
-        "rank": 3,
-        "fallback": false
+        "rank": 0,
+        "fallback": true
       },
       "reviewer": {
-        "model": "minimax-m3",
-        "provider_model_id": "minimax-m3",
-        "score": 45.48,
+        "model": "deepseek-v4-pro",
+        "provider_model_id": "deepseek-v4-pro",
+        "score": 0.0,
         "benchmark": "swe_bench",
-        "rank": 3,
-        "fallback": false
+        "rank": 0,
+        "fallback": true
       },
       "linter": {
         "model": "kimi-k2.6",
@@ -428,12 +372,12 @@
         "fallback": false
       },
       "agent-builder": {
-        "model": "minimax-m3",
-        "provider_model_id": "minimax-m3",
-        "score": 45.48,
+        "model": "glm-5.2",
+        "provider_model_id": "glm-5.2",
+        "score": 0.0,
         "benchmark": "swe_bench",
-        "rank": 3,
-        "fallback": false
+        "rank": 0,
+        "fallback": true
       }
     },
     "openrouter": {
@@ -446,19 +390,19 @@
         "fallback": false
       },
       "architect": {
-        "model": "claude-opus-4.5",
-        "provider_model_id": "anthropic/claude-opus-4.5",
-        "score": 46.08,
+        "model": "gpt-4o",
+        "provider_model_id": "openai/gpt-4o",
+        "score": 18.24,
         "benchmark": "swe_bench",
-        "rank": 1,
+        "rank": 0,
         "fallback": false
       },
       "coder": {
-        "model": "claude-opus-4.5",
-        "provider_model_id": "anthropic/claude-opus-4.5",
-        "score": 46.08,
+        "model": "gpt-4o",
+        "provider_model_id": "openai/gpt-4o",
+        "score": 18.24,
         "benchmark": "swe_bench",
-        "rank": 1,
+        "rank": 0,
         "fallback": false
       },
       "explorer": {
@@ -470,20 +414,20 @@
         "fallback": false
       },
       "tester": {
-        "model": "claude-opus-4.5",
-        "provider_model_id": "anthropic/claude-opus-4.5",
-        "score": 46.08,
+        "model": "gpt-4o",
+        "provider_model_id": "openai/gpt-4o",
+        "score": 18.24,
         "benchmark": "swe_bench",
-        "rank": 1,
+        "rank": 0,
         "fallback": false
       },
       "reviewer": {
-        "model": "claude-opus-4.5",
-        "provider_model_id": "anthropic/claude-opus-4.5",
-        "score": 46.08,
+        "model": "deepseek-v4-pro",
+        "provider_model_id": "deepseek/deepseek-v4-pro",
+        "score": 0.0,
         "benchmark": "swe_bench",
-        "rank": 1,
-        "fallback": false
+        "rank": 0,
+        "fallback": true
       },
       "linter": {
         "model": "claude-sonnet-4",
@@ -526,11 +470,11 @@
         "fallback": false
       },
       "agent-builder": {
-        "model": "claude-opus-4.5",
-        "provider_model_id": "anthropic/claude-opus-4.5",
-        "score": 46.08,
+        "model": "gpt-4o",
+        "provider_model_id": "openai/gpt-4o",
+        "score": 18.24,
         "benchmark": "swe_bench",
-        "rank": 1,
+        "rank": 0,
         "fallback": false
       }
     },
