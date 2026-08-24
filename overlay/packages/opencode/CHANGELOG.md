@@ -5,6 +5,16 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.16.6 (2026-08-24)
+
+**Fixed:**
+- **`session.compacting` AGENTS.md backup never worked (T-COMPACT-FIX-001)** — the event handler sent `{ text: content }` to `memory.add`, but the Go backend declares `json:"content"` (`main.go:224`); every compaction backup failed with `-32602 "content is required"` and the error was swallowed by the catch block. The `makeProxyTool` text→content aliasing does not apply to direct `backend.call()`s. Fixed to send `content`; regression test intercepts the JSON-RPC layer and pins the wire format.
+- **AGENTS.md loader cache leaked across projects and ignored edits (T-AGENTSCACHE-001)** — `loadAgentsMd()` cached one module-global string from the first directory that ever called it: a second project sharing the process got the first project's instructions, and mid-session edits were invisible forever. The cache is now keyed by resolved file path with mtime revalidation on every call. Config reporting (`agentsMdLoaded`) updated to match.
+- **Updater ran git against a hardcoded developer path on every npm user's machine (T-UPDATER-PATH-001)** — `OPENCODE_BASE_DIR` defaulted to `/home/jcharles/...`; `checkLatest()` executed a doomed `execSync git fetch` (15s timeout) against a non-existent dir for anyone outside the original dev box. The base dir is now strictly opt-in via `NEURALGENTICS_OPENCODE_BASE_DIR` and update checking silently skips unless the path is a real `.git` checkout.
+- **Plugin version drift (T-VERSIONS-001)** — overlay `server.ts` reported `VERSION = "0.2.0"` while the shipped package was 0.16.x. Now pinned to the package version with a mechanical consistency test that fails any future bump that forgets `server.ts`. Root/package/tui/install.sh all aligned at 0.16.6.
+
+**Known issues opened as kanban cards (not yet fixed):** T-CFG-SHIP-001 (shipped tarball merges the maintainer's personal opencode.json — primary token-bloat source), T-CFG-PRUNE-001 (no regression guard against `compaction.prune:true`), T-MCP-OPTIN-001 (optional MCP servers enabled by default), T-AGENTS-SLIM-001 (114KB of agent personas), T-CFG-MERGE-PRUNE-001 (no cleanup path for already-polluted user configs), T-BACKEND-REUSE-001 (backend spawns per session), T-PLUGIN-DEDUP-001 + T-TUI-REMOVE-001 (dead code removal).
+
 ## v0.16.1 (2026-07-28)
 
 **Fixed:**

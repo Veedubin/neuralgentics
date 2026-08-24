@@ -13,7 +13,7 @@
  * structural matches — no compile-time import required.
  */
 
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { GoBackendClient, setLoadedConfig } from "./neuralgentics/go-backend-client.js";
 
@@ -72,14 +72,31 @@ interface PluginModule {
 // Plugin State
 // ============================================================================
 
-const VERSION = "0.2.0";
+/**
+ * Plugin version — MUST match overlay/packages/opencode/package.json.
+ * Enforced by version-consistency.test.ts (T-VERSIONS-001).
+ */
+const VERSION = "0.16.6";
 const DEFAULT_BINARY = "neuralgentics-backend";
 
 /** Shared GoBackendClient instance — initialised once per plugin load. */
 let backend: GoBackendClient | null = null;
 
-/** Cached AGENTS.md content (loaded lazily). */
-let agentsMdContent: string | null = null;
+/**
+ * Per-path AGENTS.md cache with mtime invalidation.
+ *
+ * T-AGENTSCACHE-001: this was previously a single module-global string cached
+ * from the FIRST directory that ever called loadAgentsMd() — so a second
+ * project sharing the process got the first project's instructions, and
+ * edits to AGENTS.md mid-session were invisible. The cache is now keyed by
+ * resolved file path and revalidated against the file's mtime on every call.
+ */
+const agentsMdCache = new Map<string, { content: string; mtimeMs: number }>();
+
+/** True once any AGENTS.md has been successfully loaded (for config reporting). */
+function agentsMdLoaded(): boolean {
+  return agentsMdCache.size > 0;
+}
 
 // ============================================================================
 // Helpers
@@ -90,9 +107,8 @@ function resolveBinaryPath(): string {
   return process.env.NEURALGENTICS_BACKEND_PATH ?? DEFAULT_BINARY;
 }
 
-/** Load AGENTS.md from disk if not already cached. */
+/** Load AGENTS.md for a directory, with per-path mtime-validated caching. */
 async function loadAgentsMd(directory: string): Promise<string | null> {
-  if (agentsMdContent !== null) return agentsMdContent;
   const candidates = [
     resolve(directory, "AGENTS.md"),
     resolve(directory, "..", "AGENTS.md"),
@@ -100,8 +116,14 @@ async function loadAgentsMd(directory: string): Promise<string | null> {
   ];
   for (const path of candidates) {
     try {
-      agentsMdContent = await readFile(path, "utf-8");
-      return agentsMdContent;
+      const stats = await stat(path);
+      const cached = agentsMdCache.get(path);
+      if (cached && cached.mtimeMs === stats.mtimeMs) {
+        return cached.content;
+      }
+      const content = await readFile(path, "utf-8");
+      agentsMdCache.set(path, { content, mtimeMs: stats.mtimeMs });
+      return content;
     } catch {
       // try next candidate
     }
@@ -450,8 +472,13 @@ async function server(input: PluginInput): Promise<Hooks> {
         try {
           const content = await loadAgentsMd(directory);
           if (content && backend) {
+            // T-COMPACT-FIX-001: memoryAddParams on the Go backend declares
+            // `json:"content"` (main.go:224). The previous `text:` key was
+            // silently rejected with -32602 "content is required", so this
+            // backup NEVER succeeded. The makeProxyTool text→content aliasing
+            // does not apply here — this is a direct backend.call().
             await backend.call("memory.add", {
-              text: content,
+              content,
               sourceType: "context_package",
               metadata: { reason: "compaction_backup", file: "AGENTS.md" },
             });
@@ -494,7 +521,7 @@ async function server(input: PluginInput): Promise<Hooks> {
       version: VERSION,
       backendBinary: binaryPath,
       backendReady: backend !== null && backend.started,
-      agentsMdLoaded: agentsMdContent !== null,
+      agentsMdLoaded: agentsMdLoaded(),
     };
   };
 
