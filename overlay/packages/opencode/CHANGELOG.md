@@ -5,6 +5,11 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.16.11 (2026-08-24)
+
+**Changed:**
+- **`orchestrator.md` persona slimmed 18.6KB → 14.9KB (T-AGENTS-SLIM-001, slice 1)** — the ~93-line "Built-in Tools Reference" duplicated every memini-ai-dev tool's signature and example, but MCP tool schemas already arrive with every request; the duplication was pure per-dispatch token cost (~930 tokens saved on every orchestrator invocation). Replaced with a compact WHEN-to-use category summary (memory / KG / tiered / thought chains / project index / dialectic / multi-peer / backend wrappers). All load-bearing protocol content (mandatory checklist, stateless protocol, execution-ordering rules, agent roster, 8-step protocol) preserved verbatim. Both distribution copies kept in sync (repo-root `.opencode/agents/` for the release tarball + `overlay/packages/opencode/.opencode/agents/` for npm). Remaining personas still carry similar tables — tracked on the card.
+
 ## v0.16.10 (2026-08-24)
 
 **Added:**
