@@ -5,6 +5,14 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.16.13 (2026-08-24)
+
+**Added:**
+- **README: "Cleaning Up Polluted MCP Configs" section** documenting `--reset-mcp` for users installed via pre-v0.16.7 tarballs (#3 of the post-review follow-ups).
+
+**Removed:**
+- **Dead TS packages: `packages/orchestrator` + `packages/sdk`** — orchestrator's only consumer was sdk; sdk had zero consumers anywhere (overlay, scripts, CI). Neither is imported by the shipped plugin. Completes the dead-code sweep started in v0.16.9 (tui/plugin). Go modules, memory, memini-core, and web are untouched (`web` has a dedicated extraction script for its planned standalone-repo future). `release.sh` no longer runs the deleted package's vitest suite.
+
 ## v0.16.12 (2026-08-24)
 
 **Changed:**
