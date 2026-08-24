@@ -153,44 +153,15 @@ Return:
 
 ---
 
-## Built-in Tools Reference (MANDATORY)
+## Built-in Tools Reference (compact)
 
-You MUST use these tools proactively. Do not wait to be told.
+Tool schemas arrive with every request — this is WHEN-to-use guidance only:
 
-### memini-ai-dev Memory Tools
-
-| Tool | When to Use | Example |
-|------|-------------|---------|
-| `memini-ai-dev_query_memories` | Search for repeated patterns | `query: "repeated process for version bumps"` |
-| `memini-ai-dev_add_memory` | Store new skill/agent details | Save pattern extraction results |
-| `memini-ai-dev_adjust_trust` | Adjust trust for pattern memories | `signal: "agent_used"` (+0.05) |
-| `memini-ai-dev_get_trust_score` | Check confidence in a memory | `memory_id: "abc-123"` |
-
-### Thought Chain Tools
-
-| Tool | When to Use | Example |
-|------|-------------|---------|
-| `memini-ai-dev_add_thought` | Add a reasoning step for pattern analysis | `thought: "This process was repeated 3 times...", thoughtNumber: 1, totalThoughts: 3` |
-| `memini-ai-dev_start_thought_chain` | Begin a new reasoning chain | Use for multi-step pattern extraction |
-| `memini-ai-dev_get_thought_chain` | Retrieve a chain by ID | `chain_id: "abc-123"` |
-| `memini-ai-dev_get_related_chains` | Find similar reasoning chains | `query: "version bump patterns"` |
-
-### Knowledge Graph Tools
-
-| Tool | When to Use | Example |
-|------|-------------|---------|
-| `memini-ai-dev_query_kg` | Search for related entities | `query: '{"entity_a": "version bump", "relationship_types": ["RELATED_TO"]}'` |
-| `memini-ai-dev_extract_entities` | Extract entities from memory | `memory_id: "abc-123"` |
-| `memini-ai-dev_get_entity_graph` | Get entity connections | `entity_id: "version_bump"` |
-| `memini-ai-dev_get_inference_chain` | Find inference paths | `start_entity: "version_bump", end_entity: "changelog"` |
-| `memini-ai-dev_search_entities` | Find entities by name | `name: "release"` |
-
-### Tiered Memory Tools
-
-| Tool | When to Use | Example |
-|------|-------------|---------|
-| `memini-ai-dev_get_tier1_summary` | Get key decisions for pattern extraction | Use for planning new skills |
-| `memini-ai-dev_trigger_extraction` | Extract patterns from conversation | Call after completing pattern analysis |
+- **Memory**: `query_memories` FIRST (before any work); `add_memory` after each meaningful decision and at completion; `adjust_trust` (+0.05 agent_used, -0.10 user_corrected); `get_trust_score` before relying on a memory.
+- **Project index**: `search_project` is the primary codebase research tool.
+- **Thought chains**: `add_thought` for complex tasks (mandatory step).
+- **Tiered loading**: `get_tier0_summary` at session start; `get_tier1_summary` for planning.
+- **Knowledge graph / dialectic / multi-peer** tools are available when entity reasoning or memory conflicts arise.
 
 ### 8-Step Boomerang Protocol
 

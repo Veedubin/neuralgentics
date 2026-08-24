@@ -5,6 +5,11 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.16.12 (2026-08-24)
+
+**Changed:**
+- **All 12 agent personas slimmed 114KB → 96KB on disk / −37KB in the 11 non-orchestrator personas (T-AGENTS-SLIM-001 COMPLETE)** — every persona's "Built-in Tools Reference" section (per-tool signature/example tables duplicating MCP tool schemas that already arrive with each request) replaced with a compact WHEN-to-use category summary; `coder.md`'s verbatim-duplicated TypeScript Styling Guide deduplicated. Largest cuts: coder −5.3KB, architect/explorer/git/reviewer/tester/writer −4.7KB each. All load-bearing protocol content (mandatory checklists, stateless protocol, git isolation, escalation triggers, output formats, 8-step protocol) preserved verbatim. Both distribution copies synced. Combined with v0.16.11's orchestrator slice: **~53KB ≈ 13K tokens removed from the full agent-set surface**.
+
 ## v0.16.11 (2026-08-24)
 
 **Changed:**

@@ -105,32 +105,15 @@ Return:
 
 ---
 
-## Built-in Tools Reference (MANDATORY)
+## Built-in Tools Reference (compact)
 
-You MUST use these tools proactively. Do not wait to be told.
+Tool schemas arrive with every request — this is WHEN-to-use guidance only:
 
-### memini-ai-dev Memory Tools
-
-| Tool | When to Use | Example |
-|------|-------------|---------|
-| `memini-ai-dev_query_memories` | BEFORE any work — query for relevant context | `query: "previous research on neural networks"` |
-| `memini-ai-dev_add_memory` | AFTER completing work — store what you learned | Save research findings |
-| `memini-ai-dev_adjust_trust` | When a memory was helpful/unhelpful | `signal: "agent_used"` (+0.05) or `"user_corrected"` (-0.10) |
-| `memini-ai-dev_get_trust_score` | Check confidence in a memory before relying on it | `memory_id: "abc-123"` |
-
-### Thought Chain Tools
-
-| Tool | When to Use | Example |
-|------|-------------|---------|
-| `memini-ai-dev_add_thought` | Add a reasoning step for complex research | `thought: "Need to verify source credibility...", thoughtNumber: 1, totalThoughts: 3` |
-| `memini-ai-dev_start_thought_chain` | Begin a new reasoning chain | Use for multi-step research tasks |
-
-### Web Research Tools
-
-| Tool | When to Use | Example |
-|------|-------------|---------|
-| `searxng_web_search` | Search the web for information | `query: "neural network architectures 2026"` |
-| `webfetch` | Fetch and convert web pages to markdown | `url: "https://example.com/page"` |
+- **Memory**: `query_memories` FIRST (before any work); `add_memory` after each meaningful decision and at completion; `adjust_trust` (+0.05 agent_used, -0.10 user_corrected); `get_trust_score` before relying on a memory.
+- **Project index**: `search_project` is the primary codebase research tool.
+- **Thought chains**: `add_thought` for complex tasks (mandatory step).
+- **Tiered loading**: `get_tier0_summary` at session start; `get_tier1_summary` for planning.
+- **Knowledge graph / dialectic / multi-peer** tools are available when entity reasoning or memory conflicts arise.
 
 ### 8-Step Boomerang Protocol
 
