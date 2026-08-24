@@ -76,7 +76,7 @@ interface PluginModule {
  * Plugin version — MUST match overlay/packages/opencode/package.json.
  * Enforced by version-consistency.test.ts (T-VERSIONS-001).
  */
-const VERSION = "0.16.13";
+const VERSION = "0.16.14";
 const DEFAULT_BINARY = "neuralgentics-backend";
 
 /** Shared GoBackendClient instance — initialised once per plugin load. */

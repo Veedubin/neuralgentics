@@ -5,6 +5,11 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.16.14 (2026-08-24)
+
+**Added:**
+- **Governance thesis** (`docs/design/governance-thesis.md`) — the unifying product story: agent governance for homes & small teams across memini (ledger), broker/tool-groups (permissions, v1.6.0 gating upstream), gateway (egress). Includes wedge sequencing and pre-agreed kill criteria.
+
 ## v0.16.13 (2026-08-24)
 
 **Added:**
