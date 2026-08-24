@@ -103,7 +103,7 @@ check_clean_tree() {
 
 run_tests() {
   log "Running tests..."
-  run bun test packages/plugin
+  run bash -c "cd packages/orchestrator && npx vitest run"
   run cd "$PROJECT_ROOT/packages/memini-core" && uv run pytest && cd "$PROJECT_ROOT"
 }
 

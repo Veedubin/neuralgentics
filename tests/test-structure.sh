@@ -39,8 +39,9 @@ echo "=== Neuralgentics File Structure Verification ==="
 echo ""
 
 check_file "memini-core server"    "packages/memini-core/src/memini_core/server.py"
-check_file "plugin entry point"    "packages/plugin/src/index.ts"
 check_file "orchestrator entry"    "packages/orchestrator/src/index.ts"
+# T-PLUGIN-DEDUP-001: old packages/plugin removed — overlay plugin is canonical.
+check_file "overlay plugin entry"  "overlay/packages/opencode/src/server.ts"
 check_file "broker server"         "packages/broker/src/broker/server.py"
 check_file "architect skill"       "skills/architect.md"
 check_file "AGENTS.md"             "AGENTS.md"

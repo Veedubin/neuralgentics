@@ -78,9 +78,7 @@ echo "── 3. JSON validation ──"
 for json in \
     .opencode/opencode.json \
     .opencode/package.json \
-    package.json \
-    packages/tui/package.json \
-    packages/tui/tsconfig.json
+    package.json
 do
     if [[ -f "$json" ]]; then
         if python3 -c "import json; json.load(open('$json'))" 2>&1; then
@@ -97,7 +95,7 @@ done
 # The NPM release artifact is overlay/packages/opencode/package.json — that is
 # what .github/workflows/release.yml publish-npm publishes. It is the PRIMARY
 # source of truth. The root package.json, install.sh DEFAULT_VERSION, and
-# packages/tui/package.json MUST stay in sync with it, otherwise the
+# root package.json MUST stay in sync with it, otherwise the
 # validator and the install script point at a version the archive doesn't
 # contain (see Session 46 v0.12.1 recovery).
 echo ""
@@ -106,7 +104,6 @@ echo "── 4. Version consistency ──"
 OVERLAY_VERSION=$(python3 -c "import json; print(json.load(open('overlay/packages/opencode/package.json'))['version'])")
 ROOT_VERSION=$(python3 -c "import json; print(json.load(open('package.json'))['version'])")
 INSTALL_VERSION=$(grep '^DEFAULT_VERSION=' scripts/install.sh | sed 's/.*"\(.*\)"/\1/')
-TUI_VERSION=$(python3 -c "import json; print(json.load(open('packages/tui/package.json'))['version'])")
 
 DRIFT=0
 drift_msg=""
@@ -122,7 +119,6 @@ check_sync() {
 check_sync "overlay/packages/opencode/package.json (primary)" "$OVERLAY_VERSION"
 check_sync "package.json (root)"                              "$ROOT_VERSION"
 check_sync "scripts/install.sh DEFAULT_VERSION"               "$INSTALL_VERSION"
-check_sync "packages/tui/package.json"                        "$TUI_VERSION"
 
 if [[ $DRIFT -eq 0 ]]; then
     pass "✓ All version sources agree on ${OVERLAY_VERSION}"
@@ -206,14 +202,16 @@ fi
 echo ""
 echo "── 6. TypeScript typecheck ──"
 
-if [[ -f packages/tui/tsconfig.json ]]; then
-    if (cd packages/tui && npx tsc --noEmit 2>&1); then
-        pass "packages/tui: tsc --noEmit clean"
+# T-TUI-REMOVE-001 / T-PLUGIN-DEDUP-001: packages/tui and packages/plugin
+# removed; the shipped artifact is the overlay plugin, typechecked here.
+if [[ -f overlay/packages/opencode/tsconfig.json ]]; then
+    if (cd overlay/packages/opencode && npx tsc --noEmit 2>&1); then
+        pass "overlay/packages/opencode: tsc --noEmit clean"
     else
-        fail "packages/tui: tsc --noEmit found errors"
+        fail "overlay/packages/opencode: tsc --noEmit found errors"
     fi
 else
-    warn "packages/tui/tsconfig.json not found — skipping typecheck"
+    warn "overlay/packages/opencode/tsconfig.json not found — skipping typecheck"
 fi
 
 # ─── 7. Go vet ────────────────────────────────────────────────────────────────
@@ -271,10 +269,9 @@ if [[ $FAIL -gt 0 ]]; then
     echo "    - Missing file:  git add -f <path>  (check .gitignore)"
     echo "    - Version mismatch: overlay/packages/opencode/package.json is the"
     echo "      primary source (that is what release.yml publishes to NPM)."
-    echo "      Bump root package.json, install.sh DEFAULT_VERSION, and"
-    echo "      packages/tui/package.json to match it."
+    echo "      Bump root package.json and install.sh DEFAULT_VERSION to match it."
     echo "    - JSON/YAML error: fix syntax in the file"
-    echo "    - TypeScript error: fix type errors in packages/tui/src/"
+    echo "    - TypeScript error: fix type errors in overlay/packages/opencode/src/"
     echo "    - Go vet error: fix the reported issue"
     exit 1
 fi

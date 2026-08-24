@@ -5,6 +5,16 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.16.9 (2026-08-24)
+
+**Removed:**
+- **`packages/tui` deleted (T-TUI-REMOVE-001)** — the TUI was declared removed in v0.9.0 but the package lingered in the monorepo at 0.16.x, forcing every release validation to sync and typecheck it. `validate-release.sh` now typechecks the shipped artifact (overlay plugin) instead.
+- **`packages/plugin` deleted (T-PLUGIN-DEDUP-001)** — the 919-line old-API plugin implementation superseded by `overlay/packages/opencode/src/server.ts`; it still imported `@neuralgentics/orchestrator`, drifted to VERSION 0.1.0, and its compaction hook contained the same `text:`/`content:` bug fixed in v0.16.6. Its dedicated test file (`tests/test-plugin.test.ts`) removed with it.
+
+**Changed:**
+- Reference cleanup across the toolchain: root `package.json` scripts (`build:ts`, `test`, `typecheck` now target `packages/orchestrator`; `dev:plugin` dropped — orchestrator tests run under vitest), `scripts/release.sh`, `tests/test-structure.sh` (now asserts the overlay entry point), `tests/e2e-launch.test.sh`, and all `packages/tui` checks in `scripts/validate-release.sh`. Residual-reference scan: clean. `packages/orchestrator` retained (82 vitest tests green; standalone-useful).
+- Note: `@neuralgentics/orchestrator` remains a workspace package but is no longer consumed by any shipped artifact; candidate for future extraction or archival.
+
 ## v0.16.8 (2026-08-24)
 
 **Changed:**

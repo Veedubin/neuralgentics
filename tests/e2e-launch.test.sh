@@ -17,12 +17,12 @@ else
     FAIL=1
 fi
 
-# Test 2: Plugin builds
-echo "[2/5] Checking plugin build..."
-if [ -f "$SCRIPT_DIR/packages/plugin/dist/index.js" ]; then
-    echo "  ✅ Plugin built"
+# Test 2: Overlay plugin builds (T-PLUGIN-DEDUP-001: packages/plugin removed)
+echo "[2/5] Checking overlay plugin build..."
+if [ -f "$SCRIPT_DIR/overlay/packages/opencode/dist/server.js" ]; then
+    echo "  ✅ Overlay plugin built"
 else
-    echo "  ❌ Plugin not built (run: cd packages/plugin && npm run build)"
+    echo "  ❌ Overlay plugin not built (run: cd overlay/packages/opencode && npx tsc)"
     FAIL=1
 fi
 
