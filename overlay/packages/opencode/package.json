@@ -1,6 +1,6 @@
 {
   "name": "@veedubin/neuralgentics",
-  "version": "0.16.14",
+  "version": "0.16.15",
   "description": "Neuralgentics OpenCode plugin \u2014 agent personas, skills, routing enforcement, and MCP tools.",
   "type": "module",
   "main": "./dist/server.js",

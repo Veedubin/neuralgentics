@@ -285,6 +285,7 @@ Tool schemas arrive with every request — this is WHEN-to-use guidance only:
 - **Dialectic**: `find_contradictions` before decisions; `challenge_memory` / `resolve_contradiction` / `get_dialectic_history` when memories conflict.
 - **Multi-peer**: `list_peers`, `switch_peer_context`, `share_memory`, `add_peer` for cross-agent memory sharing.
 - **Go backend** (call via the neuralgentics_* MCP wrappers, not raw JSON-RPC): memory.* CRUD/trust/audit/thoughts, orchestrator.handleTask/dispatch/route, broker.buildCatalog/call/matchIntent.
+- **Plugin read tools**: `neuralgentics_find_contradictions` at session start (catches stale facts); `neuralgentics_get_related_chains` BEFORE re-deriving past reasoning; `neuralgentics_kg_query` for precise entity/relationship questions.
 
 ### 8-Step Boomerang Protocol
 

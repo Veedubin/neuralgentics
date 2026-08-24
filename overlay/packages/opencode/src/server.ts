@@ -76,7 +76,7 @@ interface PluginModule {
  * Plugin version — MUST match overlay/packages/opencode/package.json.
  * Enforced by version-consistency.test.ts (T-VERSIONS-001).
  */
-const VERSION = "0.16.14";
+const VERSION = "0.16.15";
 const DEFAULT_BINARY = "neuralgentics-backend";
 
 /** Shared GoBackendClient instance — initialised once per plugin load. */
@@ -409,6 +409,37 @@ async function server(input: PluginInput): Promise<Hooks> {
       },
     ),
 
+    // --- Memory read-path tools (T-MEMREAD-001) -----------------------------
+    neuralgentics_kg_query: makeProxyTool(
+      "memory.queryKG",
+      "Execute a formal knowledge-graph query over extracted entities and relationships. Use for precise 'what do we know about X / how does X relate to Y' questions where vector search is too fuzzy.",
+      {
+        query: {
+          type: "string",
+          description:
+            'JSON KGQuery, e.g. {"entity_a": "memini", "relationship_types": ["RELATED_TO"], "inference_depth": 2}',
+        },
+      },
+    ),
+
+    neuralgentics_find_contradictions: makeProxyTool(
+      "memory.findContradictions",
+      "Find stored memories that contradict each other. Run at session start or before decisions that depend on prior facts — catches stale claims (renamed hosts, changed defaults) before they mislead you.",
+      {
+        query: { type: "string", description: "Optional filter query", optional: true },
+        limit: { type: "number", description: "Max pairs (default 10)", optional: true },
+      },
+    ),
+
+    neuralgentics_get_related_chains: makeProxyTool(
+      "memory.getRelatedThoughtChains",
+      "Search persisted reasoning chains by similarity. BEFORE re-deriving a debugging saga or design trade-off from scratch, check whether a previous session already reasoned through it.",
+      {
+        query: { type: "string", description: "What you are about to reason about" },
+        limit: { type: "number", description: "Max chains (default 10)", optional: true },
+      },
+    ),
+
     // --- Utility tools -------------------------------------------------------
     neuralgentics_get_agents_md: {
       description:
@@ -477,12 +508,26 @@ async function server(input: PluginInput): Promise<Hooks> {
             // silently rejected with -32602 "content is required", so this
             // backup NEVER succeeded. The makeProxyTool text→content aliasing
             // does not apply here — this is a direct backend.call().
-            await backend.call("memory.add", {
+            const resp = (await backend.call("memory.add", {
               content,
               sourceType: "context_package",
               metadata: { reason: "compaction_backup", file: "AGENTS.md" },
-            });
+            })) as { result?: { id?: string }; id?: string } | undefined;
             console.error("[Neuralgentics] AGENTS.md backed up before compaction");
+            // T-MEMREAD-001: grow the knowledge graph automatically — the
+            // backup memory is a high-signal entity source. Fire-and-forget;
+            // failures must never block compaction.
+            const newId: string | undefined = resp?.result?.id ?? resp?.id ?? undefined;
+            if (newId) {
+              void backend
+                .call("memory.extractEntities", { memory_id: newId })
+                .catch((err: unknown) => {
+                  console.error(
+                    "[Neuralgentics] Post-backup extractEntities failed:",
+                    err instanceof Error ? err.message : err,
+                  );
+                });
+            }
           }
         } catch (err) {
           console.error("[Neuralgentics] Compaction backup failed:", err);

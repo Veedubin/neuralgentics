@@ -5,6 +5,15 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.16.15 (2026-08-24)
+
+**Added (T-MEMREAD-001):**
+- **Three memory read-path tools** — `neuralgentics_kg_query` (→memory.queryKG), `neuralgentics_find_contradictions` (→memory.findContradictions), `neuralgentics_get_related_chains` (→memory.getRelatedThoughtChains): the write-only KG/dialectic/chains features become queryable in daily loops. Coaching descriptions teach WHEN to use each.
+- **Compaction KG enrichment**: after a successful AGENTS.md backup, the handler fires `memory.extractEntities` with the new memory id (fire-and-forget; never blocks compaction).
+- Orchestrator persona: read-tool guidance bullet (both distribution copies).
+
+**Note:** `e2e_test.mjs` remains env-gated (requires dev DB at :5436); unit suite 266/266.
+
 ## v0.16.14 (2026-08-24)
 
 **Added:**
