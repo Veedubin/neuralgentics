@@ -5,6 +5,12 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.16.7 (2026-08-24)
+
+**Fixed:**
+- **Release tarball no longer ships the maintainer's personal opencode.json (T-CFG-SHIP-001 — primary token-bloat root cause)** — `release.yml` copied the repo-root `.opencode/opencode.json` (13 MCP servers, 6 enabled incl. `github-mcp`/`playwright`/`searxng`/`markitdown`/`videre-mcp`, plus personal plugins) into every release archive; the add-only updater (`placeFiles` → `mergeOpencodeJsonFile`) then merged those into every user project, injecting ~100+ tool schemas ≈ 10–20K tokens of per-request overhead that no update could ever remove. The archive now generates its config via a new `scripts/gen-template-config.mjs`, which calls the same `buildProjectOpencodeJson()` builder the interactive installer uses: plugin ref + `instructions: ["AGENTS.md"]` + exactly one enabled MCP server (`memini-ai-dev`, pgembed). The maintainer's live config is untouched.
+- **Regression guard for the Session 33 cache killer (T-CFG-PRUNE-001)** — new `template-guard.test.ts` asserts (a) neither builder can emit `compaction.prune: true` (the setting that broke the TUI token counter and destroyed provider prompt caching in Session 33), (b) the project template ships zero personal plugins and exactly one enabled MCP server, (c) the repo-root dev config keeps `prune: false`.
+
 ## v0.16.6 (2026-08-24)
 
 **Fixed:**

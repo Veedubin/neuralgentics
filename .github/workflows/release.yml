@@ -77,7 +77,12 @@ jobs:
                    "dist/${ARCHIVE_DIR}/.opencode/skills"
           cp .opencode/agents/*.md "dist/${ARCHIVE_DIR}/.opencode/agents/"
           cp -r .opencode/skills/* "dist/${ARCHIVE_DIR}/.opencode/skills/"
-          cp .opencode/opencode.json "dist/${ARCHIVE_DIR}/.opencode/"
+          # T-CFG-SHIP-001: generate the clean template config via the same
+          # builders the installer uses — do NOT ship the maintainer's
+          # personal opencode.json (13 MCP servers / personal plugins were
+          # being merged into every user project by the add-only updater).
+          node overlay/packages/opencode/scripts/gen-template-config.mjs \
+               "dist/${ARCHIVE_DIR}/.opencode/opencode.json"
           cp .opencode/package.json "dist/${ARCHIVE_DIR}/.opencode/"
           cp .opencode/package-lock.json "dist/${ARCHIVE_DIR}/.opencode/"
           cp .opencode/.gitignore "dist/${ARCHIVE_DIR}/.opencode/"

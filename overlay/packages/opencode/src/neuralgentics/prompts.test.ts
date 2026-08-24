@@ -448,7 +448,7 @@ describe("runInstall re-install detection (Fix 3)", () => {
     }
     // The guard message must NOT appear — force=true bypassed the guard.
     expect(captured).not.toContain("Re-running --init-project detected");
-  });
+  }, 20_000); // internal race is 3s, but dangling uvx/network teardown can exceed bun's 5s default
 });
 
 // ===========================================================================
