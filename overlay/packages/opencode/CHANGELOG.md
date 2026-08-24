@@ -5,6 +5,11 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.16.8 (2026-08-24)
+
+**Changed:**
+- **`videre-mcp` ships disabled by default (T-MCP-OPTIN-001)** — every enabled MCP server's tool schemas are injected into every LLM request, and videre's `[vision]` extra pulls heavy model deps (Florence-2 / CLIP / MiniLM). New homedir installs now enable exactly one MCP server (`memini-ai-dev`); videre's env block stays pre-wired so enabling vision is a one-line `enabled: true` flip in `~/.config/opencode/opencode.json`. Three new template assertions pin the policy.
+
 ## v0.16.7 (2026-08-24)
 
 **Fixed:**

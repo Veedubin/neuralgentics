@@ -8,15 +8,17 @@
  * Every server uses `uvx` (Python) or `npx -y` (Node) — NO local paths,
  * NO hardcoded paths.
  *
- * Enabled-by-default policy:
+ * Enabled-by-default policy (T-MCP-OPTIN-001, 2026-08-24):
  *   - memini-ai-dev:  PROJECT only (pgembed defaults); also enabled in HOMEDIR.
  *     Has image-recall RRF enabled (MEMINI_IMAGE_SEARCH_ENABLED=true) so
  *     query_memories fans out a 3rd CLIP arm over the memories_image table.
  *     The shared image directory is ~/.memini-ai/images — videre-mcp writes
  *     image sidecars there, memini-ai-dev reads/searches them.
- *   - videre-mcp:     HOMEDIR enabled (vision: OCR, image description). Writes
- *     image sidecars to MEMINI_IMAGE_DIR (~/.memini-ai/images) so memini-ai-dev
- *     can index and search them.
+ *   - videre-mcp:     DISABLED by default. Every enabled MCP server's tool
+ *     schemas are injected into EVERY LLM request, and videre's [vision]
+ *     extra pulls heavy model deps (Florence-2 / CLIP / MiniLM). Users who
+ *     want vision flip `enabled: true` in ~/.config/opencode/opencode.json;
+ *     the env block below is pre-wired so the flip is one line.
  *   - ssh-mcp-server: HOMEDIR disabled (Tailscale-only)
  *   - all others:     HOMEDIR disabled (user opts in)
  */
@@ -79,7 +81,9 @@ export const HOMEDIR_MCP_TEMPLATES: McpBlock = {
   },
   "videre-mcp": {
     type: "local",
-    enabled: true,
+    // T-MCP-OPTIN-001: disabled by default — heavy [vision] model deps and
+    // per-request tool-schema cost. One-line flip to enable; env pre-wired.
+    enabled: false,
     command: ["uvx", "videre-mcp[vision]"],
     env: {
       MEMINI_IMAGE_DIR: "~/.memini-ai/images",

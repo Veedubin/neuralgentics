@@ -207,3 +207,25 @@ describe("generated homedir config preserves template fields (parity)", () => {
     }
   });
 });
+// ===========================================================================
+// T-MCP-OPTIN-001 — optional servers ship disabled
+// ===========================================================================
+describe("T-MCP-OPTIN-001: optional MCP servers default-disabled", () => {
+  it("videre-mcp ships disabled in HOMEDIR templates (heavy vision deps)", () => {
+    expect(HOMEDIR_MCP_TEMPLATES["videre-mcp"]?.enabled).toBe(false);
+  });
+
+  it("exactly one server is enabled across HOMEDIR templates (memini-ai-dev)", () => {
+    const enabled = Object.entries(HOMEDIR_MCP_TEMPLATES)
+      .filter(([, v]) => v.enabled)
+      .map(([k]) => k);
+    expect(enabled).toEqual(["memini-ai-dev"]);
+  });
+
+  it("PROJECT templates enable exactly memini-ai-dev", () => {
+    const enabled = Object.entries(PROJECT_MCP_TEMPLATES)
+      .filter(([, v]) => v.enabled)
+      .map(([k]) => k);
+    expect(enabled).toEqual(["memini-ai-dev"]);
+  });
+});
