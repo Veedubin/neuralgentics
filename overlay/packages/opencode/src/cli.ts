@@ -36,6 +36,7 @@ interface ParsedArgs {
   remodel: boolean;
   dbStart: boolean;
   dbStop: boolean;
+  resetMcp: boolean;
   dbNoTls: boolean;
   embedded: boolean;
   team: boolean;
@@ -79,6 +80,7 @@ function parseArgv(argv: string[]): ParsedArgs {
       "db-start": { type: "boolean", default: false },
       "db-stop": { type: "boolean", default: false },
       "db-no-tls": { type: "boolean", default: false },
+      "reset-mcp": { type: "boolean", default: false },
       update: { type: "boolean", default: false },
       "update-project": { type: "boolean", default: false },
       "update-homedir": { type: "boolean", default: false },
@@ -123,7 +125,7 @@ function parseArgv(argv: string[]): ParsedArgs {
   // when tokens:false). We use a lightweight scan instead.
   const positionals: string[] = [];
   const knownFlags = new Set([
-    "--init", "--init-homedir", "--init-project",
+    "--init", "--init-homedir", "--init-project", "--reset-mcp",
     "--db-start", "--db-stop", "--db-no-tls",
     "--update", "--update-project", "--update-homedir", "--remodel",
     "--embedded", "--team",
@@ -156,6 +158,7 @@ function parseArgv(argv: string[]): ParsedArgs {
     initProject: values["init-project"] === true,
     dbStart: values["db-start"] === true,
     dbStop: values["db-stop"] === true,
+    resetMcp: values["reset-mcp"] === true,
     dbNoTls: values["db-no-tls"] === true,
     update: values.update === true,
     updateProject: values["update-project"] === true,
@@ -216,6 +219,7 @@ function printHelp(): void {
       `  --db-start           Start the bundled PostgreSQL stack (writes docker-compose.yml + .env to ~/.memini-ai/, runs compose up -d, waits for ready, offers to create your first database user).\n` +
       `  --db-no-tls          Generate the plaintext (no-TLS) stack instead of the TLS-by-default stack. By default --db-start generates self-signed certs and uses sslmode=verify-full.\n` +
       `  --db-stop            Stop the bundled PostgreSQL stack (volumes are NEVER deleted — data is preserved).\n` +
+      `  --reset-mcp          Reset neuralgentics-managed MCP entries in <target>/.opencode/opencode.json to the minimal current template and strip legacy personal plugins. User-added servers are preserved; a timestamped backup is written first (T-CFG-MERGE-PRUNE-001).\n` +
       `  --db-user NAME       (with --db-start) Non-interactive first-user creation. Skips the interactive offer.\n` +
       `  --db-password PW     (with --db-start) Password for the user created via --db-user. Required when --db-user is set.\n` +
       `\n` +
@@ -308,6 +312,37 @@ async function main(argv: string[]): Promise<number> {
   const updateRequested = parsed.update || parsed.updateProject || parsed.updateHomedir;
   const remodelRequested = parsed.remodel || parsed.command === "remodel";
   const dbStackRequested = parsed.dbStart || parsed.dbStop;
+
+  // --reset-mcp (T-CFG-MERGE-PRUNE-001): opt-in cleanup of polluted MCP
+  // entries written by pre-v0.16.7 add-only merges. Standalone command.
+  if (parsed.resetMcp) {
+    if (initRequested || updateRequested || remodelRequested) {
+      process.stderr.write("[ERROR] --reset-mcp is a standalone flag.\n");
+      return 2;
+    }
+    const { resetMcp } = await import("./neuralgentics/reset-mcp.js");
+    try {
+      const result = await resetMcp({ target: parsed.target, dryRun: parsed.dryRun });
+      if (!result.changed) {
+        process.stdout.write("No neuralgentics-managed MCP entries needed resetting.\n");
+      } else {
+        for (const name of result.serversReset) {
+          process.stdout.write(`  reset mcp entry: ${name}\n`);
+        }
+        for (const p of result.pluginsRemoved) {
+          process.stdout.write(`  removed plugin: ${p}\n`);
+        }
+        if (result.serversPreserved.length) {
+          process.stdout.write(`  preserved (not ours): ${result.serversPreserved.join(", ")}\n`);
+        }
+        process.stdout.write(`Backup: ${result.backupPath ?? "(dry-run — nothing written)"}\n`);
+      }
+      return 0;
+    } catch (err) {
+      process.stderr.write(`[ERROR] ${err instanceof Error ? err.message : String(err)}\n`);
+      return 1;
+    }
+  }
 
   if (!initRequested && !migrateRequested && !updateRequested && !remodelRequested && !dbStackRequested) {
     printHelp();

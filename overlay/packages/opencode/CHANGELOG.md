@@ -5,6 +5,11 @@ documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.16.10 (2026-08-24)
+
+**Added:**
+- **`neuralgentics --reset-mcp` — opt-in cleanup for polluted configs (T-CFG-MERGE-PRUNE-001)** — v0.16.7 stopped NEW config pollution at the source, but installs updated before that release still carry the maintainer's personal MCP entries (13 servers, 6 enabled) that the add-only merge can never remove. The new standalone command rewrites `<target>/.opencode/opencode.json`: known neuralgentics server entries are replaced with the current minimal templates (project configs keep only `memini-ai-dev`, pgembed), homedir-only names are dropped, legacy personal plugins (`@franlol/*`) are stripped — while **unknown user-added servers are preserved untouched**. A timestamped `.bak` backup is written before any modification; `--dry-run` reports without writing. 5 new tests (reset/preserve/backup/dry-run/missing-file).
+
 ## v0.16.9 (2026-08-24)
 
 **Removed:**
