@@ -1,9 +1,9 @@
 {
-  "version": "2026-08-24",
-  "generated_at": "2026-08-24T06:36:19Z",
+  "version": "2026-08-25",
+  "generated_at": "2026-08-25T06:28:11Z",
   "benchmarks": {
     "bfcl": {
-      "fetched_at": "2026-08-24T06:35:05Z",
+      "fetched_at": "2026-08-25T06:26:56Z",
       "stale": false,
       "source_url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
       "top_models": [
@@ -121,7 +121,7 @@
       "top_models": []
     },
     "live_code_bench": {
-      "fetched_at": "2026-08-24T06:35:27Z",
+      "fetched_at": "2026-08-25T06:27:18Z",
       "stale": false,
       "source_url": "https://livecodebench-leaderboard.static.hf.space/index.html",
       "top_models": [
@@ -133,7 +133,7 @@
       ]
     },
     "chatbot_arena": {
-      "fetched_at": "2026-08-24T06:35:41Z",
+      "fetched_at": "2026-08-25T06:27:33Z",
       "stale": false,
       "source_url": "https://lmarena.ai/leaderboard",
       "top_models": [
@@ -293,7 +293,7 @@
       },
       "architect": {
         "model": "deepseek-v4-pro",
-        "provider_model_id": "deepseek-v4-pro:0813",
+        "provider_model_id": "deepseek-v4-pro:preview",
         "score": 0.0,
         "benchmark": "swe_bench",
         "rank": 0,
@@ -325,7 +325,7 @@
       },
       "reviewer": {
         "model": "deepseek-v4-pro",
-        "provider_model_id": "deepseek-v4-pro:0813",
+        "provider_model_id": "deepseek-v4-pro:preview",
         "score": 0.0,
         "benchmark": "swe_bench",
         "rank": 0,
