@@ -1,9 +1,9 @@
 {
-  "version": "2026-08-26",
-  "generated_at": "2026-08-26T06:29:35Z",
+  "version": "2026-08-27",
+  "generated_at": "2026-08-27T17:03:32Z",
   "benchmarks": {
     "bfcl": {
-      "fetched_at": "2026-08-26T06:28:20Z",
+      "fetched_at": "2026-08-27T17:02:18Z",
       "stale": false,
       "source_url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
       "top_models": [
@@ -121,7 +121,7 @@
       "top_models": []
     },
     "live_code_bench": {
-      "fetched_at": "2026-08-26T06:28:42Z",
+      "fetched_at": "2026-08-27T17:02:40Z",
       "stale": false,
       "source_url": "https://livecodebench-leaderboard.static.hf.space/index.html",
       "top_models": [
@@ -133,7 +133,7 @@
       ]
     },
     "chatbot_arena": {
-      "fetched_at": "2026-08-26T06:28:56Z",
+      "fetched_at": "2026-08-27T17:02:54Z",
       "stale": false,
       "source_url": "https://lmarena.ai/leaderboard",
       "top_models": [
@@ -293,7 +293,7 @@
       },
       "architect": {
         "model": "deepseek-v4-pro",
-        "provider_model_id": "deepseek-v4-pro:preview",
+        "provider_model_id": "deepseek-v4-pro:0813",
         "score": 0.0,
         "benchmark": "swe_bench",
         "rank": 0,
@@ -317,7 +317,7 @@
       },
       "tester": {
         "model": "deepseek-v4-flash",
-        "provider_model_id": "deepseek-v4-flash:preview",
+        "provider_model_id": "deepseek-v4-flash:0731",
         "score": 0.0,
         "benchmark": "swe_bench",
         "rank": 0,
@@ -325,7 +325,7 @@
       },
       "reviewer": {
         "model": "deepseek-v4-pro",
-        "provider_model_id": "deepseek-v4-pro:preview",
+        "provider_model_id": "deepseek-v4-pro:0813",
         "score": 0.0,
         "benchmark": "swe_bench",
         "rank": 0,
