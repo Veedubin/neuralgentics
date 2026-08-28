@@ -1,9 +1,9 @@
 {
-  "version": "2026-08-27",
-  "generated_at": "2026-08-27T17:03:32Z",
+  "version": "2026-08-28",
+  "generated_at": "2026-08-28T17:52:02Z",
   "benchmarks": {
     "bfcl": {
-      "fetched_at": "2026-08-27T17:02:18Z",
+      "fetched_at": "2026-08-28T17:50:50Z",
       "stale": false,
       "source_url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
       "top_models": [
@@ -121,7 +121,7 @@
       "top_models": []
     },
     "live_code_bench": {
-      "fetched_at": "2026-08-27T17:02:40Z",
+      "fetched_at": "2026-08-28T17:51:12Z",
       "stale": false,
       "source_url": "https://livecodebench-leaderboard.static.hf.space/index.html",
       "top_models": [
@@ -133,49 +133,49 @@
       ]
     },
     "chatbot_arena": {
-      "fetched_at": "2026-08-27T17:02:54Z",
+      "fetched_at": "2026-08-28T17:51:24Z",
       "stale": false,
       "source_url": "https://lmarena.ai/leaderboard",
       "top_models": [
         {
           "model": "gemini-3-pro",
           "raw_name": "gemini-3-pro",
-          "score": 674.0
+          "score": 676.0
         },
         {
           "model": "gemini-3-flash",
           "raw_name": "gemini-3-flash",
-          "score": 659.0
+          "score": 664.0
         },
         {
           "model": "claude-sonnet-4",
           "raw_name": "claude-sonnet-4-6",
-          "score": 657.0
+          "score": 658.0
         },
         {
           "model": "claude-opus-4.5",
           "raw_name": "claude-opus-4-5-20251101",
-          "score": 652.0
+          "score": 653.0
         },
         {
           "model": "kimi-k2.6",
           "raw_name": "kimi-k2.6",
-          "score": 642.0
-        },
-        {
-          "model": "deepseek-v4-pro",
-          "raw_name": "deepseek-v4-pro",
-          "score": 637.0
+          "score": 641.0
         },
         {
           "model": "glm-5.2",
           "raw_name": "glm-5",
-          "score": 634.0
+          "score": 637.0
+        },
+        {
+          "model": "deepseek-v4-pro",
+          "raw_name": "deepseek-v4-pro",
+          "score": 636.0
         },
         {
           "model": "claude-sonnet-4.5",
           "raw_name": "claude-sonnet-4-5-20250929",
-          "score": 629.0
+          "score": 628.0
         },
         {
           "model": "gemini-2.5-pro",
@@ -185,32 +185,32 @@
         {
           "model": "minimax-m3",
           "raw_name": "minimax-m3",
-          "score": 613.0
-        },
-        {
-          "model": "deepseek-v4-flash",
-          "raw_name": "deepseek-v4-flash",
-          "score": 603.0
+          "score": 612.0
         },
         {
           "model": "gpt-5.2",
           "raw_name": "gpt-5.2",
+          "score": 604.0
+        },
+        {
+          "model": "deepseek-v4-flash",
+          "raw_name": "deepseek-v4-flash",
           "score": 601.0
         },
         {
           "model": "o3",
           "raw_name": "o3-2025-04-16",
-          "score": 594.0
+          "score": 595.0
         },
         {
           "model": "grok-4",
           "raw_name": "grok-4-1-fast-reasoning",
-          "score": 593.0
+          "score": 592.0
         },
         {
           "model": "deepseek-v3.2",
           "raw_name": "deepseek-v3.2",
-          "score": 585.0
+          "score": 584.0
         },
         {
           "model": "glm-4.6",
@@ -223,34 +223,34 @@
           "score": 580.0
         },
         {
+          "model": "gpt-4.1",
+          "raw_name": "gpt-4.1-2025-04-14",
+          "score": 565.0
+        },
+        {
           "model": "mistral-large-3",
           "raw_name": "mistral-large-3",
           "score": 564.0
         },
         {
-          "model": "gpt-4.1",
-          "raw_name": "gpt-4.1-2025-04-14",
-          "score": 563.0
+          "model": "claude-opus-4",
+          "raw_name": "claude-opus-4-20250514",
+          "score": 562.0
         },
         {
           "model": "claude-haiku-4.5",
           "raw_name": "claude-haiku-4-5-20251001",
-          "score": 562.0
-        },
-        {
-          "model": "claude-opus-4",
-          "raw_name": "claude-opus-4-20250514",
           "score": 561.0
         },
         {
           "model": "gemini-2.5-flash",
           "raw_name": "gemini-2.5-flash",
-          "score": 557.0
+          "score": 556.0
         },
         {
           "model": "o4-mini",
           "raw_name": "o4-mini-2025-04-16",
-          "score": 533.0
+          "score": 534.0
         },
         {
           "model": "o3-mini",
@@ -265,7 +265,7 @@
         {
           "model": "llama-3.3-70b",
           "raw_name": "llama-3.3-70b-instruct",
-          "score": 446.0
+          "score": 444.0
         },
         {
           "model": "phi-4",
@@ -286,7 +286,7 @@
       "orchestrator": {
         "model": "kimi-k2.6",
         "provider_model_id": "kimi-k2.6",
-        "score": 233.942,
+        "score": 233.642,
         "benchmark": "bfcl",
         "rank": 8,
         "fallback": false
@@ -310,7 +310,7 @@
       "explorer": {
         "model": "kimi-k2.6",
         "provider_model_id": "kimi-k2.6",
-        "score": 385.2,
+        "score": 384.6,
         "benchmark": "chatbot_arena",
         "rank": 5,
         "fallback": false
@@ -334,7 +334,7 @@
       "linter": {
         "model": "kimi-k2.6",
         "provider_model_id": "kimi-k2.6",
-        "score": 642.0,
+        "score": 641.0,
         "benchmark": "chatbot_arena",
         "rank": 5,
         "fallback": false
@@ -342,7 +342,7 @@
       "git": {
         "model": "kimi-k2.6",
         "provider_model_id": "kimi-k2.6",
-        "score": 642.0,
+        "score": 641.0,
         "benchmark": "chatbot_arena",
         "rank": 5,
         "fallback": false
@@ -350,7 +350,7 @@
       "writer": {
         "model": "kimi-k2.6",
         "provider_model_id": "kimi-k2.6",
-        "score": 385.2,
+        "score": 384.6,
         "benchmark": "chatbot_arena",
         "rank": 5,
         "fallback": false
@@ -358,7 +358,7 @@
       "researcher": {
         "model": "kimi-k2.6",
         "provider_model_id": "kimi-k2.6",
-        "score": 256.8,
+        "score": 256.4,
         "benchmark": "mmlu_pro",
         "rank": 0,
         "fallback": false
@@ -366,7 +366,7 @@
       "release": {
         "model": "kimi-k2.6",
         "provider_model_id": "kimi-k2.6",
-        "score": 642.0,
+        "score": 641.0,
         "benchmark": "chatbot_arena",
         "rank": 5,
         "fallback": false
@@ -384,7 +384,7 @@
       "orchestrator": {
         "model": "claude-opus-4.5",
         "provider_model_id": "anthropic/claude-opus-4.5",
-        "score": 249.829,
+        "score": 250.129,
         "benchmark": "bfcl",
         "rank": 1,
         "fallback": false
@@ -408,7 +408,7 @@
       "explorer": {
         "model": "claude-sonnet-4",
         "provider_model_id": "anthropic/claude-sonnet-4",
-        "score": 394.2,
+        "score": 394.8,
         "benchmark": "chatbot_arena",
         "rank": 3,
         "fallback": false
@@ -432,7 +432,7 @@
       "linter": {
         "model": "claude-sonnet-4",
         "provider_model_id": "anthropic/claude-sonnet-4",
-        "score": 657.0,
+        "score": 658.0,
         "benchmark": "chatbot_arena",
         "rank": 3,
         "fallback": false
@@ -440,7 +440,7 @@
       "git": {
         "model": "claude-sonnet-4",
         "provider_model_id": "anthropic/claude-sonnet-4",
-        "score": 657.0,
+        "score": 658.0,
         "benchmark": "chatbot_arena",
         "rank": 3,
         "fallback": false
@@ -448,7 +448,7 @@
       "writer": {
         "model": "claude-sonnet-4",
         "provider_model_id": "anthropic/claude-sonnet-4",
-        "score": 394.2,
+        "score": 394.8,
         "benchmark": "chatbot_arena",
         "rank": 3,
         "fallback": false
@@ -456,7 +456,7 @@
       "researcher": {
         "model": "claude-sonnet-4",
         "provider_model_id": "anthropic/claude-sonnet-4",
-        "score": 262.8,
+        "score": 263.2,
         "benchmark": "mmlu_pro",
         "rank": 0,
         "fallback": false
@@ -464,7 +464,7 @@
       "release": {
         "model": "claude-sonnet-4",
         "provider_model_id": "anthropic/claude-sonnet-4",
-        "score": 657.0,
+        "score": 658.0,
         "benchmark": "chatbot_arena",
         "rank": 3,
         "fallback": false
