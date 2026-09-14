@@ -1,9 +1,9 @@
 {
-  "version": "2026-09-13",
-  "generated_at": "2026-09-13T10:47:04Z",
+  "version": "2026-09-14",
+  "generated_at": "2026-09-14T11:12:16Z",
   "benchmarks": {
     "bfcl": {
-      "fetched_at": "2026-09-13T10:45:50Z",
+      "fetched_at": "2026-09-14T11:11:02Z",
       "stale": false,
       "source_url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
       "top_models": [
@@ -121,7 +121,7 @@
       "top_models": []
     },
     "live_code_bench": {
-      "fetched_at": "2026-09-13T10:46:12Z",
+      "fetched_at": "2026-09-14T11:11:24Z",
       "stale": false,
       "source_url": "https://livecodebench-leaderboard.static.hf.space/index.html",
       "top_models": [
@@ -133,14 +133,14 @@
       ]
     },
     "chatbot_arena": {
-      "fetched_at": "2026-09-13T10:46:25Z",
+      "fetched_at": "2026-09-14T11:11:37Z",
       "stale": false,
       "source_url": "https://lmarena.ai/leaderboard",
       "top_models": [
         {
           "model": "gemini-3-pro",
           "raw_name": "gemini-3-pro",
-          "score": 680.0
+          "score": 681.0
         },
         {
           "model": "gemini-3-flash",
@@ -175,7 +175,7 @@
         {
           "model": "claude-sonnet-4.5",
           "raw_name": "claude-sonnet-4-5-20250929",
-          "score": 633.0
+          "score": 632.0
         },
         {
           "model": "gemini-2.5-pro",
@@ -185,7 +185,7 @@
         {
           "model": "minimax-m3",
           "raw_name": "minimax-m3",
-          "score": 614.0
+          "score": 613.0
         },
         {
           "model": "gpt-5.2",
@@ -223,13 +223,13 @@
           "score": 583.0
         },
         {
-          "model": "gpt-4.1",
-          "raw_name": "gpt-4.1-2025-04-14",
+          "model": "claude-haiku-4.5",
+          "raw_name": "claude-haiku-4-5-20251001",
           "score": 568.0
         },
         {
-          "model": "claude-haiku-4.5",
-          "raw_name": "claude-haiku-4-5-20251001",
+          "model": "gpt-4.1",
+          "raw_name": "gpt-4.1-2025-04-14",
           "score": 567.0
         },
         {
@@ -265,7 +265,7 @@
         {
           "model": "llama-3.3-70b",
           "raw_name": "llama-3.3-70b-instruct",
-          "score": 446.0
+          "score": 447.0
         },
         {
           "model": "phi-4",
