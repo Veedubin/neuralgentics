@@ -1,9 +1,9 @@
 {
-  "version": "2026-10-06",
-  "generated_at": "2026-10-06T12:24:23Z",
+  "version": "2026-10-07",
+  "generated_at": "2026-10-07T12:16:52Z",
   "benchmarks": {
     "bfcl": {
-      "fetched_at": "2026-10-06T12:22:47Z",
+      "fetched_at": "2026-10-07T12:15:17Z",
       "stale": false,
       "source_url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
       "top_models": [
@@ -121,7 +121,7 @@
       "top_models": []
     },
     "live_code_bench": {
-      "fetched_at": "2026-10-06T12:23:10Z",
+      "fetched_at": "2026-10-07T12:15:39Z",
       "stale": false,
       "source_url": "https://livecodebench-leaderboard.static.hf.space/index.html",
       "top_models": [
